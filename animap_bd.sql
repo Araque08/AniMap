@@ -10,6 +10,7 @@ DROP TABLE IF EXISTS bitacora_administrativa CASCADE;
 DROP TABLE IF EXISTS ubicacion CASCADE;
 DROP TABLE IF EXISTS foto_avistamiento CASCADE;
 DROP TABLE IF EXISTS avistamiento CASCADE;
+DROP TABLE IF EXISTS notificacion CASCADE;
 DROP TABLE IF EXISTS reporte CASCADE;
 DROP TABLE IF EXISTS foto_mascota CASCADE;
 DROP TABLE IF EXISTS mascota CASCADE;
@@ -18,7 +19,6 @@ DROP TABLE IF EXISTS especie CASCADE;
 DROP TABLE IF EXISTS faq CASCADE;
 DROP TABLE IF EXISTS categoria_faq CASCADE;
 DROP TABLE IF EXISTS preferencia_notificacion CASCADE;
-DROP TABLE IF EXISTS notificacion CASCADE;
 DROP TABLE IF EXISTS device_session CASCADE;
 DROP TABLE IF EXISTS usuario_rol CASCADE;
 DROP TABLE IF EXISTS rol CASCADE;
@@ -46,16 +46,19 @@ CREATE TYPE estado_coincidencia_enum AS ENUM ('PENDIENTE', 'VALIDADA', 'DESCARTA
 -- USUARIO / CUENTA
 -- =========================
 CREATE TABLE usuario (
-    id               SERIAL PRIMARY KEY,
-    nombre           VARCHAR(120) NOT NULL,
-    email            VARCHAR(150) NOT NULL UNIQUE,
-    telefono         VARCHAR(20) NOT NULL,
-    password_hash    VARCHAR(255) NOT NULL,
-    is_verified      BOOLEAN NOT NULL DEFAULT FALSE,
-    acepta_tyc       BOOLEAN NOT NULL DEFAULT FALSE,
-    estado_cuenta    estado_usuario_enum NOT NULL DEFAULT 'ACTIVO',
-    fecha_registro   TIMESTAMP NOT NULL DEFAULT NOW(),
-    last_login_at    TIMESTAMP,
+    id                             SERIAL PRIMARY KEY,
+    nombre                         VARCHAR(120) NOT NULL,
+    email                          VARCHAR(150) NOT NULL UNIQUE,
+    telefono                       VARCHAR(20) NOT NULL,
+    password_hash                  VARCHAR(255) NOT NULL,
+    is_verified                    BOOLEAN NOT NULL DEFAULT FALSE,
+    acepta_tyc                     BOOLEAN NOT NULL DEFAULT FALSE,
+    estado_cuenta                  estado_usuario_enum NOT NULL DEFAULT 'ACTIVO',
+    verification_code_hash         VARCHAR(255),
+    verification_code_expires_at   TIMESTAMP,
+    verification_code_sent_at      TIMESTAMP,
+    fecha_registro                 TIMESTAMP NOT NULL DEFAULT NOW(),
+    last_login_at                  TIMESTAMP,
     CONSTRAINT chk_usuario_email_formato
         CHECK (POSITION('@' IN email) > 1)
 );
@@ -97,23 +100,6 @@ CREATE TABLE device_session (
         FOREIGN KEY (fk_usuario) REFERENCES usuario(id) ON DELETE CASCADE,
     CONSTRAINT chk_device_session_fechas
         CHECK (expira_en > creado_en)
-);
-
-CREATE TABLE notificacion (
-    id               SERIAL PRIMARY KEY,
-    fk_usuario       INT NOT NULL,
-    fk_reporte       INT,
-    titulo           VARCHAR(140) NOT NULL,
-    mensaje          TEXT NOT NULL,
-    leida            BOOLEAN NOT NULL DEFAULT FALSE,
-    fecha            TIMESTAMP NOT NULL DEFAULT NOW(),
-    tipo             VARCHAR(50),
-    estado_envio     VARCHAR(50),
-    audiencia        VARCHAR(50),
-    CONSTRAINT fk_notificacion_usuario
-        FOREIGN KEY (fk_usuario) REFERENCES usuario(id) ON DELETE CASCADE,
-    CONSTRAINT fk_notificacion_reporte
-        FOREIGN KEY (fk_reporte) REFERENCES reporte(id) ON DELETE SET NULL
 );
 
 CREATE TABLE preferencia_notificacion (
@@ -219,6 +205,23 @@ CREATE TABLE reporte (
         FOREIGN KEY (fk_mascota) REFERENCES mascota(id) ON DELETE CASCADE,
     CONSTRAINT chk_reporte_fechas
         CHECK (cerrado_en IS NULL OR cerrado_en >= creado_en)
+);
+
+CREATE TABLE notificacion (
+    id               SERIAL PRIMARY KEY,
+    fk_usuario       INT NOT NULL,
+    fk_reporte       INT,
+    titulo           VARCHAR(140) NOT NULL,
+    mensaje          TEXT NOT NULL,
+    leida            BOOLEAN NOT NULL DEFAULT FALSE,
+    fecha            TIMESTAMP NOT NULL DEFAULT NOW(),
+    tipo             VARCHAR(50),
+    estado_envio     VARCHAR(50),
+    audiencia        VARCHAR(50),
+    CONSTRAINT fk_notificacion_usuario
+        FOREIGN KEY (fk_usuario) REFERENCES usuario(id) ON DELETE CASCADE,
+    CONSTRAINT fk_notificacion_reporte
+        FOREIGN KEY (fk_reporte) REFERENCES reporte(id) ON DELETE SET NULL
 );
 
 CREATE TABLE avistamiento (
@@ -430,3 +433,6 @@ INSERT INTO rol (nombre) VALUES
 INSERT INTO especie (nombre) VALUES
 ('Perro'),
 ('Gato');
+
+DELETE FROM usuario
+WHERE email = 'felialej123@gmail.com';
