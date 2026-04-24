@@ -23,18 +23,7 @@ const loginSchema = z.object({
   deviceId: z.string().trim().min(1).max(120).optional(),
 });
 
-const verifyAccountSchema = z.object({
-  email: z.string().trim().toLowerCase().email('Correo no válido').max(150),
-  code: z.string().trim().regex(/^\d{6}$/, 'Código de verificación inválido'),
-});
-
-const resendVerificationCodeSchema = z.object({
-  email: z.string().trim().toLowerCase().email('Correo no válido').max(150),
-});
-
 module.exports = {
   registerSchema,
   loginSchema,
-  verifyAccountSchema,
-  resendVerificationCodeSchema,
 };
