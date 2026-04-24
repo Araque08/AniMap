@@ -6,6 +6,14 @@ const { z } = require('zod');
   de que pasen al controlador o al servicio.
 */
 
+const passwordSchema = z
+  .string()
+  .min(8, 'La contraseña debe tener mínimo 8 caracteres')
+  .regex(/[A-Z]/, 'La contraseña debe incluir al menos una mayúscula')
+  .regex(/[a-z]/, 'La contraseña debe incluir al menos una minúscula')
+  .regex(/[0-9]/, 'La contraseña debe incluir al menos un número')
+  .regex(/[^A-Za-z0-9]/, 'La contraseña debe incluir al menos un carácter especial');
+
 const registerSchema = z.object({
   /*
     Aquí validamos el nombre del usuario.
@@ -36,10 +44,7 @@ const registerSchema = z.object({
     Aquí validamos la contraseña.
     Definimos mínimo 8 caracteres para mejorar la seguridad básica del registro.
   */
-  password: z
-    .string()
-    .min(8, 'La contraseña debe tener mínimo 8 caracteres')
-    .max(100),
+  password: passwordSchema,
 
   /*
     Aquí obligamos a que el usuario acepte términos y condiciones.

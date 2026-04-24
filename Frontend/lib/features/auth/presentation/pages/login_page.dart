@@ -15,7 +15,6 @@ class _LoginPageState extends State<LoginPage> {
 
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
-
   final AuthService _authService = AuthService();
 
   bool _isLoading = false;
@@ -122,7 +121,7 @@ class _LoginPageState extends State<LoginPage> {
 
     return Scaffold(
       backgroundColor: backgroundColor,
-      resizeToAvoidBottomInset: true,
+      resizeToAvoidBottomInset: false,
       body: Stack(
         children: [
           const Positioned(
@@ -136,12 +135,9 @@ class _LoginPageState extends State<LoginPage> {
               padding: const EdgeInsets.symmetric(horizontal: 35, vertical: 5),
               child: Form(
                 key: _formKey,
-                child: SingleChildScrollView(
-                  physics: const BouncingScrollPhysics(),
-                  child: Column(
-                    children: [
-                      const SizedBox(height: 20),
-
+                child: Column(
+                  children: [
+                    const SizedBox(height: 20),
                       Image.asset(
                         'assets/images/Logo_Principal_AniMap.png',
                         height: 180,
@@ -223,15 +219,9 @@ class _LoginPageState extends State<LoginPage> {
                       ),
 
                       const SizedBox(height: 22),
-
                       const Row(
-                        children: [
-                          Expanded(
-                            child: Divider(
-                              color: Colors.black54,
-                              thickness: 1,
-                            ),
-                          ),
+                        children: const [
+                          Expanded(child: Divider(color: Colors.black54, thickness: 1)),
                           Padding(
                             padding: EdgeInsets.symmetric(horizontal: 12),
                             child: Text(
@@ -243,12 +233,7 @@ class _LoginPageState extends State<LoginPage> {
                               ),
                             ),
                           ),
-                          Expanded(
-                            child: Divider(
-                              color: Colors.black54,
-                              thickness: 1,
-                            ),
-                          ),
+                          Expanded(child: Divider(color: Colors.black54, thickness: 1)),
                         ],
                       ),
 
@@ -445,8 +430,7 @@ class _LoginPageState extends State<LoginPage> {
                       ),
 
                       const SizedBox(height: 30),
-                    ],
-                  ),
+                  ],
                 ),
               ),
             ),
@@ -570,7 +554,7 @@ class _BottomWavesPainter extends CustomPainter {
         size.width,
         size.height * 0.60,
       )
-      ..lineTo(size.width, size.height)
+        ..lineTo(size.width, size.height)
       ..lineTo(0, size.height)
       ..close();
 

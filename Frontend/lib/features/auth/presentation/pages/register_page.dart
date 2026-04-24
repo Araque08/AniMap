@@ -8,10 +8,14 @@ class RegisterPage extends StatefulWidget {
 
   @override
   State<RegisterPage> createState() => _RegisterPageState();
+
+
 }
 
 class _RegisterPageState extends State<RegisterPage> {
   final _formKey = GlobalKey<FormState>();
+
+
 
   final TextEditingController _nameController = TextEditingController();
   final TextEditingController _emailController = TextEditingController();
@@ -26,6 +30,34 @@ class _RegisterPageState extends State<RegisterPage> {
   bool _obscurePassword = true;
   bool _obscureConfirmPassword = true;
   bool _acceptedPolicies = false;
+
+  String? _validatePassword(String? value) {
+    if (value == null || value.isEmpty) {
+      return 'Ingresa una contraseña';
+    }
+
+    if (value.length < 8) {
+      return 'Debe tener mínimo 8 caracteres';
+    }
+
+    if (!RegExp(r'[A-Z]').hasMatch(value)) {
+      return 'Debe incluir al menos una mayúscula';
+    }
+
+    if (!RegExp(r'[a-z]').hasMatch(value)) {
+      return 'Debe incluir al menos una minúscula';
+    }
+
+    if (!RegExp(r'[0-9]').hasMatch(value)) {
+      return 'Debe incluir al menos un número';
+    }
+
+    if (!RegExp(r'[^A-Za-z0-9]').hasMatch(value)) {
+      return 'Debe incluir al menos un carácter especial';
+    }
+
+    return null;
+  }
 
   static const Color backgroundColor = Color(0xFFDDE6D8);
   static const Color primaryGreen = Color(0xFF73C15A);
@@ -143,6 +175,7 @@ class _RegisterPageState extends State<RegisterPage> {
       ),
     );
   }
+
 
   @override
   Widget build(BuildContext context) {
@@ -286,21 +319,7 @@ class _RegisterPageState extends State<RegisterPage> {
                             ),
                           ),
                         ),
-                        validator: (value) {
-                          if (value == null || value.isEmpty) {
-                            return 'Ingresa una contraseña';
-                          }
-
-                          /*
-                            Aquí alineamos la validación del frontend con el backend.
-                            El backend exige mínimo 8 caracteres.
-                          */
-                          if (value.length < 8) {
-                            return 'Mínimo 8 caracteres';
-                          }
-
-                          return null;
-                        },
+                        validator: _validatePassword,
                       ),
                     ),
 
@@ -331,12 +350,19 @@ class _RegisterPageState extends State<RegisterPage> {
                           ),
                         ),
                         validator: (value) {
+                          final passwordError = _validatePassword(_passwordController.text);
+                          if (passwordError != null) {
+                            return 'Primero ingresa una contraseña válida';
+                          }
+
                           if (value == null || value.isEmpty) {
                             return 'Confirma tu contraseña';
                           }
+
                           if (value != _passwordController.text) {
                             return 'Las contraseñas no coinciden';
                           }
+
                           return null;
                         },
                       ),
@@ -357,7 +383,10 @@ class _RegisterPageState extends State<RegisterPage> {
                               });
                             },
                             activeColor: accentGreen,
-                            side: const BorderSide(color: inputBorder),
+                            side: const BorderSide(
+                              color: Color(0xFF6E7F72),
+                              width: 1.6,
+                            ),
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(4),
                             ),
