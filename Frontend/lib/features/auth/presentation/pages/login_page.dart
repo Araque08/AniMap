@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'register_page.dart';
 import '../../data/auth_service.dart';
-import '../../../home/presentation/pages/home_page.dart';
+import '../../../map/presentation/pages/map_page.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -20,6 +20,8 @@ class _LoginPageState extends State<LoginPage> {
 
   bool _isLoading = false;
   bool _obscurePassword = true;
+  bool _hasLoginError = false;
+  String? _loginErrorMessage;
 
   @override
   void dispose() {
@@ -28,11 +30,6 @@ class _LoginPageState extends State<LoginPage> {
     super.dispose();
   }
 
-  /*
-    Aquí hicimos el inicio de sesión.
-    Validamos el formulario, enviamos los datos al backend y, si la respuesta es correcta,
-    llevamos al usuario a la pantalla principal de AniMap.
-  */
   Future<void> _submitLogin() async {
     final isValid = _formKey.currentState?.validate() ?? false;
 
@@ -40,11 +37,13 @@ class _LoginPageState extends State<LoginPage> {
 
     setState(() {
       _isLoading = true;
+      _hasLoginError = false;
+      _loginErrorMessage = null;
     });
 
     try {
       final response = await _authService.login(
-        email: _emailController.text.trim(),
+        email: _emailController.text.trim().toLowerCase(),
         password: _passwordController.text,
         deviceId: 'android-emulador',
       );
@@ -55,21 +54,10 @@ class _LoginPageState extends State<LoginPage> {
 
       if (!mounted) return;
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Inicio de sesión exitoso. Bienvenido, $nombre'),
-        ),
-      );
-
-      /*
-        Aquí corregimos el flujo.
-        Antes el login solo mostraba el mensaje de éxito.
-        Ahora, después de iniciar sesión correctamente, entramos al Home.
-      */
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(
-          builder: (context) => HomePage(
+          builder: (context) => MapPage(
             userName: nombre,
           ),
         ),
@@ -77,19 +65,19 @@ class _LoginPageState extends State<LoginPage> {
     } on AuthException catch (e) {
       if (!mounted) return;
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(e.message),
-        ),
-      );
+      setState(() {
+        _hasLoginError = true;
+        _loginErrorMessage = e.message == 'Credenciales inválidas'
+            ? 'No fue posible iniciar sesión. Correo o contraseña incorrectos'
+            : e.message;
+      });
     } catch (_) {
       if (!mounted) return;
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Ocurrió un error inesperado al iniciar sesión'),
-        ),
-      );
+      setState(() {
+        _hasLoginError = true;
+        _loginErrorMessage = 'Ocurrió un error inesperado al iniciar sesión';
+      });
     } finally {
       if (mounted) {
         setState(() {
@@ -99,9 +87,6 @@ class _LoginPageState extends State<LoginPage> {
     }
   }
 
-  /*
-    Aquí navegamos a la pantalla de registro para usuarios que aún no tienen cuenta.
-  */
   void _goToRegister() {
     Navigator.push(
       context,
@@ -111,10 +96,6 @@ class _LoginPageState extends State<LoginPage> {
     );
   }
 
-  /*
-    Aquí dejamos temporalmente la recuperación de contraseña como mensaje.
-    Más adelante podemos conectarla con un flujo real de recuperación.
-  */
   void _forgotPassword() {
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
@@ -123,10 +104,6 @@ class _LoginPageState extends State<LoginPage> {
     );
   }
 
-  /*
-    Aquí dejamos temporalmente el login con Google como mensaje.
-    Esta funcionalidad todavía no está conectada.
-  */
   void _loginWithGoogle() {
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
@@ -145,7 +122,7 @@ class _LoginPageState extends State<LoginPage> {
 
     return Scaffold(
       backgroundColor: backgroundColor,
-      resizeToAvoidBottomInset: false,
+      resizeToAvoidBottomInset: true,
       body: Stack(
         children: [
           const Positioned(
@@ -159,269 +136,317 @@ class _LoginPageState extends State<LoginPage> {
               padding: const EdgeInsets.symmetric(horizontal: 35, vertical: 5),
               child: Form(
                 key: _formKey,
-                child: Column(
-                  children: [
-                    const SizedBox(height: 20),
+                child: SingleChildScrollView(
+                  physics: const BouncingScrollPhysics(),
+                  child: Column(
+                    children: [
+                      const SizedBox(height: 20),
 
-                    Image.asset(
-                      'assets/images/Logo_Principal_AniMap.png',
-                      height: 180,
-                      fit: BoxFit.contain,
-                    ),
-
-                    const SizedBox(height: 20),
-
-                    const Text(
-                      'Iniciar Sesión',
-                      style: TextStyle(
-                        fontSize: 25,
-                        fontWeight: FontWeight.w700,
-                        color: darkText,
+                      Image.asset(
+                        'assets/images/Logo_Principal_AniMap.png',
+                        height: 180,
+                        fit: BoxFit.contain,
                       ),
-                    ),
 
-                    const SizedBox(height: 5),
+                      const SizedBox(height: 20),
 
-                    RichText(
-                      textAlign: TextAlign.center,
-                      text: const TextSpan(
+                      const Text(
+                        'Iniciar Sesión',
                         style: TextStyle(
-                          fontSize: 14,
-                          color: Color(0xFF97A39B),
-                          fontWeight: FontWeight.w500,
+                          fontSize: 25,
+                          fontWeight: FontWeight.w700,
+                          color: darkText,
                         ),
-                        children: [
-                          TextSpan(text: 'La vida es más feliz con mascotas.'),
-                        ],
                       ),
-                    ),
 
-                    const SizedBox(height: 20),
+                      const SizedBox(height: 5),
 
-                    SizedBox(
-                      width: 190,
-                      height: 46,
-                      child: ElevatedButton(
-                        onPressed: _isLoading ? null : _loginWithGoogle,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: primaryGreen,
-                          foregroundColor: Colors.black,
-                          elevation: 3,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(30),
-                            side: const BorderSide(color: Colors.black54),
+                      RichText(
+                        textAlign: TextAlign.center,
+                        text: const TextSpan(
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: Color(0xFF97A39B),
+                            fontWeight: FontWeight.w500,
                           ),
-                          padding: const EdgeInsets.symmetric(horizontal: 16),
-                        ),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            Image.asset(
-                              'assets/images/icono_google.png',
-                              width: 22,
-                              height: 22,
+                            TextSpan(
+                              text: 'La vida es más feliz con mascotas. ',
                             ),
-                            const SizedBox(width: 12),
-                            const Text(
-                              'Google',
+                            TextSpan(
+                              text: 'AniMap',
                               style: TextStyle(
-                                fontSize: 18,
+                                color: accentGreen,
                                 fontWeight: FontWeight.w700,
                               ),
                             ),
                           ],
                         ),
                       ),
-                    ),
 
-                    const SizedBox(height: 22),
+                      const SizedBox(height: 20),
 
-                    const Row(
-                      children: [
-                        Expanded(
-                          child: Divider(
-                            color: Colors.black54,
-                            thickness: 1,
+                      SizedBox(
+                        width: 190,
+                        height: 46,
+                        child: ElevatedButton(
+                          onPressed: _isLoading ? null : _loginWithGoogle,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: primaryGreen,
+                            foregroundColor: Colors.black,
+                            elevation: 3,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(30),
+                              side: const BorderSide(color: Colors.black54),
+                            ),
+                            padding: const EdgeInsets.symmetric(horizontal: 16),
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Image.asset(
+                                'assets/images/icono_google.png',
+                                width: 22,
+                                height: 22,
+                              ),
+                              const SizedBox(width: 12),
+                              const Text(
+                                'Google',
+                                style: TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ],
                           ),
                         ),
-                        Padding(
-                          padding: EdgeInsets.symmetric(horizontal: 12),
-                          child: Text(
-                            'Or',
-                            style: TextStyle(
-                              color: Color(0xFF7E847F),
-                              fontSize: 18,
-                              fontWeight: FontWeight.w500,
+                      ),
+
+                      const SizedBox(height: 22),
+
+                      const Row(
+                        children: [
+                          Expanded(
+                            child: Divider(
+                              color: Colors.black54,
+                              thickness: 1,
+                            ),
+                          ),
+                          Padding(
+                            padding: EdgeInsets.symmetric(horizontal: 12),
+                            child: Text(
+                              'Or',
+                              style: TextStyle(
+                                color: Color(0xFF7E847F),
+                                fontSize: 18,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ),
+                          Expanded(
+                            child: Divider(
+                              color: Colors.black54,
+                              thickness: 1,
+                            ),
+                          ),
+                        ],
+                      ),
+
+                      const SizedBox(height: 30),
+
+                      SizedBox(
+                        width: 330,
+                        height: 75,
+                        child: TextFormField(
+                          controller: _emailController,
+                          keyboardType: TextInputType.emailAddress,
+                          enabled: !_isLoading,
+                          decoration: _inputDecoration(
+                            hint: 'Correo electrónico',
+                            prefixIcon: Icons.email,
+                            hintTextColor: hintText,
+                            iconColor: accentGreen,
+                            hasError: _hasLoginError,
+                          ),
+                          validator: (value) {
+                            if (value == null || value.trim().isEmpty) {
+                              return 'Ingresa tu correo';
+                            }
+
+                            final emailRegex = RegExp(
+                              r'^[^@]+@[^@]+\.[^@]+$',
+                            );
+
+                            if (!emailRegex.hasMatch(value.trim())) {
+                              return 'Correo no válido';
+                            }
+
+                            return null;
+                          },
+                        ),
+                      ),
+
+                      const SizedBox(height: 18),
+
+                      SizedBox(
+                        width: 330,
+                        height: 75,
+                        child: TextFormField(
+                          controller: _passwordController,
+                          obscureText: _obscurePassword,
+                          enabled: !_isLoading,
+                          decoration: _inputDecoration(
+                            hint: 'Contraseña',
+                            prefixIcon: Icons.lock,
+                            hintTextColor: hintText,
+                            iconColor: accentGreen,
+                            hasError: _hasLoginError,
+                            suffixIcon: IconButton(
+                              onPressed: _isLoading
+                                  ? null
+                                  : () {
+                                setState(() {
+                                  _obscurePassword = !_obscurePassword;
+                                });
+                              },
+                              icon: Icon(
+                                _obscurePassword
+                                    ? Icons.visibility_off_outlined
+                                    : Icons.visibility_outlined,
+                                color: _hasLoginError
+                                    ? Colors.redAccent
+                                    : accentGreen,
+                              ),
+                            ),
+                          ),
+                          validator: (value) {
+                            if (value == null || value.isEmpty) {
+                              return 'Ingresa tu contraseña';
+                            }
+
+                            if (value.length < 6) {
+                              return 'Mínimo 6 caracteres';
+                            }
+
+                            return null;
+                          },
+                        ),
+                      ),
+
+                      Transform.translate(
+                        offset: const Offset(0, -15),
+                        child: Align(
+                          alignment: Alignment.centerRight,
+                          child: GestureDetector(
+                            onTap: _isLoading ? null : _forgotPassword,
+                            child: const Text(
+                              '¿Olvidó su contraseña?',
+                              style: TextStyle(
+                                color: Color(0xFF418452),
+                                fontSize: 14,
+                                fontWeight: FontWeight.w700,
+                              ),
                             ),
                           ),
                         ),
-                        Expanded(
-                          child: Divider(
-                            color: Colors.black54,
-                            thickness: 1,
-                          ),
-                        ),
-                      ],
-                    ),
-
-                    const SizedBox(height: 30),
-
-                    SizedBox(
-                      width: 330,
-                      height: 75,
-                      child: TextFormField(
-                        controller: _emailController,
-                        keyboardType: TextInputType.emailAddress,
-                        enabled: !_isLoading,
-                        decoration: _inputDecoration(
-                          hint: 'Correo electrónico',
-                          prefixIcon: Icons.email,
-                          hintTextColor: hintText,
-                          iconColor: accentGreen,
-                        ),
-                        validator: (value) {
-                          if (value == null || value.trim().isEmpty) {
-                            return 'Ingresa tu correo';
-                          }
-
-                          final emailRegex = RegExp(
-                            r'^[^@]+@[^@]+\.[^@]+$',
-                          );
-
-                          if (!emailRegex.hasMatch(value.trim())) {
-                            return 'Correo no válido';
-                          }
-
-                          return null;
-                        },
                       ),
-                    ),
 
-                    const SizedBox(height: 18),
-
-                    SizedBox(
-                      width: 330,
-                      height: 75,
-                      child: TextFormField(
-                        controller: _passwordController,
-                        obscureText: _obscurePassword,
-                        enabled: !_isLoading,
-                        decoration: _inputDecoration(
-                          hint: 'Contraseña',
-                          prefixIcon: Icons.lock,
-                          hintTextColor: hintText,
-                          iconColor: accentGreen,
-                          suffixIcon: IconButton(
-                            onPressed: _isLoading
-                                ? null
-                                : () {
-                              setState(() {
-                                _obscurePassword = !_obscurePassword;
-                              });
-                            },
-                            icon: Icon(
-                              _obscurePassword
-                                  ? Icons.visibility_off_outlined
-                                  : Icons.visibility_outlined,
-                              color: accentGreen,
-                            ),
-                          ),
-                        ),
-                        validator: (value) {
-                          if (value == null || value.isEmpty) {
-                            return 'Ingresa tu contraseña';
-                          }
-
-                          if (value.length < 6) {
-                            return 'Mínimo 6 caracteres';
-                          }
-
-                          return null;
-                        },
-                      ),
-                    ),
-
-                    Transform.translate(
-                      offset: const Offset(0, -15),
-                      child: Align(
-                        alignment: Alignment.centerRight,
-                        child: GestureDetector(
-                          onTap: _isLoading ? null : _forgotPassword,
-                          child: const Text(
-                            '¿Olvidó su contraseña?',
-                            style: TextStyle(
-                              color: Color(0xFF418452),
-                              fontSize: 14,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-
-                    const SizedBox(height: 65),
-
-                    SizedBox(
-                      width: 330,
-                      height: 54,
-                      child: ElevatedButton(
-                        onPressed: _isLoading ? null : _submitLogin,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: primaryGreen,
-                          foregroundColor: Colors.white,
-                          disabledBackgroundColor:
-                          primaryGreen.withOpacity(0.55),
-                          elevation: 0,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(30),
-                          ),
-                        ),
-                        child: _isLoading
-                            ? const SizedBox(
-                          width: 24,
-                          height: 24,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2.6,
-                            color: Colors.white,
-                          ),
-                        )
-                            : const Text(
-                          'Iniciar Sesión',
-                          style: TextStyle(
-                            fontSize: 21,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ),
-                    ),
-
-                    const SizedBox(height: 7),
-
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        const Text(
-                          '¿No tienes cuenta? ',
-                          style: TextStyle(
-                            color: Color(0xFF8B9790),
-                            fontSize: 15,
+                      if (_hasLoginError && _loginErrorMessage != null) ...[
+                        const SizedBox(height: 8),
+                        Text(
+                          _loginErrorMessage!,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                            color: Colors.redAccent,
+                            fontSize: 12,
                             fontWeight: FontWeight.w600,
                           ),
                         ),
+                        const SizedBox(height: 6),
                         GestureDetector(
-                          onTap: _isLoading ? null : _goToRegister,
+                          onTap: () {
+                            setState(() {
+                              _hasLoginError = false;
+                              _loginErrorMessage = null;
+                            });
+                          },
                           child: const Text(
-                            'Registrarme',
+                            'Intenta nuevamente',
                             style: TextStyle(
-                              color: accentGreen,
-                              fontSize: 15,
+                              color: Colors.redAccent,
+                              fontSize: 12,
                               fontWeight: FontWeight.w700,
                             ),
                           ),
                         ),
                       ],
-                    ),
-                  ],
+
+                      SizedBox(height: _hasLoginError ? 12 : 45),
+
+                      SizedBox(
+                        width: 330,
+                        height: 54,
+                        child: ElevatedButton(
+                          onPressed: _isLoading ? null : _submitLogin,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: primaryGreen,
+                            foregroundColor: Colors.white,
+                            disabledBackgroundColor:
+                            primaryGreen.withOpacity(0.55),
+                            elevation: 0,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(30),
+                            ),
+                          ),
+                          child: _isLoading
+                              ? const SizedBox(
+                            width: 24,
+                            height: 24,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2.6,
+                              color: Colors.white,
+                            ),
+                          )
+                              : const Text(
+                            'Iniciar Sesión',
+                            style: TextStyle(
+                              fontSize: 21,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                      ),
+
+                      const SizedBox(height: 7),
+
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Text(
+                            '¿No tienes cuenta? ',
+                            style: TextStyle(
+                              color: Color(0xFF8B9790),
+                              fontSize: 15,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          GestureDetector(
+                            onTap: _isLoading ? null : _goToRegister,
+                            child: const Text(
+                              'Registrarme',
+                              style: TextStyle(
+                                color: accentGreen,
+                                fontSize: 15,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+
+                      const SizedBox(height: 30),
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -436,8 +461,15 @@ class _LoginPageState extends State<LoginPage> {
     required IconData prefixIcon,
     required Color hintTextColor,
     required Color iconColor,
+    bool hasError = false,
     Widget? suffixIcon,
   }) {
+    final Color borderColor =
+    hasError ? Colors.redAccent : const Color(0xFFD7DDD3);
+
+    final Color focusedBorderColor =
+    hasError ? Colors.redAccent : const Color(0xFF7FB191);
+
     return InputDecoration(
       filled: true,
       fillColor: const Color(0xFFF6F6F4),
@@ -446,20 +478,23 @@ class _LoginPageState extends State<LoginPage> {
         color: hintTextColor,
         fontWeight: FontWeight.w700,
       ),
-      prefixIcon: Icon(prefixIcon, color: iconColor),
+      prefixIcon: Icon(
+        prefixIcon,
+        color: hasError ? Colors.redAccent : iconColor,
+      ),
       suffixIcon: suffixIcon,
       contentPadding: const EdgeInsets.symmetric(vertical: 18),
       enabledBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(10),
-        borderSide: const BorderSide(color: Color(0xFFD7DDD3)),
+        borderSide: BorderSide(color: borderColor),
       ),
       disabledBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(10),
-        borderSide: const BorderSide(color: Color(0xFFD7DDD3)),
+        borderSide: BorderSide(color: borderColor),
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(10),
-        borderSide: const BorderSide(color: Color(0xFF7FB191), width: 1.5),
+        borderSide: BorderSide(color: focusedBorderColor, width: 1.5),
       ),
       errorBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(10),
