@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'login_page.dart';
+import 'verify_account_page.dart';
 import '../../data/auth_service.dart';
 
 class RegisterPage extends StatefulWidget {
@@ -18,7 +19,9 @@ class _RegisterPageState extends State<RegisterPage> {
   final TextEditingController _passwordController = TextEditingController();
   final TextEditingController _confirmPasswordController =
   TextEditingController();
+
   final AuthService _authService = AuthService();
+
   bool _isLoading = false;
   bool _obscurePassword = true;
   bool _obscureConfirmPassword = true;
@@ -42,6 +45,11 @@ class _RegisterPageState extends State<RegisterPage> {
     super.dispose();
   }
 
+  /*
+    Aquí hicimos el registro del usuario.
+    Primero validamos el formulario, luego enviamos los datos al backend
+    y, si el registro es exitoso, mandamos al usuario a la pantalla de verificación.
+  */
   Future<void> _submitRegister() async {
     final isValid = _formKey.currentState?.validate() ?? false;
 
@@ -63,9 +71,11 @@ class _RegisterPageState extends State<RegisterPage> {
     });
 
     try {
+      final email = _emailController.text.trim();
+
       final response = await _authService.register(
         nombre: _nameController.text.trim(),
-        email: _emailController.text.trim(),
+        email: email,
         telefono: _phoneController.text.trim(),
         password: _passwordController.text,
         aceptaTyC: _acceptedPolicies,
@@ -79,15 +89,24 @@ class _RegisterPageState extends State<RegisterPage> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'Registro exitoso para $nombre. Tu cuenta quedó pendiente de verificación.',
+            'Registro exitoso para $nombre. Ingresa el código de verificación.',
           ),
         ),
       );
 
-      Future.delayed(const Duration(milliseconds: 700), () {
-        if (!mounted) return;
-        _goToLogin();
-      });
+      /*
+        Aquí cambiamos el flujo anterior.
+        Antes mandábamos al login inmediatamente.
+        Ahora mandamos a VerifyAccountPage para que el usuario pueda confirmar su cuenta.
+      */
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (context) => VerifyAccountPage(
+            email: email,
+          ),
+        ),
+      );
     } on AuthException catch (e) {
       if (!mounted) return;
 
@@ -113,6 +132,9 @@ class _RegisterPageState extends State<RegisterPage> {
     }
   }
 
+  /*
+    Aquí dejamos la navegación manual hacia el login para usuarios que ya tienen cuenta.
+  */
   void _goToLogin() {
     Navigator.pushReplacement(
       context,
@@ -161,47 +183,24 @@ class _RegisterPageState extends State<RegisterPage> {
                       ),
                     ),
 
-
-                    /*RichText(
-                      textAlign: TextAlign.center,
-                      text: const TextSpan(
-                        style: TextStyle(
-                          fontSize: 14,
-                          color: Color(0xFF93A195),
-                          fontWeight: FontWeight.w600,
-                        ),
-                        children: [
-                          TextSpan(text: 'Registrate para comenzar a usar '),
-                          TextSpan(
-                            text: 'AniMap',
-                            style: TextStyle(
-                              color: accentGreen,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),*/
-
-
                     SizedBox(
                       width: 330,
                       height: 65,
-                      child:TextFormField(
-                          controller: _nameController,
-                          decoration: _inputDecoration(
-                            hint: 'Tu nombre completo',
-                            prefixIcon: Icons.person,
-                          ),
-                          validator: (value) {
-                            if (value == null || value.trim().isEmpty) {
-                              return 'Ingresa tu nombre';
-                            }
-                            if (value.trim().length < 3) {
-                              return 'Nombre muy corto';
-                            }
-                            return null;
-                          },
+                      child: TextFormField(
+                        controller: _nameController,
+                        decoration: _inputDecoration(
+                          hint: 'Tu nombre completo',
+                          prefixIcon: Icons.person,
+                        ),
+                        validator: (value) {
+                          if (value == null || value.trim().isEmpty) {
+                            return 'Ingresa tu nombre';
+                          }
+                          if (value.trim().length < 3) {
+                            return 'Nombre muy corto';
+                          }
+                          return null;
+                        },
                       ),
                     ),
 
@@ -211,25 +210,25 @@ class _RegisterPageState extends State<RegisterPage> {
                       width: 330,
                       height: 65,
                       child: TextFormField(
-                          controller: _emailController,
-                          keyboardType: TextInputType.emailAddress,
-                          decoration: _inputDecoration(
-                            hint: 'Correo electrónico',
-                            prefixIcon: Icons.email,
-                          ),
-                          validator: (value) {
-                            if (value == null || value.trim().isEmpty) {
-                              return 'Ingresa tu correo';
-                            }
+                        controller: _emailController,
+                        keyboardType: TextInputType.emailAddress,
+                        decoration: _inputDecoration(
+                          hint: 'Correo electrónico',
+                          prefixIcon: Icons.email,
+                        ),
+                        validator: (value) {
+                          if (value == null || value.trim().isEmpty) {
+                            return 'Ingresa tu correo';
+                          }
 
-                            final emailRegex = RegExp(r'^[^@]+@[^@]+\.[^@]+$');
-                            if (!emailRegex.hasMatch(value.trim())) {
-                              return 'Correo no válido';
-                            }
+                          final emailRegex = RegExp(r'^[^@]+@[^@]+\.[^@]+$');
 
-                            return null;
-                          },
+                          if (!emailRegex.hasMatch(value.trim())) {
+                            return 'Correo no válido';
+                          }
 
+                          return null;
+                        },
                       ),
                     ),
 
@@ -238,100 +237,108 @@ class _RegisterPageState extends State<RegisterPage> {
                     SizedBox(
                       width: 330,
                       height: 65,
-                      child:TextFormField(
-                          controller: _phoneController,
-                          keyboardType: TextInputType.phone,
-                          decoration: _inputDecoration(
-                            hint: 'Número de teléfono',
-                            prefixIcon: Icons.phone,
-                          ),
-                          validator: (value) {
-                            if (value == null || value.trim().isEmpty) {
-                              return 'Ingresa tu teléfono';
-                            }
+                      child: TextFormField(
+                        controller: _phoneController,
+                        keyboardType: TextInputType.phone,
+                        decoration: _inputDecoration(
+                          hint: 'Número de teléfono',
+                          prefixIcon: Icons.phone,
+                        ),
+                        validator: (value) {
+                          if (value == null || value.trim().isEmpty) {
+                            return 'Ingresa tu teléfono';
+                          }
 
-                            final phone = value.replaceAll(RegExp(r'\s+'), '');
-                            if (phone.length < 10) {
-                              return 'Número no válido';
-                            }
+                          final phone =
+                          value.replaceAll(RegExp(r'\s+'), '');
 
-                            return null;
-                          },
+                          if (phone.length < 10) {
+                            return 'Número no válido';
+                          }
+
+                          return null;
+                        },
                       ),
                     ),
-
 
                     const SizedBox(height: 8),
 
                     SizedBox(
                       width: 330,
                       height: 65,
-                      child:TextFormField(
-                          controller: _passwordController,
-                          obscureText: _obscurePassword,
-                          decoration: _inputDecoration(
-                            hint: 'Crea una contraseña',
-                            prefixIcon: Icons.lock,
-                            suffixIcon: IconButton(
-                              onPressed: () {
-                                setState(() {
-                                  _obscurePassword = !_obscurePassword;
-                                });
-                              },
-                              icon: Icon(
-                                _obscurePassword
-                                    ? Icons.visibility_off_outlined
-                                    : Icons.visibility_outlined,
-                                color: accentGreen,
-                              ),
+                      child: TextFormField(
+                        controller: _passwordController,
+                        obscureText: _obscurePassword,
+                        decoration: _inputDecoration(
+                          hint: 'Crea una contraseña',
+                          prefixIcon: Icons.lock,
+                          suffixIcon: IconButton(
+                            onPressed: () {
+                              setState(() {
+                                _obscurePassword = !_obscurePassword;
+                              });
+                            },
+                            icon: Icon(
+                              _obscurePassword
+                                  ? Icons.visibility_off_outlined
+                                  : Icons.visibility_outlined,
+                              color: accentGreen,
                             ),
                           ),
-                          validator: (value) {
-                            if (value == null || value.isEmpty) {
-                              return 'Ingresa una contraseña';
-                            }
-                            if (value.length < 6) {
-                              return 'Mínimo 6 caracteres';
-                            }
-                            return null;
-                          },
+                        ),
+                        validator: (value) {
+                          if (value == null || value.isEmpty) {
+                            return 'Ingresa una contraseña';
+                          }
+
+                          /*
+                            Aquí alineamos la validación del frontend con el backend.
+                            El backend exige mínimo 8 caracteres.
+                          */
+                          if (value.length < 8) {
+                            return 'Mínimo 8 caracteres';
+                          }
+
+                          return null;
+                        },
                       ),
                     ),
+
                     const SizedBox(height: 8),
 
                     SizedBox(
                       width: 330,
                       height: 65,
-                      child:TextFormField(
-                          controller: _confirmPasswordController,
-                          obscureText: _obscureConfirmPassword,
-                          decoration: _inputDecoration(
-                            hint: 'Confirmar contraseña',
-                            prefixIcon: Icons.lock,
-                            suffixIcon: IconButton(
-                              onPressed: () {
-                                setState(() {
-                                  _obscureConfirmPassword =
-                                  !_obscureConfirmPassword;
-                                });
-                              },
-                              icon: Icon(
-                                _obscureConfirmPassword
-                                    ? Icons.visibility_off_outlined
-                                    : Icons.visibility_outlined,
-                                color: accentGreen,
-                              ),
+                      child: TextFormField(
+                        controller: _confirmPasswordController,
+                        obscureText: _obscureConfirmPassword,
+                        decoration: _inputDecoration(
+                          hint: 'Confirmar contraseña',
+                          prefixIcon: Icons.lock,
+                          suffixIcon: IconButton(
+                            onPressed: () {
+                              setState(() {
+                                _obscureConfirmPassword =
+                                !_obscureConfirmPassword;
+                              });
+                            },
+                            icon: Icon(
+                              _obscureConfirmPassword
+                                  ? Icons.visibility_off_outlined
+                                  : Icons.visibility_outlined,
+                              color: accentGreen,
                             ),
                           ),
-                          validator: (value) {
-                            if (value == null || value.isEmpty) {
-                              return 'Confirma tu contraseña';
-                            }
-                            if (value != _passwordController.text) {
-                              return 'Las contraseñas no coinciden';
-                            }
-                            return null;
-                          },
+                        ),
+                        validator: (value) {
+                          if (value == null || value.isEmpty) {
+                            return 'Confirma tu contraseña';
+                          }
+                          if (value != _passwordController.text) {
+                            return 'Las contraseñas no coinciden';
+                          }
+                          return null;
+                        },
                       ),
                     ),
 
@@ -388,6 +395,7 @@ class _RegisterPageState extends State<RegisterPage> {
                         ),
                       ],
                     ),
+
                     const SizedBox(height: 18),
 
                     SizedBox(

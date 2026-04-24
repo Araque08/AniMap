@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'register_page.dart';
 import '../../data/auth_service.dart';
+import '../../../home/presentation/pages/home_page.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -14,7 +15,9 @@ class _LoginPageState extends State<LoginPage> {
 
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
+
   final AuthService _authService = AuthService();
+
   bool _isLoading = false;
   bool _obscurePassword = true;
 
@@ -25,6 +28,11 @@ class _LoginPageState extends State<LoginPage> {
     super.dispose();
   }
 
+  /*
+    Aquí hicimos el inicio de sesión.
+    Validamos el formulario, enviamos los datos al backend y, si la respuesta es correcta,
+    llevamos al usuario a la pantalla principal de AniMap.
+  */
   Future<void> _submitLogin() async {
     final isValid = _formKey.currentState?.validate() ?? false;
 
@@ -41,7 +49,8 @@ class _LoginPageState extends State<LoginPage> {
         deviceId: 'android-emulador',
       );
 
-      final user = response['data']?['user'];
+      final data = response['data'];
+      final user = data?['user'];
       final nombre = user?['nombre']?.toString() ?? 'usuario';
 
       if (!mounted) return;
@@ -52,7 +61,19 @@ class _LoginPageState extends State<LoginPage> {
         ),
       );
 
-      // Aquí después navegaremos al home o perfil.
+      /*
+        Aquí corregimos el flujo.
+        Antes el login solo mostraba el mensaje de éxito.
+        Ahora, después de iniciar sesión correctamente, entramos al Home.
+      */
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (context) => HomePage(
+            userName: nombre,
+          ),
+        ),
+      );
     } on AuthException catch (e) {
       if (!mounted) return;
 
@@ -78,15 +99,22 @@ class _LoginPageState extends State<LoginPage> {
     }
   }
 
+  /*
+    Aquí navegamos a la pantalla de registro para usuarios que aún no tienen cuenta.
+  */
   void _goToRegister() {
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (context) => const RegisterPage(),
-        ),
-      );
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => const RegisterPage(),
+      ),
+    );
   }
 
+  /*
+    Aquí dejamos temporalmente la recuperación de contraseña como mensaje.
+    Más adelante podemos conectarla con un flujo real de recuperación.
+  */
   void _forgotPassword() {
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
@@ -95,6 +123,10 @@ class _LoginPageState extends State<LoginPage> {
     );
   }
 
+  /*
+    Aquí dejamos temporalmente el login con Google como mensaje.
+    Esta funcionalidad todavía no está conectada.
+  */
   void _loginWithGoogle() {
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
@@ -138,8 +170,9 @@ class _LoginPageState extends State<LoginPage> {
                     ),
 
                     const SizedBox(height: 20),
+
                     const Text(
-                      'Iniciar Sesion',
+                      'Iniciar Sesión',
                       style: TextStyle(
                         fontSize: 25,
                         fontWeight: FontWeight.w700,
@@ -158,14 +191,7 @@ class _LoginPageState extends State<LoginPage> {
                           fontWeight: FontWeight.w500,
                         ),
                         children: [
-                          TextSpan(text: 'La vida es más feliz con mascotas. '),
-                          /*TextSpan(
-                            text: 'AniMap',
-                            style: TextStyle(
-                              color: accentGreen,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),*/
+                          TextSpan(text: 'La vida es más feliz con mascotas.'),
                         ],
                       ),
                     ),
@@ -176,7 +202,7 @@ class _LoginPageState extends State<LoginPage> {
                       width: 190,
                       height: 46,
                       child: ElevatedButton(
-                        onPressed: _loginWithGoogle,
+                        onPressed: _isLoading ? null : _loginWithGoogle,
                         style: ElevatedButton.styleFrom(
                           backgroundColor: primaryGreen,
                           foregroundColor: Colors.black,
@@ -210,9 +236,14 @@ class _LoginPageState extends State<LoginPage> {
 
                     const SizedBox(height: 22),
 
-                    Row(
-                      children: const [
-                        Expanded(child: Divider(color: Colors.black54, thickness: 1)),
+                    const Row(
+                      children: [
+                        Expanded(
+                          child: Divider(
+                            color: Colors.black54,
+                            thickness: 1,
+                          ),
+                        ),
                         Padding(
                           padding: EdgeInsets.symmetric(horizontal: 12),
                           child: Text(
@@ -224,7 +255,12 @@ class _LoginPageState extends State<LoginPage> {
                             ),
                           ),
                         ),
-                        Expanded(child: Divider(color: Colors.black54, thickness: 1)),
+                        Expanded(
+                          child: Divider(
+                            color: Colors.black54,
+                            thickness: 1,
+                          ),
+                        ),
                       ],
                     ),
 
@@ -236,12 +272,12 @@ class _LoginPageState extends State<LoginPage> {
                       child: TextFormField(
                         controller: _emailController,
                         keyboardType: TextInputType.emailAddress,
+                        enabled: !_isLoading,
                         decoration: _inputDecoration(
                           hint: 'Correo electrónico',
                           prefixIcon: Icons.email,
                           hintTextColor: hintText,
                           iconColor: accentGreen,
-
                         ),
                         validator: (value) {
                           if (value == null || value.trim().isEmpty) {
@@ -261,8 +297,6 @@ class _LoginPageState extends State<LoginPage> {
                       ),
                     ),
 
-
-
                     const SizedBox(height: 18),
 
                     SizedBox(
@@ -271,13 +305,16 @@ class _LoginPageState extends State<LoginPage> {
                       child: TextFormField(
                         controller: _passwordController,
                         obscureText: _obscurePassword,
+                        enabled: !_isLoading,
                         decoration: _inputDecoration(
                           hint: 'Contraseña',
                           prefixIcon: Icons.lock,
                           hintTextColor: hintText,
                           iconColor: accentGreen,
                           suffixIcon: IconButton(
-                            onPressed: () {
+                            onPressed: _isLoading
+                                ? null
+                                : () {
                               setState(() {
                                 _obscurePassword = !_obscurePassword;
                               });
@@ -304,17 +341,14 @@ class _LoginPageState extends State<LoginPage> {
                       ),
                     ),
 
-
-
-
                     Transform.translate(
                       offset: const Offset(0, -15),
                       child: Align(
                         alignment: Alignment.centerRight,
                         child: GestureDetector(
-                          onTap: _forgotPassword,
+                          onTap: _isLoading ? null : _forgotPassword,
                           child: const Text(
-                            'Olvido su Contraseña?',
+                            '¿Olvidó su contraseña?',
                             style: TextStyle(
                               color: Color(0xFF418452),
                               fontSize: 14,
@@ -331,17 +365,28 @@ class _LoginPageState extends State<LoginPage> {
                       width: 330,
                       height: 54,
                       child: ElevatedButton(
-                        onPressed: _submitLogin,
+                        onPressed: _isLoading ? null : _submitLogin,
                         style: ElevatedButton.styleFrom(
                           backgroundColor: primaryGreen,
                           foregroundColor: Colors.white,
+                          disabledBackgroundColor:
+                          primaryGreen.withOpacity(0.55),
                           elevation: 0,
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(30),
                           ),
                         ),
-                        child: const Text(
-                          'Iniciar Sesion',
+                        child: _isLoading
+                            ? const SizedBox(
+                          width: 24,
+                          height: 24,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2.6,
+                            color: Colors.white,
+                          ),
+                        )
+                            : const Text(
+                          'Iniciar Sesión',
                           style: TextStyle(
                             fontSize: 21,
                             fontWeight: FontWeight.w700,
@@ -356,7 +401,7 @@ class _LoginPageState extends State<LoginPage> {
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         const Text(
-                          'No tengo Cuenta? ',
+                          '¿No tienes cuenta? ',
                           style: TextStyle(
                             color: Color(0xFF8B9790),
                             fontSize: 15,
@@ -364,7 +409,7 @@ class _LoginPageState extends State<LoginPage> {
                           ),
                         ),
                         GestureDetector(
-                          onTap: _goToRegister,
+                          onTap: _isLoading ? null : _goToRegister,
                           child: const Text(
                             'Registrarme',
                             style: TextStyle(
@@ -376,8 +421,6 @@ class _LoginPageState extends State<LoginPage> {
                         ),
                       ],
                     ),
-
-                    //const SizedBox(height: 90),
                   ],
                 ),
               ),
@@ -407,6 +450,10 @@ class _LoginPageState extends State<LoginPage> {
       suffixIcon: suffixIcon,
       contentPadding: const EdgeInsets.symmetric(vertical: 18),
       enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(10),
+        borderSide: const BorderSide(color: Color(0xFFD7DDD3)),
+      ),
+      disabledBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(10),
         borderSide: const BorderSide(color: Color(0xFFD7DDD3)),
       ),
