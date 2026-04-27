@@ -1,4 +1,4 @@
-const db = require('../../config/db');
+const db = require('../../config/postgres_db');
 const env = require('../../config/env');
 const { hashText, compareHash } = require('../../utils/hash');
 const { signAccessToken, signRefreshToken } = require('../../utils/jwt');

@@ -1,6 +1,6 @@
 const app = require('./app');
 const env = require('./config/env');
-const { pool } = require('./config/db');
+const { pool } = require('./config/postgres_db');
 
 async function startServer() {
   try {
