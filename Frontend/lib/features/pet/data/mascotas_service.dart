@@ -16,6 +16,7 @@ class MascotasService {
     required String sexo,
     String? observaciones,
     required List<XFile> imagenes,
+    required int fotoPrincipalIndex,
   }) async {
     final request = http.MultipartRequest(
       'POST',
@@ -27,6 +28,7 @@ class MascotasService {
     request.fields['nombre'] = nombre;
     request.fields['color'] = color;
     request.fields['sexo'] = sexo;
+    request.fields['foto_principal_index'] = fotoPrincipalIndex.toString();
 
     if (fkRaza != null) {
       request.fields['fk_raza'] = fkRaza.toString();

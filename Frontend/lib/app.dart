@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'features/auth/presentation/pages/login_page.dart';
 import 'features/auth/presentation/pages/register_page.dart';
 import 'features/pet/presentation/pages/register_pet_page.dart';
+import 'features/pet/presentation/pages/my_pets_page.dart';
 
 class AniMapApp extends StatelessWidget {
   const AniMapApp({super.key});
@@ -15,7 +16,7 @@ class AniMapApp extends StatelessWidget {
         useMaterial3: true,
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.teal),
       ),
-      home: const RegisterPetPage(),
+      home: const MyPetsPage(),
     );
   }
 }

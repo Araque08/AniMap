@@ -25,6 +25,7 @@ router.post('/', upload.array('imagenes', 30), async (req, res) => {
       unidad_edad,
       sexo,
       observaciones,
+      foto_principal_index,
     } = req.body;
 
     if (!fk_usuario || !fk_especie || !nombre || !color) {
@@ -74,10 +75,29 @@ router.post('/', upload.array('imagenes', 30), async (req, res) => {
 
  
     const imagenesGuardadas = await guardarImagenesMascota({
-        mascotaIdPg: mascotaId,
-        usuarioIdPg: fk_usuario,
-        files: req.files,
+      mascotaIdPg: mascotaId,
+      usuarioIdPg: fk_usuario,
+      files: req.files,
+      fotoPrincipalIndex: Number(foto_principal_index || 0),
     });
+
+    const imagenPrincipalIndex = Number(foto_principal_index || 0);
+    const imagenPrincipal = req.files[imagenPrincipalIndex];
+
+    await pool.query(
+      `
+      INSERT INTO foto_mascota (
+        fk_mascota,
+        url,
+        es_principal
+      )
+      VALUES ($1, $2, TRUE)
+      `,
+      [
+        mascotaId,
+        imagenPrincipal.originalname,
+      ]
+    );
 
     return res.status(201).json({
       ok: true,

@@ -2,6 +2,7 @@ const express = require('express');
 const authRoutes = require('../modules/auth/auth.routes');
 const catalogosRoutes = require('../modules/catalogos/catalogos.routes');
 const mascotasRoutes = require('../modules/pets/mascotas.routes');
+const petsRoutes = require('../modules/pets/pets.routes');
 
 const router = express.Router();
 
@@ -18,6 +19,7 @@ router.get('/health', (req, res) => {
 router.use('/auth', authRoutes);
 router.use('/catalogos', catalogosRoutes);
 router.use('/pets', mascotasRoutes);
+router.use('/pets', petsRoutes);
 
 module.exports = router;
 

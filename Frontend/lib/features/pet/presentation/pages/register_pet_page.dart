@@ -46,6 +46,8 @@ class _RegisterPetPageState extends State<RegisterPetPage> {
       setState(() {
         _imagenesMascota.addAll(imagenes);
         fotosCargadas = _imagenesMascota.length;
+
+        _fotoPrincipalIndex ??= 0;
       });
     }
   }
@@ -119,6 +121,7 @@ class _RegisterPetPageState extends State<RegisterPetPage> {
   int? _especieSeleccionadaId;
   int? _razaSeleccionadaId;
   String? _sexoSeleccionadoId;
+  int? _fotoPrincipalIndex;
 
   InputDecoration _inputDecoration({
     required String hint,
@@ -213,6 +216,7 @@ class _RegisterPetPageState extends State<RegisterPetPage> {
         sexo: _sexoSeleccionadoId ?? 'NO_DEFINIDO',
         observaciones: _observacionesController.text.trim(),
         imagenes: _imagenesMascota,
+        fotoPrincipalIndex: _fotoPrincipalIndex ?? 0,
       );
 
       setState(() {
@@ -601,6 +605,15 @@ class _RegisterPetPageState extends State<RegisterPetPage> {
                                       setState(() {
                                         _imagenesMascota.removeAt(index);
                                         fotosCargadas = _imagenesMascota.length;
+
+                                        if (_imagenesMascota.isEmpty) {
+                                          _fotoPrincipalIndex = null;
+                                        } else if (_fotoPrincipalIndex == index) {
+                                          _fotoPrincipalIndex = 0;
+                                        } else if (_fotoPrincipalIndex != null &&
+                                            index < _fotoPrincipalIndex!) {
+                                          _fotoPrincipalIndex = _fotoPrincipalIndex! - 1;
+                                        }
                                       });
                                     },
                                     child: Container(
@@ -613,6 +626,35 @@ class _RegisterPetPageState extends State<RegisterPetPage> {
                                         Icons.close,
                                         color: Colors.white,
                                         size: 18,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+
+                                Positioned(
+                                  left: 4,
+                                  bottom: 4,
+                                  child: GestureDetector(
+                                    onTap: () {
+                                      setState(() {
+                                        _fotoPrincipalIndex = index;
+                                      });
+                                    },
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                                      decoration: BoxDecoration(
+                                        color: _fotoPrincipalIndex == index
+                                            ? accentGreen
+                                            : Colors.black54,
+                                        borderRadius: BorderRadius.circular(10),
+                                      ),
+                                      child: Text(
+                                        _fotoPrincipalIndex == index ? 'Principal' : 'Elegir',
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.bold,
+                                        ),
                                       ),
                                     ),
                                   ),

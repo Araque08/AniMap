@@ -4,6 +4,7 @@ async function guardarImagenesMascota({
   mascotaIdPg,
   usuarioIdPg,
   files,
+  fotoPrincipalIndex = 0,
 }) {
   const db = await getMongoDb();
 
@@ -18,7 +19,7 @@ async function guardarImagenesMascota({
     tamanoBytes: file.size,
     storageRef: null,
     buffer: file.buffer,
-    esPrincipal: index === 0,
+    esPrincipal: index === fotoPrincipalIndex,
     estado: 'ACTIVA',
     checksum: null,
     etiquetas: [],

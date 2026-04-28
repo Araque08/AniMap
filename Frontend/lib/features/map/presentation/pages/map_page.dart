@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-
+import '../../../pet/presentation/pages/my_pets_page.dart';
 class MapPage extends StatefulWidget {
   final String userName;
 
@@ -1106,8 +1106,15 @@ class _SideMenu extends StatelessWidget {
               ),
               const SizedBox(height: 65),
               _MenuItem(
-                text: 'Mascotas Perdidas',
-                onTap: onLostPets,
+                text: 'Mis Mascotas',
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const MyPetsPage(),
+                    ),
+                  );
+                },
               ),
               _MenuItem(
                 text: 'Mis Mascotas',
