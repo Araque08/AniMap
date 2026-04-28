@@ -16,7 +16,7 @@ class _LoginPageState extends State<LoginPage> {
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
   final AuthService _authService = AuthService();
-
+  /* Estados en los que puede estar el logIn */
   bool _isLoading = false;
   bool _obscurePassword = true;
   bool _hasLoginError = false;
@@ -28,10 +28,10 @@ class _LoginPageState extends State<LoginPage> {
     _passwordController.dispose();
     super.dispose();
   }
-
+  /* Envio del formulario logIn*/
   Future<void> _submitLogin() async {
     final isValid = _formKey.currentState?.validate() ?? false;
-
+    /* valida si es correcto el ingreso*/
     if (!isValid) return;
 
     setState(() {
@@ -85,7 +85,7 @@ class _LoginPageState extends State<LoginPage> {
       }
     }
   }
-
+  /* este guia a la pagina de Registrarse  */
   void _goToRegister() {
     Navigator.push(
       context,
@@ -94,7 +94,7 @@ class _LoginPageState extends State<LoginPage> {
       ),
     );
   }
-
+  /* Este guiara a la pagina para la recuperacion de la cuenta */
   void _forgotPassword() {
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
@@ -102,7 +102,7 @@ class _LoginPageState extends State<LoginPage> {
       ),
     );
   }
-
+  /* Este guiara al proceso de iniciar sesion con google */
   void _loginWithGoogle() {
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
@@ -110,9 +110,10 @@ class _LoginPageState extends State<LoginPage> {
       ),
     );
   }
-
+/* Desde esta parte se diseña la interfaz de la pagina*/
   @override
   Widget build(BuildContext context) {
+    /* colores insignia para el diseño de la interfaz */
     const Color backgroundColor = Color(0xFFDDE6D8);
     const Color primaryGreen = Color(0xFF73C15A);
     const Color darkText = Color(0xFF415466);
@@ -120,8 +121,11 @@ class _LoginPageState extends State<LoginPage> {
     const Color accentGreen = Color(0xFF2E8B57);
 
     return Scaffold(
+      /* Fondo de la pagina*/
       backgroundColor: backgroundColor,
+      /* Evita redimensionar la pagina cada vez que se abre el teclado*/
       resizeToAvoidBottomInset: false,
+
       body: Stack(
         children: [
           const Positioned(
@@ -238,7 +242,7 @@ class _LoginPageState extends State<LoginPage> {
                       ),
 
                       const SizedBox(height: 30),
-
+                      /* Creacion del campo de texto para el correo electronico*/
                       SizedBox(
                         width: 330,
                         height: 75,
@@ -248,11 +252,13 @@ class _LoginPageState extends State<LoginPage> {
                           enabled: !_isLoading,
                           decoration: _inputDecoration(
                             hint: 'Correo electrónico',
+                            /* icono para el input email */
                             prefixIcon: Icons.email,
                             hintTextColor: hintText,
                             iconColor: accentGreen,
                             hasError: _hasLoginError,
                           ),
+                          /* valida el valor que le llega al input al ser preseionado*/
                           validator: (value) {
                             if (value == null || value.trim().isEmpty) {
                               return 'Ingresa tu correo';
@@ -261,7 +267,7 @@ class _LoginPageState extends State<LoginPage> {
                             final emailRegex = RegExp(
                               r'^[^@]+@[^@]+\.[^@]+$',
                             );
-
+                            /* Valida que ell correo sea valido*/
                             if (!emailRegex.hasMatch(value.trim())) {
                               return 'Correo no válido';
                             }
@@ -272,7 +278,7 @@ class _LoginPageState extends State<LoginPage> {
                       ),
 
                       const SizedBox(height: 18),
-
+                      /* Creacion del campo de contraseña */
                       SizedBox(
                         width: 330,
                         height: 75,
@@ -282,6 +288,7 @@ class _LoginPageState extends State<LoginPage> {
                           enabled: !_isLoading,
                           decoration: _inputDecoration(
                             hint: 'Contraseña',
+                            /* icono para el input contraseña */
                             prefixIcon: Icons.lock,
                             hintTextColor: hintText,
                             iconColor: accentGreen,
@@ -294,6 +301,7 @@ class _LoginPageState extends State<LoginPage> {
                                   _obscurePassword = !_obscurePassword;
                                 });
                               },
+                              /* Iconos de ver y ocultar contraseña*/
                               icon: Icon(
                                 _obscurePassword
                                     ? Icons.visibility_off_outlined
@@ -304,20 +312,18 @@ class _LoginPageState extends State<LoginPage> {
                               ),
                             ),
                           ),
+                          /* valida el campo contraseña */
                           validator: (value) {
+
                             if (value == null || value.isEmpty) {
+                              /* si esta vacio el campo le aparece el texto */
                               return 'Ingresa tu contraseña';
                             }
-
-                            if (value.length < 6) {
-                              return 'Mínimo 6 caracteres';
-                            }
-
                             return null;
                           },
                         ),
                       ),
-
+                    /* se crea el enlace si el usuario olvido la cotraseña */
                       Transform.translate(
                         offset: const Offset(0, -15),
                         child: Align(
@@ -403,7 +409,7 @@ class _LoginPageState extends State<LoginPage> {
                       ),
 
                       const SizedBox(height: 7),
-
+                    /* Este crea la confirmacion de si el usuario tiene una cuenta  */
                       Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
@@ -415,6 +421,7 @@ class _LoginPageState extends State<LoginPage> {
                               fontWeight: FontWeight.w600,
                             ),
                           ),
+                          /* si el usuario no tiene cuanta puede seguir a la pagina Registrarse*/
                           GestureDetector(
                             onTap: _isLoading ? null : _goToRegister,
                             child: const Text(
@@ -440,6 +447,7 @@ class _LoginPageState extends State<LoginPage> {
     );
   }
 
+  /* Decoracion para los diferentes inputs que hay en la interfaz*/
   InputDecoration _inputDecoration({
     required String hint,
     required IconData prefixIcon,
@@ -491,7 +499,7 @@ class _LoginPageState extends State<LoginPage> {
     );
   }
 }
-
+/* En esta parte se crean las diferentes olas que se encuentran en footer de la hoja */
 class _BottomWaves extends StatelessWidget {
   const _BottomWaves();
 
@@ -522,6 +530,8 @@ class _BottomWavesPainter extends CustomPainter {
       ..color = const Color(0xFF7CC484)
       ..style = PaintingStyle.fill;
 
+    /* ola #1 */
+
     final Path darkPath = Path()
       ..moveTo(0, size.height * 0.50)
       ..quadraticBezierTo(
@@ -540,6 +550,8 @@ class _BottomWavesPainter extends CustomPainter {
       ..lineTo(0, size.height)
       ..close();
 
+    /* ola #2 */
+
     final Path middlePath = Path()
       ..moveTo(1, size.height * 0.38)
       ..quadraticBezierTo(
@@ -557,6 +569,8 @@ class _BottomWavesPainter extends CustomPainter {
         ..lineTo(size.width, size.height)
       ..lineTo(0, size.height)
       ..close();
+
+    /* ola #3 */
 
     final Path lightPath = Path()
       ..moveTo(2, size.height * 0.49)

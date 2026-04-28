@@ -21,37 +21,38 @@ class _RegisterPageState extends State<RegisterPage> {
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _phoneController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
-  final TextEditingController _confirmPasswordController =
-  TextEditingController();
-
+  final TextEditingController _confirmPasswordController = TextEditingController();
   final AuthService _authService = AuthService();
 
+  /* Estados en los que se encuentra la interfaz de registro */
   bool _isLoading = false;
   bool _obscurePassword = true;
   bool _obscureConfirmPassword = true;
   bool _acceptedPolicies = false;
 
+  /* Validacion de la contrase;a */
   String? _validatePassword(String? value) {
+    /* si no hay contrase;a mostrar mensaje de ingresar una contrase;a */
     if (value == null || value.isEmpty) {
       return 'Ingresa una contraseña';
     }
-
+    /* Validacion longitud contrase;a */
     if (value.length < 8) {
       return 'Debe tener mínimo 8 caracteres';
     }
-
+    /* Valida que incluya almenos una mayuscula */
     if (!RegExp(r'[A-Z]').hasMatch(value)) {
       return 'Debe incluir al menos una mayúscula';
     }
-
+    /* Valida que incluya almenos una minuscula */
     if (!RegExp(r'[a-z]').hasMatch(value)) {
       return 'Debe incluir al menos una minúscula';
     }
-
+    /* Valida que inluya almenos un numero */
     if (!RegExp(r'[0-9]').hasMatch(value)) {
       return 'Debe incluir al menos un número';
     }
-
+    /* Valida que incluya almenos un caracter especial */
     if (!RegExp(r'[^A-Za-z0-9]').hasMatch(value)) {
       return 'Debe incluir al menos un carácter especial';
     }
@@ -59,6 +60,7 @@ class _RegisterPageState extends State<RegisterPage> {
     return null;
   }
 
+  /* creacion de variables en la cual se guarda los colores para la interfaz */
   static const Color backgroundColor = Color(0xFFDDE6D8);
   static const Color primaryGreen = Color(0xFF73C15A);
   static const Color darkText = Color(0xFF415466);
@@ -86,7 +88,7 @@ class _RegisterPageState extends State<RegisterPage> {
     final isValid = _formKey.currentState?.validate() ?? false;
 
     if (!isValid) return;
-
+    /* Validacion Politicas de privacidad */
     if (!_acceptedPolicies) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -198,7 +200,7 @@ class _RegisterPageState extends State<RegisterPage> {
                 child: Column(
                   children: [
                     const SizedBox(height: 12),
-
+                    /* Logo principal de animap centrado en la parte superior */
                     Image.asset(
                       'assets/images/Logo_Principal_AniMap.png',
                       height: 180,
@@ -206,7 +208,7 @@ class _RegisterPageState extends State<RegisterPage> {
                     ),
 
                     const SizedBox(height: 6),
-
+                    /* Texto informando que se va crear cuenta nueva */
                     const Text(
                       'Crear Nueva Cuenta',
                       style: TextStyle(
