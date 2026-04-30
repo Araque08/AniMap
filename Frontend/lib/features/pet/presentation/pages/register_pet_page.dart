@@ -6,28 +6,41 @@ import 'package:image_picker/image_picker.dart';
 import '../../data/mascotas_service.dart';
 
 class RegisterPetPage extends StatefulWidget {
-  const RegisterPetPage({super.key});
+  final Map<String, dynamic>? mascotaEditar;
+
+  const RegisterPetPage({
+    super.key,
+    this.mascotaEditar,
+  });
 
   @override
   State<RegisterPetPage> createState() => _RegisterPetPageState();
 }
 
 class _RegisterPetPageState extends State<RegisterPetPage> {
-  final _formKey = GlobalKey<FormState>();
 
+  final _formKey = GlobalKey<FormState>();
   final _nombreController = TextEditingController();
   final _colorController = TextEditingController();
   final _observacionesController = TextEditingController();
   final _edadController = TextEditingController();
 
+
+  bool get isEditMode => widget.mascotaEditar != null;
   bool _isLoading = false;
   bool _hasError = false;
 
-  String? _especieSeleccionada;
-  String? _razaSeleccionada;
-  String? _sexoSeleccionado;
+  List<Map<String, dynamic>> _especies = [];
+  List<Map<String, dynamic>> _razas = [];
 
+  List<Map<String, dynamic>> _imagenesExistentes = [];
+  bool _isLoadingImages = false;
+
+  int? _fotoPrincipalIndex;
   String? _unidadEdadSeleccionada;
+  String? _especieSeleccionadaId;
+  String? _razaSeleccionadaId;
+  String? _sexoSeleccionadoId;
 
   final List<String> unidadesEdad = [
     'MESES',
@@ -52,51 +65,48 @@ class _RegisterPetPageState extends State<RegisterPetPage> {
     }
   }
 
+
+
   @override
   void initState() {
     super.initState();
-    _cargarCatalogosIniciales();
-  }
 
-  Future<void> _cargarCatalogosIniciales() async {
-    try {
-      setState(() {
-        _isLoading = true;
-      });
-
-      final especies = await CatalogosService.obtenerEspecies();
-      final sexos = await CatalogosService.obtenerSexos();
-
-      setState(() {
-        _especies = especies;
-        _sexos = sexos;
-        _isLoading = false;
-      });
-    } catch (e) {
-      setState(() {
-        _isLoading = false;
-      });
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Error cargando catálogos'),
-        ),
-      );
+    if (isEditMode) {
+      _cargarDatosModoEdicion();
+    } else {
+      _cargarDatosIniciales();
     }
   }
 
-  Future<void> _cargarRazasPorEspecie(int especieId) async {
+
+
+  Future<void> _cargarRazasPorEspecie(
+      int especieId, {
+        String? razaSeleccionadaId,
+      }) async {
     try {
       setState(() {
-        _razaSeleccionadaId = null;
         _razas = [];
+        _razaSeleccionadaId = null;
       });
 
-      final razas = await CatalogosService.obtenerRazas(especieId);
+      final razasResponse = await CatalogosService.obtenerRazas(especieId);
+
+      final razasFinales = List<Map<String, dynamic>>.from(razasResponse);
+
+      final existeRaza = razasFinales.any(
+            (raza) => raza['id'].toString() == razaSeleccionadaId,
+      );
 
       setState(() {
-        _razas = razas;
+        _razas = razasFinales;
+
+        // Aquí usas el valor que llegó desde BD
+        _razaSeleccionadaId = existeRaza ? razaSeleccionadaId : null;
       });
+
+      print('RAZA QUE VIENE DE BD: $razaSeleccionadaId');
+      print('RAZA FINAL EN DROPDOWN: $_razaSeleccionadaId');
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -106,6 +116,126 @@ class _RegisterPetPageState extends State<RegisterPetPage> {
     }
   }
 
+
+  Future<void> _cargarDatosModoEdicion() async {
+    final pet = widget.mascotaEditar!;
+
+    print('Mascota recibida para editar: $pet');
+
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      _nombreController.text = pet['nombre']?.toString() ?? '';
+      _colorController.text = pet['color']?.toString() ?? '';
+      _observacionesController.text = pet['observaciones']?.toString() ?? '';
+      _edadController.text = pet['edad_aprox']?.toString() ?? '';
+
+      final especieId = pet['fk_especie']?.toString();
+      final razaId = pet['fk_raza']?.toString();
+
+      final especiesResponse = await CatalogosService.obtenerEspecies();
+
+      setState(() {
+        _especies = especiesResponse;
+        _unidadEdadSeleccionada = pet['unidad_edad']?.toString();
+        _sexoSeleccionadoId = pet['sexo']?.toString() ?? 'NO_DEFINIDO';
+        _especieSeleccionadaId = especieId;
+      });
+
+      if (especieId != null && especieId.isNotEmpty) {
+        await _cargarRazasPorEspecie(
+          int.parse(especieId),
+          razaSeleccionadaId: razaId,
+        );
+      }
+
+      await _cargarImagenesExistentes();
+
+      setState(() {
+        _isLoading = false;
+      });
+    } catch (e) {
+      setState(() {
+        _isLoading = false;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error cargando datos de la mascota: $e'),
+        ),
+      );
+    }
+  }
+
+  Future<void> _cargarDatosIniciales() async {
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      final especiesResponse = await CatalogosService.obtenerEspecies();
+
+      setState(() {
+        _especies = especiesResponse;
+        _isLoading = false;
+      });
+    } catch (e) {
+      setState(() {
+        _isLoading = false;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error cargando especies: $e'),
+        ),
+      );
+    }
+  }
+
+
+
+  Future<void> _cargarImagenesExistentes() async {
+    if (!isEditMode) return;
+
+    final pet = widget.mascotaEditar!;
+    final mascotaId = pet['id'];
+    const usuarioId = 1;
+
+    if (mascotaId == null) return;
+
+    try {
+      setState(() {
+        _isLoadingImages = true;
+      });
+
+      final imagenes = await MascotasService.obtenerImagenesMascota(
+        mascotaId: int.parse(mascotaId.toString()),
+        usuarioId: usuarioId,
+      );
+
+      setState(() {
+        _imagenesExistentes = imagenes;
+        _isLoadingImages = false;
+      });
+    } catch (e) {
+      print('ERROR CARGANDO FOTOS DE LA MASCOTA: $e');
+
+      setState(() {
+      _isLoadingImages = false;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+      content: Text('Error cargando fotos: $e'),
+      ),
+      );
+      }
+  }
+
+
+
   int fotosCargadas = 0;
 
   final Color primaryGreen = const Color(0xFF4FA37A);
@@ -113,15 +243,6 @@ class _RegisterPetPageState extends State<RegisterPetPage> {
   final Color lightGreen = const Color(0xFFDDF3E9);
   final Color background = const Color(0xFFF7FFF9);
   final Color hintText = const Color(0xFF6B6B6B);
-
-  List<Map<String, dynamic>> _especies = [];
-  List<Map<String, dynamic>> _razas = [];
-  List<Map<String, dynamic>> _sexos = [];
-
-  int? _especieSeleccionadaId;
-  int? _razaSeleccionadaId;
-  String? _sexoSeleccionadoId;
-  int? _fotoPrincipalIndex;
 
   InputDecoration _inputDecoration({
     required String hint,
@@ -177,6 +298,110 @@ class _RegisterPetPageState extends State<RegisterPetPage> {
     );
   }
 
+  Widget _buildImagenesExistentes() {
+    if (!isEditMode) {
+      return const SizedBox.shrink();
+    }
+
+    if (_isLoadingImages) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 12),
+        child: Center(
+          child: CircularProgressIndicator(),
+        ),
+      );
+    }
+
+    if (_imagenesExistentes.isEmpty) {
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: const Color(0xFFA7F3D0),
+          ),
+        ),
+        child: const Text(
+          'Esta mascota aún no tiene fotos cargadas.',
+          style: TextStyle(
+            color: Color(0xFF6B7280),
+            fontSize: 13,
+          ),
+        ),
+      );
+    }
+
+    return SizedBox(
+      height: 105,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        itemCount: _imagenesExistentes.length,
+        separatorBuilder: (_, __) => const SizedBox(width: 10),
+        itemBuilder: (context, index) {
+          final imagen = _imagenesExistentes[index];
+
+          final imageUrl =
+              '${MascotasService.baseUrl.replaceAll('/api', '')}${imagen['url']}';
+
+          final esPrincipal = imagen['esPrincipal'] == true;
+
+          return Stack(
+            children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(14),
+                child: Image.network(
+                  imageUrl,
+                  width: 95,
+                  height: 95,
+                  fit: BoxFit.cover,
+                  errorBuilder: (context, error, stackTrace) {
+                    return Container(
+                      width: 95,
+                      height: 95,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFE5E7EB),
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      child: const Icon(
+                        Icons.pets,
+                        color: Color(0xFF6B7280),
+                      ),
+                    );
+                  },
+                ),
+              ),
+              if (esPrincipal)
+                Positioned(
+                  left: 6,
+                  bottom: 8,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 7,
+                      vertical: 4,
+                    ),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF047857),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Text(
+                      'Principal',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 10,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
   void _guardarMascota() async {
     setState(() {
       _hasError = false;
@@ -189,12 +414,31 @@ class _RegisterPetPageState extends State<RegisterPetPage> {
       return;
     }
 
-    if (_imagenesMascota.length < 15) {
+    if (_especieSeleccionadaId == null || _especieSeleccionadaId!.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Debes cargar mínimo 15 fotos. Faltan ${15 - _imagenesMascota.length}.',
-          ),
+        const SnackBar(
+          content: Text('Debes seleccionar una especie'),
+        ),
+      );
+      return;
+    }
+
+    final totalFotosDisponibles =
+        _imagenesExistentes.length + _imagenesMascota.length;
+
+    if (!isEditMode && _imagenesMascota.length < 6) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Debes agregar mínimo 6 fotos para registrar la mascota'),
+        ),
+      );
+      return;
+    }
+
+    if (isEditMode && totalFotosDisponibles == 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('La mascota debe conservar al menos una foto'),
         ),
       );
       return;
@@ -205,13 +449,65 @@ class _RegisterPetPageState extends State<RegisterPetPage> {
         _isLoading = true;
       });
 
+      final fkRaza = _razaSeleccionadaId == null || _razaSeleccionadaId!.isEmpty
+          ? null
+          : int.tryParse(_razaSeleccionadaId!);
+
+      final edadAprox = _edadController.text.trim().isEmpty
+          ? null
+          : int.tryParse(_edadController.text.trim());
+
+      if (isEditMode) {
+        final mascotaId = int.parse(
+          widget.mascotaEditar!['id'].toString(),
+        );
+
+        await MascotasService.actualizarMascota(
+          mascotaId: mascotaId,
+          fkUsuario: 1,
+          fkEspecie: int.parse(_especieSeleccionadaId!),
+          fkRaza: fkRaza,
+          nombre: _nombreController.text.trim(),
+          color: _colorController.text.trim(),
+          edadAprox: edadAprox,
+          unidadEdad: _unidadEdadSeleccionada,
+          sexo: _sexoSeleccionadoId ?? 'NO_DEFINIDO',
+          observaciones: _observacionesController.text.trim(),
+        );
+
+        if (_imagenesMascota.isNotEmpty) {
+          await MascotasService.agregarFotosMascota(
+            mascotaId: mascotaId,
+            fkUsuario: 1,
+            imagenes: _imagenesMascota,
+            fotoPrincipalIndex: _fotoPrincipalIndex ?? 0,
+            marcarComoPrincipal: _fotoPrincipalIndex != null,
+          );
+        }
+
+        setState(() {
+          _isLoading = false;
+        });
+
+        if (!mounted) return;
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Mascota actualizada correctamente'),
+          ),
+        );
+
+        Navigator.pop(context, true);
+        return;
+      }
+
       await MascotasService.registrarMascota(
         fkUsuario: 1,
-        fkEspecie: _especieSeleccionadaId!,
-        fkRaza: _razaSeleccionadaId,
+        fkEspecie: int.parse(_especieSeleccionadaId!),
+        fkRaza: fkRaza,
         nombre: _nombreController.text.trim(),
         color: _colorController.text.trim(),
-        edadAprox: int.tryParse(_edadController.text.trim()),
+        edadAprox: edadAprox,
         unidadEdad: _unidadEdadSeleccionada,
         sexo: _sexoSeleccionadoId ?? 'NO_DEFINIDO',
         observaciones: _observacionesController.text.trim(),
@@ -223,11 +519,15 @@ class _RegisterPetPageState extends State<RegisterPetPage> {
         _isLoading = false;
       });
 
+      if (!mounted) return;
+
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Mascota registrada exitosamente'),
         ),
       );
+
+      Navigator.pop(context, true);
     } catch (e) {
       setState(() {
         _isLoading = false;
@@ -293,11 +593,10 @@ class _RegisterPetPageState extends State<RegisterPetPage> {
                   key: _formKey,
                   child: Column(
                     children: [
-                      const Align(
+                      Align(
                         alignment: Alignment.centerLeft,
-                        child: Text(
-                          'Registro de mascota',
-                          style: TextStyle(
+                        child: Text(isEditMode ? 'Editar Mascota' : 'Registrar Mascota',
+                          style: const TextStyle(
                             fontSize: 22,
                             fontWeight: FontWeight.bold,
                             color: Color(0xFF263238),
@@ -340,59 +639,65 @@ class _RegisterPetPageState extends State<RegisterPetPage> {
 
                       const SizedBox(height: 16),
 
-                      DropdownButtonFormField<int>(
+                      DropdownButtonFormField<String>(
                         value: _especieSeleccionadaId,
+                        isExpanded: true,
                         decoration: _inputDecoration(
                           hint: 'Especie',
-                          prefixIcon: Icons.category,
+                          prefixIcon: Icons.pets,
                           hintTextColor: hintText,
                           iconColor: accentGreen,
                           hasError: _hasError,
                         ),
-                        items: _especies.map((especie) {
-                          return DropdownMenuItem<int>(
-                            value: especie['id'],
-                            child: Text(especie['nombre']),
-                          );
-                        }).toList(),
-                        onChanged: _isLoading
-                            ? null
-                            : (value) {
-                          if (value == null) return;
-
-                          setState(() {
-                            _especieSeleccionadaId = value;
-                          });
-
-                          _cargarRazasPorEspecie(value);
-                        },
                         validator: (value) {
-                          if (value == null) {
-                            return 'La especie es obligatoria';
+                          if (value == null || value.trim().isEmpty) {
+                            return 'La especie es obligaroria';
                           }
                           return null;
+                        },
+                        items: _especies.map((especie) {
+                          return DropdownMenuItem<String>(
+                            value: especie['id'].toString(),
+                            child: Text(especie['nombre'].toString()),
+                          );
+                        }).toList(),
+                        onChanged: (value) {
+                          setState(() {
+                            _especieSeleccionadaId = value;
+                            _razaSeleccionadaId = null;
+                          });
+
+                          if (value != null) {
+                            _cargarRazasPorEspecie(int.parse(value));
+                          }
                         },
                       ),
 
                       const SizedBox(height: 16),
 
-                      DropdownButtonFormField<int>(
+                      DropdownButtonFormField<String>(
                         value: _razaSeleccionadaId,
+                        isExpanded: true,
                         decoration: _inputDecoration(
                           hint: 'Raza',
-                          prefixIcon: Icons.badge,
+                          prefixIcon: Icons.pets,
                           hintTextColor: hintText,
                           iconColor: accentGreen,
+                          hasError: _hasError,
                         ),
+                        validator: (value) {
+                          if (value == null || value.trim().isEmpty) {
+                            return 'La raza es obligatoria';
+                          }
+                          return null;
+                        },
                         items: _razas.map((raza) {
-                          return DropdownMenuItem<int>(
-                            value: raza['id'],
-                            child: Text(raza['nombre']),
+                          return DropdownMenuItem<String>(
+                            value: raza['id'].toString(),
+                            child: Text(raza['nombre'].toString()),
                           );
                         }).toList(),
-                        onChanged: _isLoading || _especieSeleccionadaId == null
-                            ? null
-                            : (value) {
+                        onChanged: (value) {
                           setState(() {
                             _razaSeleccionadaId = value;
                           });
@@ -403,21 +708,35 @@ class _RegisterPetPageState extends State<RegisterPetPage> {
 
                       DropdownButtonFormField<String>(
                         value: _sexoSeleccionadoId,
+                        isExpanded: true,
                         decoration: _inputDecoration(
                           hint: 'Sexo',
-                          prefixIcon: Icons.transgender,
+                          prefixIcon: Icons.pets,
                           hintTextColor: hintText,
                           iconColor: accentGreen,
+                          hasError: _hasError,
                         ),
-                        items: _sexos.map((sexo) {
-                          return DropdownMenuItem<String>(
-                            value: sexo['id'],
-                            child: Text(sexo['nombre']),
-                          );
-                        }).toList(),
-                        onChanged: _isLoading
-                            ? null
-                            : (value) {
+                        validator: (value) {
+                          if (value == null || value.trim().isEmpty) {
+                            return 'El sexo es obligatorio';
+                          }
+                          return null;
+                        },
+                        items: const [
+                          DropdownMenuItem(
+                            value: 'MACHO',
+                            child: Text('Macho'),
+                          ),
+                          DropdownMenuItem(
+                            value: 'HEMBRA',
+                            child: Text('Hembra'),
+                          ),
+                          DropdownMenuItem(
+                            value: 'NO_DEFINIDO',
+                            child: Text('No definido'),
+                          ),
+                        ],
+                        onChanged: (value) {
                           setState(() {
                             _sexoSeleccionadoId = value;
                           });
@@ -515,6 +834,8 @@ class _RegisterPetPageState extends State<RegisterPetPage> {
 
                       const SizedBox(height: 20),
 
+                      const SizedBox(height: 20),
+
                       Container(
                         width: double.infinity,
                         padding: const EdgeInsets.all(16),
@@ -529,27 +850,29 @@ class _RegisterPetPageState extends State<RegisterPetPage> {
                         child: Column(
                           children: [
                             Text(
-                              'Fotos cargadas: $fotosCargadas / 6',
+                              isEditMode
+                                  ? 'Fotos actuales y nuevas'
+                                  : 'Fotos cargadas: $fotosCargadas / 6',
                               style: const TextStyle(
                                 fontSize: 16,
                                 fontWeight: FontWeight.bold,
                                 color: Color(0xFF263238),
                               ),
                             ),
+
                             const SizedBox(height: 10),
+
                             SizedBox(
                               width: double.infinity,
                               height: 48,
                               child: OutlinedButton.icon(
-                                onPressed: _isLoading
-                                    ? null
-                                    : _seleccionarImagenes,
+                                onPressed: _isLoading ? null : _seleccionarImagenes,
                                 icon: Icon(
                                   Icons.add_a_photo,
                                   color: accentGreen,
                                 ),
                                 label: Text(
-                                  'Agregar foto',
+                                  isEditMode ? 'Agregar nuevas fotos' : 'Agregar foto',
                                   style: TextStyle(
                                     color: accentGreen,
                                     fontWeight: FontWeight.bold,
@@ -572,96 +895,122 @@ class _RegisterPetPageState extends State<RegisterPetPage> {
 
                       const SizedBox(height: 14),
 
+                      if (isEditMode) _buildImagenesExistentes(),
+
+                      if (isEditMode) const SizedBox(height: 18),
+
                       if (_imagenesMascota.isNotEmpty)
-                        GridView.builder(
-                          shrinkWrap: true,
-                          physics: const NeverScrollableScrollPhysics(),
-                          itemCount: _imagenesMascota.length,
-                          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                            crossAxisCount: 3,
-                            crossAxisSpacing: 10,
-                            mainAxisSpacing: 10,
-                          ),
-                          itemBuilder: (context, index) {
-                            final imagen = _imagenesMascota[index];
-
-                            return Stack(
-                              children: [
-                                ClipRRect(
-                                  borderRadius: BorderRadius.circular(12),
-                                  child: Image.file(
-                                    File(imagen.path),
-                                    width: double.infinity,
-                                    height: double.infinity,
-                                    fit: BoxFit.cover,
-                                  ),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Align(
+                              alignment: Alignment.centerLeft,
+                              child: Text(
+                                'Fotos nuevas seleccionadas',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                  color: Color(0xFF263238),
                                 ),
+                              ),
+                            ),
 
-                                Positioned(
-                                  top: 4,
-                                  right: 4,
-                                  child: GestureDetector(
-                                    onTap: () {
-                                      setState(() {
-                                        _imagenesMascota.removeAt(index);
-                                        fotosCargadas = _imagenesMascota.length;
+                            const SizedBox(height: 10),
 
-                                        if (_imagenesMascota.isEmpty) {
-                                          _fotoPrincipalIndex = null;
-                                        } else if (_fotoPrincipalIndex == index) {
-                                          _fotoPrincipalIndex = 0;
-                                        } else if (_fotoPrincipalIndex != null &&
-                                            index < _fotoPrincipalIndex!) {
-                                          _fotoPrincipalIndex = _fotoPrincipalIndex! - 1;
-                                        }
-                                      });
-                                    },
-                                    child: Container(
-                                      decoration: const BoxDecoration(
-                                        color: Colors.black54,
-                                        shape: BoxShape.circle,
-                                      ),
-                                      padding: const EdgeInsets.all(4),
-                                      child: const Icon(
-                                        Icons.close,
-                                        color: Colors.white,
-                                        size: 18,
+                            GridView.builder(
+                              shrinkWrap: true,
+                              physics: const NeverScrollableScrollPhysics(),
+                              itemCount: _imagenesMascota.length,
+                              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                                crossAxisCount: 3,
+                                crossAxisSpacing: 10,
+                                mainAxisSpacing: 10,
+                              ),
+                              itemBuilder: (context, index) {
+                                final imagen = _imagenesMascota[index];
+
+                                return Stack(
+                                  children: [
+                                    ClipRRect(
+                                      borderRadius: BorderRadius.circular(12),
+                                      child: Image.file(
+                                        File(imagen.path),
+                                        width: double.infinity,
+                                        height: double.infinity,
+                                        fit: BoxFit.cover,
                                       ),
                                     ),
-                                  ),
-                                ),
 
-                                Positioned(
-                                  left: 4,
-                                  bottom: 4,
-                                  child: GestureDetector(
-                                    onTap: () {
-                                      setState(() {
-                                        _fotoPrincipalIndex = index;
-                                      });
-                                    },
-                                    child: Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-                                      decoration: BoxDecoration(
-                                        color: _fotoPrincipalIndex == index
-                                            ? accentGreen
-                                            : Colors.black54,
-                                        borderRadius: BorderRadius.circular(10),
-                                      ),
-                                      child: Text(
-                                        _fotoPrincipalIndex == index ? 'Principal' : 'Elegir',
-                                        style: const TextStyle(
-                                          color: Colors.white,
-                                          fontSize: 11,
-                                          fontWeight: FontWeight.bold,
+                                    Positioned(
+                                      top: 4,
+                                      right: 4,
+                                      child: GestureDetector(
+                                        onTap: () {
+                                          setState(() {
+                                            _imagenesMascota.removeAt(index);
+                                            fotosCargadas = _imagenesMascota.length;
+
+                                            if (_imagenesMascota.isEmpty) {
+                                              _fotoPrincipalIndex = null;
+                                            } else if (_fotoPrincipalIndex == index) {
+                                              _fotoPrincipalIndex = 0;
+                                            } else if (_fotoPrincipalIndex != null &&
+                                                index < _fotoPrincipalIndex!) {
+                                              _fotoPrincipalIndex = _fotoPrincipalIndex! - 1;
+                                            }
+                                          });
+                                        },
+                                        child: Container(
+                                          decoration: const BoxDecoration(
+                                            color: Colors.black54,
+                                            shape: BoxShape.circle,
+                                          ),
+                                          padding: const EdgeInsets.all(4),
+                                          child: const Icon(
+                                            Icons.close,
+                                            color: Colors.white,
+                                            size: 18,
+                                          ),
                                         ),
                                       ),
                                     ),
-                                  ),
-                                ),
-                              ],
-                            );
-                          },
+
+                                    Positioned(
+                                      left: 4,
+                                      bottom: 4,
+                                      child: GestureDetector(
+                                        onTap: () {
+                                          setState(() {
+                                            _fotoPrincipalIndex = index;
+                                          });
+                                        },
+                                        child: Container(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 6,
+                                            vertical: 4,
+                                          ),
+                                          decoration: BoxDecoration(
+                                            color: _fotoPrincipalIndex == index
+                                                ? accentGreen
+                                                : Colors.black54,
+                                            borderRadius: BorderRadius.circular(10),
+                                          ),
+                                          child: Text(
+                                            _fotoPrincipalIndex == index ? 'Principal' : 'Elegir',
+                                            style: const TextStyle(
+                                              color: Colors.white,
+                                              fontSize: 11,
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                );
+                              },
+                            ),
+                          ],
                         ),
 
                       const SizedBox(height: 26),
@@ -688,8 +1037,7 @@ class _RegisterPetPageState extends State<RegisterPetPage> {
                               color: Colors.white,
                             ),
                           )
-                              : const Text(
-                            'Registrar mascota',
+                              : Text(isEditMode ? 'Editar Mascota' : 'Registrar Mascota',
                             style: TextStyle(
                               fontSize: 17,
                               fontWeight: FontWeight.bold,

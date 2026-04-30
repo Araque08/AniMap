@@ -1117,10 +1117,6 @@ class _SideMenu extends StatelessWidget {
                 },
               ),
               _MenuItem(
-                text: 'Mis Mascotas',
-                onTap: onMyPets,
-              ),
-              _MenuItem(
                 text: 'Preguntas Frecuentes',
                 onTap: onFaq,
               ),

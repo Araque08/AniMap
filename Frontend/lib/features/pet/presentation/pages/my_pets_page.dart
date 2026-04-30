@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import '../../data/pets_service.dart';
 import 'register_pet_page.dart';
+import 'pet_profile_page.dart';
+
 
 class MyPetsPage extends StatefulWidget {
   const MyPetsPage({super.key});
@@ -104,13 +106,49 @@ class _MyPetsPageState extends State<MyPetsPage> {
                   breed: pet['raza']?.toString() ?? 'Sin raza',
                   status: pet['estado']?.toString() ?? 'ACTIVA',
                   imageUrl: imageUrl,
+
+                  // Click en la tarjeta: abre perfil/detalle
                   onTap: () {
-                    // Luego aquí navegamos al detalle de la mascota
-                    // Ejemplo: Navigator.push(...)
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => PetProfilePage(
+                          mascotaId: int.parse(pet['id']!.toString()),
+                          mostrarAccionesDueno: true,
+                        ),
+                      ),
+                    );
                   },
-                  onEdit: () {
-                    // Luego aquí navegamos a editar mascota
-                    // Ejemplo: Navigator.push(...)
+
+                  /*esto es para navegar a perfil de mascota en modo publico*/
+                  /*Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => PetProfilePage(
+                        mascotaId: mascota['id'] is int
+                            ? mascota['id']
+                            : int.parse(mascota['id'].toString()),
+                        mostrarAccionesDueno: false,
+                      ),
+                    ),
+                  );*/
+
+                  
+
+                  // Click en editar: abre formulario de edición
+                  onEdit: () async {
+                    final updated = await Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => RegisterPetPage(
+                          mascotaEditar: pet,
+                        ),
+                      ),
+                    );
+
+                    if (updated == true) {
+                      _refreshPets();
+                    }
                   },
                 );
               },

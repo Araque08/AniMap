@@ -1,9 +1,10 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
+import '../../../api_config.dart';
 
 class MascotasService {
-  static const String baseUrl = 'http://10.0.2.2:3000/api/pets';
+  static const String baseUrl = 'http://172.24.207.228:3000/api/pets';
 
   static Future<Map<String, dynamic>> registrarMascota({
     required int fkUsuario,
@@ -22,6 +23,8 @@ class MascotasService {
       'POST',
       Uri.parse(baseUrl),
     );
+
+
 
     request.fields['fk_usuario'] = fkUsuario.toString();
     request.fields['fk_especie'] = fkEspecie.toString();
@@ -65,5 +68,221 @@ class MascotasService {
     }
 
     return data;
+  }
+
+  static Future<List<Map<String, dynamic>>> obtenerImagenesMascota({
+    required int mascotaId,
+    required int usuarioId,
+  }) async {
+    final url = Uri.parse(
+      '$baseUrl/$mascotaId/images?usuarioId=$usuarioId',
+    );
+
+    print('URL imágenes mascota: $url');
+
+    final response = await http.get(url);
+
+    print('Status imágenes mascota: ${response.statusCode}');
+    print('Body imágenes mascota: ${response.body}');
+
+    if (response.statusCode != 200) {
+      throw Exception(
+        'Status: ${response.statusCode} - Body: ${response.body}',
+      );
+    }
+
+    final data = jsonDecode(response.body);
+
+    if (data['ok'] != true) {
+      throw Exception(data['message'] ?? 'No se pudieron cargar las imágenes');
+    }
+
+    final imagenes = data['imagenes'] as List;
+
+    return imagenes.map((item) {
+      return Map<String, dynamic>.from(item);
+    }).toList();
+  }
+
+  static Future<Map<String, dynamic>> obtenerMascotaPorId({
+    required int mascotaId,
+  }) async {
+    final url = Uri.parse('$baseUrl/$mascotaId');
+
+    print('URL perfil mascota: $url');
+
+    final response = await http.get(url);
+
+    print('Status perfil mascota: ${response.statusCode}');
+    print('Body perfil mascota: ${response.body}');
+
+    if (response.statusCode != 200) {
+      throw Exception(
+        'Status: ${response.statusCode} - Body: ${response.body}',
+      );
+    }
+
+    if (response.body.trim().startsWith('<!DOCTYPE html>') ||
+        response.body.trim().startsWith('<html')) {
+      throw Exception(
+        'El backend respondió HTML. Revisa que exista la ruta GET $url',
+      );
+    }
+
+    final data = jsonDecode(response.body);
+
+    if (data['ok'] != true) {
+      throw Exception(
+        data['message'] ?? 'No se pudo cargar la mascota',
+      );
+    }
+
+    if (data['mascota'] != null) {
+      return Map<String, dynamic>.from(data['mascota']);
+    }
+
+    if (data['pet'] != null) {
+      return Map<String, dynamic>.from(data['pet']);
+    }
+
+    if (data['data'] != null) {
+      return Map<String, dynamic>.from(data['data']);
+    }
+
+    return Map<String, dynamic>.from(data);
+  }
+
+
+  static Future<void> eliminarMascota({
+    required int mascotaId,
+    required int fkUsuario,
+  }) async {
+    final url = Uri.parse('$baseUrl/$mascotaId');
+
+    print('URL inactivar mascota: $url');
+
+    final response = await http.delete(
+      url,
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: jsonEncode({
+        'fk_usuario': fkUsuario,
+      }),
+    );
+
+    print('Status inactivar mascota: ${response.statusCode}');
+    print('Body inactivar mascota: ${response.body}');
+
+    if (response.body.trim().startsWith('<!DOCTYPE html>') ||
+        response.body.trim().startsWith('<html')) {
+      throw Exception(
+        'El backend respondió HTML. Revisa que exista la ruta DELETE $url',
+      );
+    }
+
+    final data = jsonDecode(response.body);
+
+    if (response.statusCode != 200 || data['ok'] != true) {
+      throw Exception(
+        data['message'] ?? 'No se pudo inactivar la mascota',
+      );
+    }
+  }
+
+
+  static Future<void> actualizarMascota({
+    required int mascotaId,
+    required int fkUsuario,
+    required int fkEspecie,
+    int? fkRaza,
+    required String nombre,
+    required String color,
+    int? edadAprox,
+    String? unidadEdad,
+    required String sexo,
+    required String observaciones,
+  }) async {
+    final url = Uri.parse('$baseUrl/$mascotaId');
+
+    final body = {
+      'fk_usuario': fkUsuario,
+      'fk_especie': fkEspecie,
+      'fk_raza': fkRaza,
+      'nombre': nombre,
+      'color': color,
+      'edad_aprox': edadAprox,
+      'unidad_edad': unidadEdad,
+      'sexo': sexo,
+      'observaciones': observaciones,
+    };
+
+    print('URL actualizar mascota: $url');
+    print('Body actualizar mascota: ${jsonEncode(body)}');
+
+    final response = await http.put(
+      url,
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: jsonEncode(body),
+    );
+
+    print('Status actualizar mascota: ${response.statusCode}');
+    print('Body respuesta actualizar mascota: ${response.body}');
+
+    if (response.body.trim().startsWith('<!DOCTYPE html>') ||
+        response.body.trim().startsWith('<html')) {
+      throw Exception(
+        'El backend respondió HTML. Revisa que exista la ruta PUT $url',
+      );
+    }
+
+    final data = jsonDecode(response.body);
+
+    if (response.statusCode != 200 || data['ok'] != true) {
+      throw Exception(
+        data['message'] ?? 'No se pudo actualizar la mascota',
+      );
+    }
+  }
+
+  static Future<void> agregarFotosMascota({
+    required int mascotaId,
+    required int fkUsuario,
+    required List<XFile> imagenes,
+    int fotoPrincipalIndex = 0,
+    bool marcarComoPrincipal = false,
+  }) async {
+    final url = Uri.parse('$baseUrl/$mascotaId/images');
+
+    final request = http.MultipartRequest('POST', url);
+
+    request.fields['fk_usuario'] = fkUsuario.toString();
+    request.fields['foto_principal_index'] = fotoPrincipalIndex.toString();
+    request.fields['marcar_como_principal'] = marcarComoPrincipal.toString();
+
+    for (final imagen in imagenes) {
+      request.files.add(
+        await http.MultipartFile.fromPath(
+          'imagenes',
+          imagen.path,
+        ),
+      );
+    }
+
+    final streamedResponse = await request.send();
+    final response = await http.Response.fromStream(streamedResponse);
+
+    print('Status agregar fotos: ${response.statusCode}');
+    print('Body agregar fotos: ${response.body}');
+
+    final data = jsonDecode(response.body);
+
+    if (response.statusCode != 201 || data['ok'] != true) {
+      throw Exception(
+        data['message'] ?? 'No se pudieron agregar las fotos',
+      );
+    }
   }
 }
