@@ -2,6 +2,13 @@ const express = require('express');
 const router = express.Router();
 const pool = require('../../config/postgres_db');
 
+// =====================================================
+// GET /api/pets/especies
+// Consulta las especies disponibles para mascotas.
+// PostgreSQL: consulta especies.
+// MongoDB no se toca aquí.
+// =====================================================
+
 router.get('/especies', async (req, res) => {
   try {
     const result = await pool.query(`
@@ -22,6 +29,13 @@ router.get('/especies', async (req, res) => {
     });
   }
 });
+
+// =====================================================
+// GET /api/pets/razas
+// Consulta las razas disponibles para mascotas.
+// PostgreSQL: consulta razas.
+// MongoDB no se toca aquí.
+// =====================================================
 
 router.get('/razas/:especieId', async (req, res) => {
   try {
@@ -49,6 +63,13 @@ router.get('/razas/:especieId', async (req, res) => {
     });
   }
 });
+
+// =====================================================
+// GET /api/pets/sexos
+// Consulta los sexos disponibles para mascotas.
+// PostgreSQL: consulta sexos.
+// MongoDB no se toca aquí.
+// =====================================================
 
 router.get('/sexos', (req, res) => {
   return res.json({

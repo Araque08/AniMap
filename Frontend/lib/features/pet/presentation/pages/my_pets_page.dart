@@ -12,21 +12,22 @@ class MyPetsPage extends StatefulWidget {
 }
 
 class _MyPetsPageState extends State<MyPetsPage> {
-  late Future<List<Map<String, dynamic>>> _petsFuture;
+  late Future<List<Map<String, dynamic>>> _futureMascotas;
 
   // Por ahora dejamos el usuario quemado.
   // Después lo cambiamos por el id del usuario logueado.
   final int usuarioId = 1;
+  bool _hayMascotasActivas = false;
 
   @override
   void initState() {
     super.initState();
-    _petsFuture = PetsService.getMyPets(usuarioId: usuarioId);
+    _futureMascotas = PetsService.getMyPets(usuarioId: usuarioId);
   }
 
   Future<void> _refreshPets() async {
     setState(() {
-      _petsFuture = PetsService.getMyPets(usuarioId: usuarioId);
+      _futureMascotas = PetsService.getMyPets(usuarioId: usuarioId);
     });
   }
 
@@ -65,7 +66,7 @@ class _MyPetsPageState extends State<MyPetsPage> {
         iconTheme: const IconThemeData(color: Color(0xFF1F2937)),
       ),
       body: FutureBuilder<List<Map<String, dynamic>>>(
-        future: _petsFuture,
+        future: _futureMascotas,
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(
@@ -82,10 +83,32 @@ class _MyPetsPageState extends State<MyPetsPage> {
 
           final pets = snapshot.data ?? [];
 
-          if (pets.isEmpty) {
+          final mascotasActivas = pets.where((mascota) {
+            final estado = mascota['estado']?.toString().toUpperCase() ?? '';
+            return estado == 'ACTIVA';
+          }).toList();
+
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted && _hayMascotasActivas != mascotasActivas.isNotEmpty) {
+              setState(() {
+                _hayMascotasActivas = mascotasActivas.isNotEmpty;
+              });
+            }
+          });
+
+          if (mascotasActivas.isEmpty) {
             return _EmptyPetsView(
-              onAddPet: () {
-                // Luego aquí navegamos a registrar mascota
+              onAddPet: () async {
+                final created = await Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const RegisterPetPage(),
+                  ),
+                );
+
+                if (created == true) {
+                  _refreshPets();
+                }
               },
             );
           }
@@ -94,9 +117,9 @@ class _MyPetsPageState extends State<MyPetsPage> {
             onRefresh: _refreshPets,
             child: ListView.builder(
               padding: const EdgeInsets.fromLTRB(18, 12, 18, 100),
-              itemCount: pets.length,
+              itemCount: mascotasActivas.length,
               itemBuilder: (context, index) {
-                final pet = pets[index];
+                final pet = mascotasActivas[index];
 
                 final imageUrl = _buildImageUrl(pet);
 
@@ -108,23 +131,33 @@ class _MyPetsPageState extends State<MyPetsPage> {
                   imageUrl: imageUrl,
 
                   // Click en la tarjeta: abre perfil/detalle
-                  onTap: () {
-                    Navigator.push(
+                  onTap: () async {
+                    final result = await Navigator.push(
                       context,
                       MaterialPageRoute(
-                        builder: (context) => PetProfilePage(
+                        builder: (_) => PetProfilePage(
                           mascotaId: int.parse(pet['id']!.toString()),
                           mostrarAccionesDueno: true,
                         ),
                       ),
                     );
+
+                    if (result == true) {
+                      setState(() {
+                        _futureMascotas = PetsService.getMyPets(
+                          usuarioId: usuarioId,
+                        );
+                      });
+                    }
+
                   },
 
                   /*esto es para navegar a perfil de mascota en modo publico*/
                   /*Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (_) => PetProfilePage(
+                      bui
+                      lder: (_) => PetProfilePage(
                         mascotaId: mascota['id'] is int
                             ? mascota['id']
                             : int.parse(mascota['id'].toString()),
@@ -133,7 +166,7 @@ class _MyPetsPageState extends State<MyPetsPage> {
                     ),
                   );*/
 
-                  
+
 
                   // Click en editar: abre formulario de edición
                   onEdit: () async {
@@ -156,22 +189,28 @@ class _MyPetsPageState extends State<MyPetsPage> {
           );
         },
       ),
-      floatingActionButton: FloatingActionButton.extended(
+      floatingActionButton: _hayMascotasActivas
+          ? FloatingActionButton.extended(
         backgroundColor: const Color(0xFF2563EB),
-        onPressed: () {
-          Navigator.push(
+        onPressed: () async {
+          final created = await Navigator.push(
             context,
             MaterialPageRoute(
               builder: (context) => const RegisterPetPage(),
             ),
           );
+
+          if (created == true) {
+            _refreshPets();
+          }
         },
         icon: const Icon(Icons.add, color: Colors.white),
         label: const Text(
           'Agregar',
           style: TextStyle(color: Colors.white),
         ),
-      ),
+      )
+          : null,
     );
   }
 }
@@ -340,7 +379,6 @@ class _GenericPetImage extends StatelessWidget {
     );
   }
 }
-
 class _EmptyPetsView extends StatelessWidget {
   final VoidCallback onAddPet;
 
@@ -350,58 +388,105 @@ class _EmptyPetsView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(28),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(
-              Icons.pets,
-              size: 76,
-              color: Color(0xFF9CA3AF),
+    return RefreshIndicator(
+      onRefresh: () async {},
+      child: ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.fromLTRB(24, 90, 24, 24),
+        children: [
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(
+              horizontal: 22,
+              vertical: 34,
             ),
-            const SizedBox(height: 18),
-            const Text(
-              'Aún no tienes mascotas registradas',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                color: Color(0xFF111827),
-                fontSize: 20,
-                fontWeight: FontWeight.w700,
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(26),
+              border: Border.all(
+                color: const Color(0xFFA7F3D0),
+                width: 1.4,
               ),
-            ),
-            const SizedBox(height: 8),
-            const Text(
-              'Cuando registres una mascota, aparecerá aquí para que puedas verla, editarla o consultar su detalle.',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                color: Color(0xFF6B7280),
-                fontSize: 14,
-                height: 1.4,
-              ),
-            ),
-            const SizedBox(height: 22),
-            ElevatedButton.icon(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF2563EB),
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 20,
-                  vertical: 13,
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.06),
+                  blurRadius: 14,
+                  offset: const Offset(0, 6),
                 ),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(18),
-                ),
-              ),
-              onPressed: onAddPet,
-              icon: const Icon(Icons.add, color: Colors.white),
-              label: const Text(
-                'Registrar mascota',
-                style: TextStyle(color: Colors.white),
-              ),
+              ],
             ),
-          ],
-        ),
+            child: Column(
+              children: [
+                Container(
+                  width: 96,
+                  height: 96,
+                  decoration: const BoxDecoration(
+                    color: Color(0xFFE8F8EF),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.pets,
+                    size: 54,
+                    color: Color(0xFF047857),
+                  ),
+                ),
+
+                const SizedBox(height: 22),
+
+                const Text(
+                  'No tienes mascotas registradas',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: Color(0xFF263238),
+                    fontSize: 22,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+
+                const SizedBox(height: 10),
+
+                const Text(
+                  'Registra tu primera mascota para poder verla aquí, editar su información y consultar su perfil cuando lo necesites.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: Color(0xFF6B7280),
+                    fontSize: 14,
+                    height: 1.45,
+                  ),
+                ),
+
+                const SizedBox(height: 26),
+
+                SizedBox(
+                  width: double.infinity,
+                  height: 52,
+                  child: ElevatedButton.icon(
+                    onPressed: onAddPet,
+                    icon: const Icon(
+                      Icons.add,
+                      color: Colors.white,
+                    ),
+                    label: const Text(
+                      'Registrar mascota',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 15,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF047857),
+                      elevation: 2,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(18),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }

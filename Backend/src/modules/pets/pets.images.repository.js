@@ -33,8 +33,35 @@ async function guardarImagenesMascota({
   return documentos.length;
 }
 
+async function inactivarImagenesMascotaMongo({
+  mascotaId,
+  usuarioId,
+}) {
+  const db = await getMongoDb();
 
+  const collection = db.collection('ImagenMascota');
+
+  const result = await collection.updateMany(
+    {
+      mascotaIdPg: Number(mascotaId),
+      usuarioIdPg: Number(usuarioId),
+      estado: { $ne: 'INACTIVA' },
+    },
+    {
+      $set: {
+        estado: 'INACTIVA',
+        updatedAt: new Date(),
+      },
+    }
+  );
+
+  return {
+    matchedCount: result.matchedCount,
+    modifiedCount: result.modifiedCount,
+  };
+}
 
 module.exports = {
   guardarImagenesMascota,
+  inactivarImagenesMascotaMongo,
 };

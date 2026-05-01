@@ -79,12 +79,12 @@ class _PetProfilePageState extends State<PetProfilePage> {
   }
 
   Future<void> _confirmDeletePet(PetProfile pet) async {
-    final controller = TextEditingController();
+    final TextEditingController controller = TextEditingController();
 
     final bool? confirm = await showDialog<bool>(
       context: context,
       barrierDismissible: false,
-      builder: (context) {
+      builder: (dialogContext) {
         return AlertDialog(
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(18),
@@ -109,6 +109,7 @@ class _PetProfilePageState extends State<PetProfilePage> {
               const SizedBox(height: 12),
               TextField(
                 controller: controller,
+                autofocus: true,
                 decoration: InputDecoration(
                   labelText: 'Nombre de la mascota',
                   hintText: pet.nombre,
@@ -122,7 +123,7 @@ class _PetProfilePageState extends State<PetProfilePage> {
           actions: [
             TextButton(
               onPressed: () {
-                Navigator.pop(context, false);
+                Navigator.of(dialogContext).pop(false);
               },
               child: const Text('Cancelar'),
             ),
@@ -136,19 +137,20 @@ class _PetProfilePageState extends State<PetProfilePage> {
               ),
               onPressed: () {
                 final typedName = controller.text.trim();
+                final realName = pet.nombre.trim();
 
-                if (typedName != pet.nombre.trim()) {
+                if (typedName != realName) {
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(
                       content: Text(
-                        'El nombre no coincide. No se eliminó la mascota.',
+                        'El nombre no coincide. No se inactivó la mascota.',
                       ),
                     ),
                   );
                   return;
                 }
 
-                Navigator.pop(context, true);
+                Navigator.of(dialogContext).pop(true);
               },
               child: const Text('Eliminar'),
             ),
@@ -156,8 +158,6 @@ class _PetProfilePageState extends State<PetProfilePage> {
         );
       },
     );
-
-    controller.dispose();
 
     if (confirm != true) return;
 
@@ -171,7 +171,7 @@ class _PetProfilePageState extends State<PetProfilePage> {
 
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Mascota eliminada correctamente'),
+          content: Text('Mascota inactivada correctamente'),
         ),
       );
 
@@ -181,7 +181,7 @@ class _PetProfilePageState extends State<PetProfilePage> {
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Error eliminando mascota: $error'),
+          content: Text('Error inactivando mascota: $error'),
         ),
       );
     }

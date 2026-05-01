@@ -3,7 +3,7 @@ const express = require('express');
 const { ObjectId } = require('mongodb');
 const { getMongoDb } = require('../../config/mongo_db');
 const pool = require('../../config/postgres_db');
-const { guardarImagenesMascota } = require('./pets.images.repository');
+const { guardarImagenesMascota, inactivarImagenesMascotaMongo, } = require('./pets.images.repository');
 
 const router = express.Router();
 
@@ -13,6 +13,89 @@ const upload = multer({
     fileSize: 5 * 1024 * 1024,
   },
 });
+
+
+
+// =====================================================
+// GET /api/pets/especies
+// Consulta las especies disponibles para mascotas.
+// PostgreSQL: consulta especies.
+// MongoDB no se toca aquí.
+// =====================================================
+
+router.get('/especies', async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT id, nombre
+      FROM especie
+      ORDER BY nombre ASC
+    `);
+
+    return res.json({
+      ok: true,
+      especies: result.rows,
+    });
+  } catch (error) {
+    console.error('Error obteniendo especies:', error);
+    return res.status(500).json({
+      ok: false,
+      message: 'Error obteniendo especies',
+    });
+  }
+});
+
+// =====================================================
+// GET /api/pets/razas
+// Consulta las razas disponibles para mascotas.
+// PostgreSQL: consulta razas.
+// MongoDB no se toca aquí.
+// =====================================================
+
+router.get('/razas/:especieId', async (req, res) => {
+  try {
+    const { especieId } = req.params;
+
+    const result = await pool.query(
+      `
+      SELECT id, nombre, fk_especie
+      FROM raza
+      WHERE fk_especie = $1
+      ORDER BY nombre ASC
+      `,
+      [especieId]
+    );
+
+    return res.json({
+      ok: true,
+      razas: result.rows,
+    });
+  } catch (error) {
+    console.error('Error obteniendo razas:', error);
+    return res.status(500).json({
+      ok: false,
+      message: 'Error obteniendo razas',
+    });
+  }
+});
+
+// =====================================================
+// GET /api/pets/sexos
+// Consulta los sexos disponibles para mascotas.
+// PostgreSQL: consulta sexos.
+// MongoDB no se toca aquí.
+// =====================================================
+
+router.get('/sexos', (req, res) => {
+  return res.json({
+    ok: true,
+    sexos: [
+      { id: 'MACHO', nombre: 'Macho' },
+      { id: 'HEMBRA', nombre: 'Hembra' },
+      { id: 'NO_DEFINIDO', nombre: 'No definido' },
+    ],
+  });
+});
+
 
 // =====================================================
 // GET /api/pets/my?usuarioId=1
@@ -376,10 +459,9 @@ router.get('/:id', async (req, res) => {
 // =====================================================
 // delete /api/pets/:id
 // Elimina una mascota.
-// PostgreSQL: elimina mascota.
+// PostgreSQL: cambia el estado a INACTIVA.
 // MongoDB elimina las imágenes asociadas a esa mascota (estado INACTIVA).
 // =====================================================
-
 
 router.delete('/:id', async (req, res) => {
   try {
@@ -389,13 +471,13 @@ router.delete('/:id', async (req, res) => {
     if (!fk_usuario) {
       return res.status(400).json({
         ok: false,
-        message: 'El usuario es obligatorio para eliminar la mascota',
+        message: 'El usuario es obligatorio para inactivar la mascota',
       });
     }
 
     const mascotaResult = await pool.query(
       `
-      SELECT id, nombre, fk_usuario
+      SELECT id, nombre, fk_usuario, estado
       FROM mascota
       WHERE id = $1
         AND fk_usuario = $2
@@ -410,25 +492,55 @@ router.delete('/:id', async (req, res) => {
       });
     }
 
+    if (mascotaResult.rows[0].estado === 'INACTIVA') {
+      return res.status(200).json({
+        ok: true,
+        message: 'La mascota ya se encuentra inactiva',
+      });
+    }
+
     await pool.query(
       `
-      DELETE FROM mascota
+      UPDATE mascota
+      SET estado = 'INACTIVA'
       WHERE id = $1
         AND fk_usuario = $2
       `,
       [id, fk_usuario]
     );
 
+    let mongoResult = null;
+
+    try {
+      mongoResult = await inactivarImagenesMascotaMongo({
+        mascotaId: id,
+        usuarioId: fk_usuario,
+      });
+    } catch (mongoError) {
+      console.error('Error inactivando imágenes en MongoDB:', mongoError);
+
+      return res.status(500).json({
+        ok: false,
+        message:
+          'La mascota fue inactivada en PostgreSQL, pero falló la inactivación de imágenes en MongoDB',
+        error: mongoError.message,
+      });
+    }
+
     return res.status(200).json({
       ok: true,
-      message: 'Mascota eliminada correctamente',
+      message: 'Mascota e imágenes inactivadas correctamente',
+      mongo: {
+        matchedCount: mongoResult?.matchedCount ?? 0,
+        modifiedCount: mongoResult?.modifiedCount ?? 0,
+      },
     });
   } catch (error) {
-    console.error('Error eliminando mascota:', error);
+    console.error('Error inactivando mascota:', error);
 
     return res.status(500).json({
       ok: false,
-      message: 'Error eliminando mascota',
+      message: 'Error inactivando mascota',
       error: error.message,
     });
   }

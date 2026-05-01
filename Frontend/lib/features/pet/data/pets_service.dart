@@ -2,7 +2,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 class PetsService {
-  static const String baseUrl = 'http://172.24.207.228:3000/api';
+  static const String baseUrl = 'http://10.121.154.228:3000/api';
 
   static Future<List<Map<String, dynamic>>> getMyPets({
     required int usuarioId,
