@@ -1,5 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:url_launcher/url_launcher.dart';
+
+import '../../../faq/presentation/screens/faq_screen.dart';
 import '../../../pet/presentation/pages/my_pets_page.dart';
+
 class MapPage extends StatefulWidget {
   final String userName;
 
@@ -12,6 +17,10 @@ class MapPage extends StatefulWidget {
   State<MapPage> createState() => _MapPageState();
 }
 
+/* ============================================================================
+   ENUMS DEL MAPA
+   ============================================================================ */
+
 enum MapFilter {
   active,
   found,
@@ -23,74 +32,349 @@ enum MapStatus {
   error,
 }
 
+enum ReportType {
+  lost,
+  sighting,
+  found,
+}
+
+/* ============================================================================
+   MODELO TEMPORAL PARA LOS REPORTES DEL MAPA
+   ============================================================================ */
+
+/*
+  Aquí definí un modelo temporal para representar los reportes y avistamientos
+  que se muestran en el mapa. Por ahora estos datos están quemados en el código,
+  porque mi parte actual es dejar funcional la interfaz del mapa sin depender
+  todavía del backend.
+
+  Más adelante, estos datos deben venir desde la base de datos y los endpoints
+  correspondientes de reportes, avistamientos y ubicaciones.
+*/
+class MapReport {
+  final String id;
+  final String title;
+  final String petName;
+  final String details;
+  final String location;
+  final String description;
+  final String dateText;
+  final String imageAsset;
+  final LatLng position;
+  final ReportType type;
+
+  /*
+    Aquí agregué los datos de contacto del dueño. Esto aplica principalmente
+    para reportes de pérdida.
+
+    La idea es respetar la lógica del campo mostrar_contacto: si el dueño
+    autorizó mostrar sus datos, el detalle permite ver nombre y teléfono.
+    No muestro el correo en la interfaz porque para este flujo es más útil
+    contactar directamente por llamada.
+  */
+  final bool showContact;
+  final String ownerName;
+  final String ownerPhone;
+  final String ownerEmail;
+
+  const MapReport({
+    required this.id,
+    required this.title,
+    required this.petName,
+    required this.details,
+    required this.location,
+    required this.description,
+    required this.dateText,
+    required this.imageAsset,
+    required this.position,
+    required this.type,
+    required this.showContact,
+    required this.ownerName,
+    required this.ownerPhone,
+    required this.ownerEmail,
+  });
+}
+
+/* ============================================================================
+   PÁGINA PRINCIPAL DEL MAPA
+   ============================================================================ */
+
 class _MapPageState extends State<MapPage> {
+  GoogleMapController? _mapController;
+
   MapFilter _selectedFilter = MapFilter.active;
   MapStatus _status = MapStatus.loaded;
   bool _menuOpen = false;
-  String? _selectedCardType = 'lost';
+  MapReport? _selectedReport;
 
   static const Color backgroundColor = Color(0xFFDDEFE2);
-  static const Color primaryGreen = Color(0xFF4E967B);
-  static const Color darkText = Color(0xFF405466);
-  static const Color lightGreen = Color(0xFFE6F5EC);
-  static const Color foundGreen = Color(0xFF4E967B);
-  static const Color lostRed = Color(0xFFE96F67);
 
+  /*
+    Aquí dejé el mapa centrado en Ciudad Salitre Occidental, Bogotá, porque
+    esa es la zona definida como alcance inicial del proyecto.
+  */
+  static const LatLng _ciudadSalitre = LatLng(4.6569, -74.1095);
+
+  void _moveCamera(LatLng position) {
+    _mapController?.animateCamera(
+      CameraUpdate.newLatLngZoom(position, 15),
+    );
+  }
+
+  /* --------------------------------------------------------------------------
+     DATOS QUEMADOS TEMPORALES
+     -------------------------------------------------------------------------- */
+
+  /*
+    Aquí quemé algunos reportes activos para simular mascotas perdidas y
+    avistamientos dentro de Ciudad Salitre Occidental.
+
+    Estos datos me permiten probar el comportamiento del mapa, los marcadores,
+    el panel inferior y la pantalla de detalle sin depender todavía del backend.
+  */
+  final List<MapReport> _activeReports = const [
+    MapReport(
+      id: 'lost_1',
+      title: 'Mascota perdida',
+      petName: 'Max',
+      details: 'Perro · Golden Retriever · Dorado',
+      location: 'Carrera 53, Ciudad Salitre Occidental',
+      description:
+      'Visto por última vez corriendo hacia la avenida. Parece asustado y responde al nombre de Max.',
+      dateText: '12 Abr 2024, 10:30 AM',
+      imageAsset: 'assets/images/logo_animap.png',
+      position: LatLng(4.6577, -74.1082),
+      type: ReportType.lost,
+      showContact: true,
+      ownerName: 'Felipe Quevedo',
+      ownerPhone: '300 123 4567',
+      ownerEmail: 'FelipeQuevedo@gmail.com',
+    ),
+    MapReport(
+      id: 'lost_2',
+      title: 'Mascota perdida',
+      petName: 'Luna',
+      details: 'Gato · Criollo · Gris',
+      location: 'Calle 24C, Ciudad Salitre Occidental',
+      description:
+      'Se perdió cerca al conjunto residencial. Tiene collar azul y suele esconderse en zonas verdes.',
+      dateText: '12 Abr 2024, 2:15 PM',
+      imageAsset: 'assets/images/logo_animap.png',
+      position: LatLng(4.6559, -74.1112),
+      type: ReportType.lost,
+      showContact: true,
+      ownerName: 'Laura Gómez',
+      ownerPhone: '311 456 7890',
+      ownerEmail: 'laura.gomez@email.com',
+    ),
+    MapReport(
+      id: 'sighting_1',
+      title: 'Avistamiento',
+      petName: 'No identificado',
+      details: 'Especie: Perro · Color claro',
+      location: 'Parque Ciudad Salitre',
+      description:
+      'Fue visto caminando solo cerca de la zona verde. No tenía collar visible.',
+      dateText: '12 Abr 2024, 3:40 PM',
+      imageAsset: 'assets/images/logo_animap.png',
+      position: LatLng(4.6586, -74.1101),
+      type: ReportType.sighting,
+      showContact: false,
+      ownerName: 'Usuario de la comunidad',
+      ownerPhone: '',
+      ownerEmail: '',
+    ),
+    MapReport(
+      id: 'sighting_2',
+      title: 'Avistamiento',
+      petName: 'No identificado',
+      details: 'Especie: Gato · Color oscuro',
+      location: 'Carrera 60, Ciudad Salitre Occidental',
+      description:
+      'Visto cerca a la Carrera 60. Parece estar perdido y se mantiene cerca de los edificios.',
+      dateText: '13 Abr 2024, 8:20 AM',
+      imageAsset: 'assets/images/logo_animap.png',
+      position: LatLng(4.6549, -74.1078),
+      type: ReportType.sighting,
+      showContact: false,
+      ownerName: 'Usuario de la comunidad',
+      ownerPhone: '',
+      ownerEmail: '',
+    ),
+  ];
+
+  /*
+    Aquí quemé reportes encontrados para probar el filtro "Encontrados".
+    En la versión final, estos datos deberían venir del backend filtrados
+    por estado del reporte.
+  */
+  final List<MapReport> _foundReports = const [
+    MapReport(
+      id: 'found_1',
+      title: 'Mascota encontrada',
+      petName: 'Pluto',
+      details: 'Perro · Golden Retriever · Macho',
+      location: 'Pablo Andrade, Ciudad Salitre Occidental',
+      description:
+      'El reporte fue finalizado porque el dueño confirmó que la mascota fue encontrada.',
+      dateText: '14 Abr 2024, 11:00 AM',
+      imageAsset: 'assets/images/logo_animap.png',
+      position: LatLng(4.6565, -74.1068),
+      type: ReportType.found,
+      showContact: false,
+      ownerName: 'Equipo AniMap',
+      ownerPhone: '',
+      ownerEmail: '',
+    ),
+    MapReport(
+      id: 'found_2',
+      title: 'Mascota encontrada',
+      petName: 'Milo',
+      details: 'Gato · Criollo · Gris',
+      location: 'Av. La Esperanza, Ciudad Salitre Occidental',
+      description: 'El dueño cerró el caso porque la mascota regresó a casa.',
+      dateText: '15 Abr 2024, 6:45 PM',
+      imageAsset: 'assets/images/logo_animap.png',
+      position: LatLng(4.6591, -74.1124),
+      type: ReportType.found,
+      showContact: false,
+      ownerName: 'Equipo AniMap',
+      ownerPhone: '',
+      ownerEmail: '',
+    ),
+  ];
+
+  /* --------------------------------------------------------------------------
+     DATOS VISIBLES SEGÚN FILTRO
+     -------------------------------------------------------------------------- */
+
+  /*
+    Aquí controlo qué reportes se muestran según el filtro seleccionado.
+    Si el estado del mapa no está cargado, no muestro marcadores.
+  */
+  List<MapReport> get _visibleReports {
+    if (_status != MapStatus.loaded) return [];
+
+    if (_selectedFilter == MapFilter.active) {
+      return _activeReports;
+    }
+
+    return _foundReports;
+  }
+
+  /*
+    Aquí convierto los reportes visibles en marcadores de Google Maps.
+    Uso rojo para mascotas perdidas y verde para avistamientos o encontradas.
+  */
+  Set<Marker> get _markers {
+    return _visibleReports.map((report) {
+      final BitmapDescriptor markerColor = report.type == ReportType.lost
+          ? BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed)
+          : BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen);
+
+      return Marker(
+        markerId: MarkerId(report.id),
+        position: report.position,
+        icon: markerColor,
+
+        /*
+          Aquí dejé desactivado el texto nativo del marcador para que la
+          interacción principal sea la tarjeta inferior personalizada.
+        */
+        infoWindow: InfoWindow.noText,
+        onTap: () {
+          setState(() {
+            _selectedReport = report;
+          });
+        },
+      );
+    }).toSet();
+  }
+
+  /* --------------------------------------------------------------------------
+     ACCIONES DEL MAPA
+     -------------------------------------------------------------------------- */
+
+  /*
+    Aquí cambio entre reportes activos y reportes encontrados.
+    También selecciono el primer reporte disponible para mostrar una tarjeta
+    inferior de ejemplo.
+  */
   void _toggleFilter(MapFilter filter) {
+    final List<MapReport> nextReports =
+    filter == MapFilter.active ? _activeReports : _foundReports;
+
     setState(() {
       _selectedFilter = filter;
-      _selectedCardType = filter == MapFilter.active ? 'lost' : 'found';
-      _status = MapStatus.loaded;
+      _status = nextReports.isEmpty ? MapStatus.empty : MapStatus.loaded;
+      _selectedReport = nextReports.isNotEmpty ? nextReports.first : null;
     });
+
+    if (nextReports.isNotEmpty) {
+      _moveCamera(nextReports.first.position);
+    }
   }
 
-  void _openLostCard() {
-    setState(() {
-      _selectedCardType = 'lost';
-      _status = MapStatus.loaded;
-    });
-  }
-
-  void _openSightingCard() {
-    setState(() {
-      _selectedCardType = 'sighting';
-      _status = MapStatus.loaded;
-    });
-  }
-
-  void _openFoundCard() {
-    setState(() {
-      _selectedCardType = 'found';
-      _status = MapStatus.loaded;
-      _selectedFilter = MapFilter.found;
-    });
-  }
-
-  void _showEmptyState() {
-    setState(() {
-      _status = MapStatus.empty;
-      _selectedCardType = null;
-    });
-  }
-
-  void _showErrorState() {
-    setState(() {
-      _status = MapStatus.error;
-      _selectedCardType = null;
-    });
-  }
-
+  /*
+    Aquí reintento cargar el mapa cuando ocurra un error.
+    Por ahora vuelve a cargar los datos quemados disponibles.
+  */
   void _retryLoad() {
+    final List<MapReport> reports =
+    _selectedFilter == MapFilter.active ? _activeReports : _foundReports;
+
     setState(() {
-      _status = MapStatus.loaded;
-      _selectedCardType = _selectedFilter == MapFilter.active ? 'lost' : 'found';
+      _status = reports.isEmpty ? MapStatus.empty : MapStatus.loaded;
+      _selectedReport = reports.isNotEmpty ? reports.first : null;
     });
+
+    _moveCamera(_ciudadSalitre);
   }
 
   void _toggleMenu() {
     setState(() {
       _menuOpen = !_menuOpen;
     });
+  }
+
+  void _showEmptyState() {
+    setState(() {
+      _status = MapStatus.empty;
+      _selectedReport = null;
+    });
+  }
+
+  void _showErrorState() {
+    setState(() {
+      _status = MapStatus.error;
+      _selectedReport = null;
+    });
+  }
+
+  String _getReportCardType(MapReport report) {
+    if (report.type == ReportType.lost) {
+      return 'lost';
+    }
+
+    if (report.type == ReportType.sighting) {
+      return 'sighting';
+    }
+
+    return 'found';
+  }
+
+  MapReport? _getFirstLostReport() {
+    for (final report in _activeReports) {
+      if (report.type == ReportType.lost) {
+        return report;
+      }
+    }
+
+    if (_activeReports.isNotEmpty) {
+      return _activeReports.first;
+    }
+
+    return null;
   }
 
   @override
@@ -112,28 +396,33 @@ class _MapPageState extends State<MapPage> {
               Expanded(
                 child: Stack(
                   children: [
-                    _MapMock(
-                      selectedFilter: _selectedFilter,
-                      status: _status,
-                      onLostTap: _openLostCard,
-                      onSightingTap: _openSightingCard,
-                      onFoundTap: _openFoundCard,
+                    GoogleMap(
+                      initialCameraPosition: const CameraPosition(
+                        target: _ciudadSalitre,
+                        zoom: 15,
+                      ),
+                      markers: _markers,
+                      onMapCreated: (controller) {
+                        _mapController = controller;
+                      },
+                      myLocationButtonEnabled: false,
+                      zoomControlsEnabled: false,
                     ),
                     if (_status == MapStatus.empty) const _EmptyStateCard(),
                     if (_status == MapStatus.error)
                       _ErrorStateCard(
                         onRetry: _retryLoad,
                       ),
-                    if (_status == MapStatus.loaded && _selectedCardType != null)
+                    if (_status == MapStatus.loaded && _selectedReport != null)
                       Positioned(
                         left: 16,
                         right: 16,
                         bottom: 18,
                         child: _ReportPreviewCard(
-                          type: _selectedCardType!,
+                          type: _getReportCardType(_selectedReport!),
                           onClose: () {
                             setState(() {
-                              _selectedCardType = null;
+                              _selectedReport = null;
                             });
                           },
                         ),
@@ -170,20 +459,30 @@ class _MapPageState extends State<MapPage> {
             _SideMenu(
               onClose: _toggleMenu,
               onLostPets: () {
+                final MapReport? firstLostReport = _getFirstLostReport();
+
                 setState(() {
                   _menuOpen = false;
                   _selectedFilter = MapFilter.active;
-                  _status = MapStatus.loaded;
-                  _selectedCardType = 'lost';
+                  _status = _activeReports.isEmpty
+                      ? MapStatus.empty
+                      : MapStatus.loaded;
+                  _selectedReport = firstLostReport;
                 });
+
+                if (firstLostReport != null) {
+                  _moveCamera(firstLostReport.position);
+                }
               },
               onMyPets: () {
                 setState(() {
                   _menuOpen = false;
                 });
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Aquí irá Mis Mascotas.'),
+
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const MyPetsPage(),
                   ),
                 );
               },
@@ -1106,15 +1405,12 @@ class _SideMenu extends StatelessWidget {
               ),
               const SizedBox(height: 65),
               _MenuItem(
+                text: 'Mascotas Perdidas',
+                onTap: onLostPets,
+              ),
+              _MenuItem(
                 text: 'Mis Mascotas',
-                onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => const MyPetsPage(),
-                    ),
-                  );
-                },
+                onTap: onMyPets,
               ),
               _MenuItem(
                 text: 'Preguntas Frecuentes',

@@ -2,7 +2,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 class CatalogosService {
-  static const String baseUrl = 'http://10.121.154.228:3000/api/pets';
+  static const String baseUrl = 'http://10.177.24.228:3000/api/pets';
 
   static Future<List<Map<String, dynamic>>> obtenerEspecies() async {
     final response = await http.get(Uri.parse('$baseUrl/especies'));
