@@ -4,6 +4,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../../faq/presentation/screens/faq_screen.dart';
 import '../../../pet/presentation/pages/my_pets_page.dart';
+import '../../../user/presentation/profile_page.dart';
 
 class MapPage extends StatefulWidget {
   final String userName;
@@ -446,9 +447,13 @@ class _MapPageState extends State<MapPage> {
                   );
                 },
                 onProfileTap: () {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text('Perfil de ${widget.userName}'),
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => ProfilePage(
+                        userName: widget.userName,
+                        profilePhotoUrl: null,
+                      ),
                     ),
                   );
                 },
