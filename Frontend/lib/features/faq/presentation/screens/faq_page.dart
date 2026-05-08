@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 
+import '../../../../widgets/bottom_menu_animap.dart';
+import '../../../../widgets/top_menu_animap.dart';
+
 class FaqScreen extends StatefulWidget {
   const FaqScreen({super.key});
 
@@ -62,19 +65,18 @@ class _FaqScreenState extends State<FaqScreen> {
 
     return Scaffold(
       backgroundColor: const Color(0xFFF7FAF7),
-      appBar: AppBar(
-        title: const Text('Preguntas Frecuentes'),
-        backgroundColor: const Color(0xFF2E7D5B),
-        foregroundColor: Colors.white,
-        elevation: 0,
-      ),
+
+      drawer: const AniMapSideMenu(),
+
       body: Column(
         children: [
+          const TopMenuAnimap(),
+
           Container(
             width: double.infinity,
-            padding: const EdgeInsets.fromLTRB(20, 18, 20, 12),
+            padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
             decoration: const BoxDecoration(
-              color: Color(0xFF2E7D5B),
+              color: Color(0xFFDFF3E8),
               borderRadius: BorderRadius.only(
                 bottomLeft: Radius.circular(26),
                 bottomRight: Radius.circular(26),
@@ -86,26 +88,32 @@ class _FaqScreenState extends State<FaqScreen> {
                 Text(
                   'Centro de ayuda',
                   style: TextStyle(
-                    color: Colors.white,
+                    color: Color(0xFF344955),
                     fontSize: 24,
                     fontWeight: FontWeight.bold,
                   ),
                 ),
+
                 SizedBox(height: 6),
+
                 Text(
                   'Encuentra respuestas rápidas sobre el uso de AniMap.',
                   style: TextStyle(
-                    color: Colors.white70,
+                    color: Color(0xFF344955),
                     fontSize: 14,
                   ),
                 ),
               ],
             ),
           ),
+
           SizedBox(
-            height: 58,
+            height: 62,
             child: ListView.separated(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              padding: const EdgeInsets.symmetric(
+                horizontal: 16,
+                vertical: 12,
+              ),
               scrollDirection: Axis.horizontal,
               itemCount: categories.length,
               separatorBuilder: (_, __) => const SizedBox(width: 8),
@@ -117,12 +125,16 @@ class _FaqScreenState extends State<FaqScreen> {
                   label: Text(category),
                   selected: isSelected,
                   selectedColor: const Color(0xFF2E7D5B),
+                  backgroundColor: Colors.white,
+                  side: const BorderSide(
+                    color: Color(0xFF2E7D5B),
+                  ),
                   labelStyle: TextStyle(
-                    color: isSelected ? Colors.white : const Color(0xFF2E7D5B),
+                    color: isSelected
+                        ? Colors.white
+                        : const Color(0xFF2E7D5B),
                     fontWeight: FontWeight.w600,
                   ),
-                  backgroundColor: Colors.white,
-                  side: const BorderSide(color: Color(0xFF2E7D5B)),
                   onSelected: (_) {
                     setState(() {
                       selectedCategory = category;
@@ -132,13 +144,20 @@ class _FaqScreenState extends State<FaqScreen> {
               },
             ),
           ),
+
           Expanded(
             child: filteredFaqs.isEmpty
                 ? const Center(
-              child: Text('No hay preguntas registradas.'),
+              child: Text(
+                'No hay preguntas registradas.',
+                style: TextStyle(
+                  fontSize: 14,
+                  color: Colors.black54,
+                ),
+              ),
             )
                 : ListView.builder(
-              padding: const EdgeInsets.fromLTRB(16, 4, 16, 20),
+              padding: const EdgeInsets.fromLTRB(16, 4, 16, 120),
               itemCount: filteredFaqs.length,
               itemBuilder: (context, index) {
                 final faq = filteredFaqs[index];
@@ -153,11 +172,22 @@ class _FaqScreenState extends State<FaqScreen> {
                   child: ExpansionTile(
                     iconColor: const Color(0xFF2E7D5B),
                     collapsedIconColor: const Color(0xFF2E7D5B),
+                    tilePadding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 4,
+                    ),
+                    childrenPadding: const EdgeInsets.fromLTRB(
+                      16,
+                      0,
+                      16,
+                      16,
+                    ),
                     title: Text(
                       faq['question']!,
                       style: const TextStyle(
                         fontWeight: FontWeight.bold,
                         fontSize: 15,
+                        color: Colors.black87,
                       ),
                     ),
                     subtitle: Padding(
@@ -167,21 +197,19 @@ class _FaqScreenState extends State<FaqScreen> {
                         style: const TextStyle(
                           color: Color(0xFF2E7D5B),
                           fontSize: 12,
+                          fontWeight: FontWeight.w600,
                         ),
                       ),
                     ),
                     children: [
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                        child: Align(
-                          alignment: Alignment.centerLeft,
-                          child: Text(
-                            faq['answer']!,
-                            style: const TextStyle(
-                              fontSize: 14,
-                              height: 1.4,
-                              color: Colors.black87,
-                            ),
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          faq['answer']!,
+                          style: const TextStyle(
+                            fontSize: 14,
+                            height: 1.4,
+                            color: Colors.black87,
                           ),
                         ),
                       ),
@@ -192,6 +220,10 @@ class _FaqScreenState extends State<FaqScreen> {
             ),
           ),
         ],
+      ),
+
+      bottomNavigationBar: const BottomMenuAnimap(
+        currentIndex: 1,
       ),
     );
   }

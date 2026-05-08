@@ -2,9 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-import '../../../faq/presentation/screens/faq_screen.dart';
+import '../../../../widgets/bottom_menu_animap.dart';
+import '../../../../widgets/top_menu_animap.dart';
+import '../../../faq/presentation/screens/faq_page.dart';
 import '../../../pet/presentation/pages/my_pets_page.dart';
-import '../../../user/presentation/profile_page.dart';
+import '../../../user/presentation/pages/profile_page.dart';
 
 class MapPage extends StatefulWidget {
   final String userName;
@@ -379,87 +381,77 @@ class _MapPageState extends State<MapPage> {
   }
 
   @override
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: backgroundColor,
+      drawer: const AniMapSideMenu(),
       body: Stack(
         children: [
-          Column(
-            children: [
-              _Header(
-                onMenuTap: _toggleMenu,
-              ),
-              _FilterBar(
-                selectedFilter: _selectedFilter,
-                onActiveTap: () => _toggleFilter(MapFilter.active),
-                onFoundTap: () => _toggleFilter(MapFilter.found),
-              ),
-              Expanded(
-                child: Stack(
-                  children: [
-                    GoogleMap(
-                      initialCameraPosition: const CameraPosition(
-                        target: _ciudadSalitre,
-                        zoom: 15,
-                      ),
-                      markers: _markers,
-                      onMapCreated: (controller) {
-                        _mapController = controller;
-                      },
-                      myLocationButtonEnabled: false,
-                      zoomControlsEnabled: false,
-                    ),
-                    if (_status == MapStatus.empty) const _EmptyStateCard(),
-                    if (_status == MapStatus.error)
-                      _ErrorStateCard(
-                        onRetry: _retryLoad,
-                      ),
-                    if (_status == MapStatus.loaded && _selectedReport != null)
-                      Positioned(
-                        left: 16,
-                        right: 16,
-                        bottom: 18,
-                        child: _ReportPreviewCard(
-                          type: _getReportCardType(_selectedReport!),
-                          onClose: () {
-                            setState(() {
-                              _selectedReport = null;
-                            });
-                          },
-                        ),
-                      ),
-                    Positioned(
-                      left: 0,
-                      right: 0,
-                      bottom: 0,
-                      child: _LocationBar(),
-                    ),
-                  ],
+          SafeArea(
+            child: Column(
+              children: [
+                const TopMenuAnimap(),
+
+                _FilterBar(
+                  selectedFilter: _selectedFilter,
+                  onActiveTap: () => _toggleFilter(MapFilter.active),
+                  onFoundTap: () => _toggleFilter(MapFilter.found),
                 ),
-              ),
-              _BottomNavigation(
-                onHomeTap: _retryLoad,
-                onCreateTap: () {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Aquí irá crear reporte.'),
-                    ),
-                  );
-                },
-                onProfileTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => ProfilePage(
-                        userName: widget.userName,
-                        profilePhotoUrl: null,
+
+                Expanded(
+                  child: Stack(
+                    children: [
+                      GoogleMap(
+                        initialCameraPosition: const CameraPosition(
+                          target: _ciudadSalitre,
+                          zoom: 15,
+                        ),
+                        markers: _markers,
+                        onMapCreated: (controller) {
+                          _mapController = controller;
+                        },
+                        myLocationButtonEnabled: false,
+                        zoomControlsEnabled: false,
                       ),
-                    ),
-                  );
-                },
-              ),
-            ],
+
+                      if (_status == MapStatus.empty)
+                        const _EmptyStateCard(),
+
+                      if (_status == MapStatus.error)
+                        _ErrorStateCard(
+                          onRetry: _retryLoad,
+                        ),
+
+                      if (_status == MapStatus.loaded &&
+                          _selectedReport != null)
+                        Positioned(
+                          left: 16,
+                          right: 16,
+                          bottom: 78,
+                          child: _ReportPreviewCard(
+                            type: _getReportCardType(_selectedReport!),
+                            onClose: () {
+                              setState(() {
+                                _selectedReport = null;
+                              });
+                            },
+                          ),
+                        ),
+
+                      Positioned(
+                        left: 0,
+                        right: 0,
+                        bottom: 0,
+                        child: _LocationBar(),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
           ),
+
           if (_menuOpen)
             _SideMenu(
               onClose: _toggleMenu,
@@ -484,17 +476,13 @@ class _MapPageState extends State<MapPage> {
                   _menuOpen = false;
                 });
 
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => const MyPetsPage(),
-                  ),
-                );
+                Navigator.pushReplacementNamed(context, '/pets');
               },
               onFaq: () {
                 setState(() {
                   _menuOpen = false;
                 });
+
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(
                     content: Text('Aquí irá Preguntas Frecuentes.'),
@@ -508,6 +496,7 @@ class _MapPageState extends State<MapPage> {
                 setState(() {
                   _menuOpen = false;
                 });
+
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(
                     content: Text('Aquí irá Crear reporte.'),
@@ -515,6 +504,7 @@ class _MapPageState extends State<MapPage> {
                 );
               },
             ),
+
           Positioned(
             right: 12,
             top: 130,
@@ -537,60 +527,9 @@ class _MapPageState extends State<MapPage> {
           ),
         ],
       ),
-    );
-  }
-}
 
-class _Header extends StatelessWidget {
-  final VoidCallback onMenuTap;
-
-  const _Header({
-    required this.onMenuTap,
-  });
-
-  static const Color darkText = Color(0xFF405466);
-
-  @override
-  Widget build(BuildContext context) {
-    return SafeArea(
-      bottom: false,
-      child: Container(
-        height: 75,
-        padding: const EdgeInsets.symmetric(horizontal: 18),
-        color: const Color(0xFFDDF2E7),
-        child: Row(
-          children: [
-            GestureDetector(
-              onTap: onMenuTap,
-              child: const Icon(
-                Icons.menu,
-                size: 28,
-                color: Colors.black87,
-              ),
-            ),
-            const Spacer(),
-            Image.asset(
-              'assets/images/Logo_Principal_AniMap.png',
-              height: 50,
-              fit: BoxFit.contain,
-            ),
-            const SizedBox(width: 6),
-            const Text(
-              'AniMap',
-              style: TextStyle(
-                color: darkText,
-                fontSize: 27,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const Spacer(),
-            const Icon(
-              Icons.notifications,
-              size: 26,
-              color: Colors.black87,
-            ),
-          ],
-        ),
+      bottomNavigationBar: BottomMenuAnimap(
+        currentIndex: 0,
       ),
     );
   }

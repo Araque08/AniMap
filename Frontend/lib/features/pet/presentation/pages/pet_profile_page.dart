@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../../../widgets/bottom_menu_animap.dart';
+import '../../../../widgets/top_menu_animap.dart';
 import '../../data/mascotas_service.dart';
 import 'register_pet_page.dart';
 
@@ -198,10 +200,10 @@ class _PetProfilePageState extends State<PetProfilePage> {
     }
 
     if (cleanValue.startsWith('/')) {
-      return 'http://172.24.207.228:3000$cleanValue';
+      return 'http://10.0.2.2:3000/$cleanValue';
     }
 
-    return 'http://172.24.207.228:3000/$cleanValue';
+    return 'http://10.0.2.2:3000/$cleanValue';
   }
 
   Color _statusColor(String estado) {
@@ -260,6 +262,8 @@ class _PetProfilePageState extends State<PetProfilePage> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFEAF7F0),
+      drawer: const AniMapSideMenu(),
+
       body: SafeArea(
         child: FutureBuilder<PetProfile>(
           future: _futurePet,
@@ -306,11 +310,8 @@ class _PetProfilePageState extends State<PetProfilePage> {
 
             return Column(
               children: [
-                _TopHeader(
-                  onMenuTap: () {
-                    Navigator.pop(context);
-                  },
-                ),
+                const TopMenuAnimap(),
+
                 Expanded(
                   child: SingleChildScrollView(
                     padding: const EdgeInsets.fromLTRB(14, 10, 14, 18),
@@ -322,6 +323,7 @@ class _PetProfilePageState extends State<PetProfilePage> {
                             const Expanded(
                               child: SizedBox(),
                             ),
+
                             const Expanded(
                               flex: 3,
                               child: Text(
@@ -334,6 +336,7 @@ class _PetProfilePageState extends State<PetProfilePage> {
                                 ),
                               ),
                             ),
+
                             Expanded(
                               child: widget.mostrarAccionesDueno
                                   ? Align(
@@ -354,7 +357,9 @@ class _PetProfilePageState extends State<PetProfilePage> {
                             ),
                           ],
                         ),
+
                         const SizedBox(height: 18),
+
                         Stack(
                           clipBehavior: Clip.none,
                           alignment: Alignment.bottomRight,
@@ -384,6 +389,7 @@ class _PetProfilePageState extends State<PetProfilePage> {
                                 ),
                               ),
                             ),
+
                             Positioned(
                               right: -22,
                               bottom: -8,
@@ -394,7 +400,9 @@ class _PetProfilePageState extends State<PetProfilePage> {
                             ),
                           ],
                         ),
+
                         const SizedBox(height: 34),
+
                         _PetInfoCard(
                           observaciones: pet.observaciones,
                           items: [
@@ -433,7 +441,9 @@ class _PetProfilePageState extends State<PetProfilePage> {
                             ),
                           ],
                         ),
+
                         const SizedBox(height: 18),
+
                         Align(
                           alignment: Alignment.centerLeft,
                           child: Text(
@@ -445,10 +455,13 @@ class _PetProfilePageState extends State<PetProfilePage> {
                             ),
                           ),
                         ),
+
                         const SizedBox(height: 8),
+
                         _GalleryRow(
                           gallery: gallery,
                         ),
+
                         if (widget.mostrarAccionesDueno) ...[
                           const SizedBox(height: 20),
                           Row(
@@ -471,11 +484,14 @@ class _PetProfilePageState extends State<PetProfilePage> {
                     ),
                   ),
                 ),
-                const _BottomBar(),
               ],
             );
           },
         ),
+      ),
+
+      bottomNavigationBar: const BottomMenuAnimap(
+        currentIndex: 1,
       ),
     );
   }
@@ -707,65 +723,6 @@ class PetPhoto {
       esPrincipal: json['es_principal'] == true ||
           json['esPrincipal'] == true ||
           json['principal'] == true,
-    );
-  }
-}
-
-class _TopHeader extends StatelessWidget {
-  final VoidCallback onMenuTap;
-
-  const _TopHeader({
-    required this.onMenuTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      height: 74,
-      padding: const EdgeInsets.symmetric(horizontal: 14),
-      decoration: const BoxDecoration(
-        color: Color(0xFFDFF5EC),
-      ),
-      child: Row(
-        children: [
-          IconButton(
-            onPressed: onMenuTap,
-            icon: const Icon(
-              Icons.menu,
-              size: 30,
-              color: Colors.black87,
-            ),
-          ),
-          const Spacer(),
-          const Row(
-            children: [
-              Icon(
-                Icons.location_on,
-                color: Color(0xFF4D9B6A),
-                size: 32,
-              ),
-              SizedBox(width: 4),
-              Text(
-                'AniMap',
-                style: TextStyle(
-                  fontSize: 30,
-                  fontWeight: FontWeight.w900,
-                  color: Color(0xFF4B5B61),
-                ),
-              ),
-            ],
-          ),
-          const Spacer(),
-          IconButton(
-            onPressed: () {},
-            icon: const Icon(
-              Icons.notifications,
-              size: 28,
-              color: Colors.black87,
-            ),
-          ),
-        ],
-      ),
     );
   }
 }
@@ -1081,48 +1038,7 @@ class _ActionButton extends StatelessWidget {
   }
 }
 
-class _BottomBar extends StatelessWidget {
-  const _BottomBar();
 
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      height: 66,
-      margin: const EdgeInsets.fromLTRB(6, 0, 6, 6),
-      decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.82),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(
-          color: const Color(0xFFBFE7D3),
-        ),
-      ),
-      child: const Row(
-        mainAxisAlignment: MainAxisAlignment.spaceAround,
-        children: [
-          Icon(
-            Icons.home,
-            color: Color(0xFF4D9B6A),
-            size: 34,
-          ),
-          CircleAvatar(
-            radius: 28,
-            backgroundColor: Color(0xFF6CB85D),
-            child: Icon(
-              Icons.add_circle,
-              color: Colors.white,
-              size: 34,
-            ),
-          ),
-          Icon(
-            Icons.person,
-            color: Color(0xFF4D9B6A),
-            size: 34,
-          ),
-        ],
-      ),
-    );
-  }
-}
 
 class _ErrorView extends StatelessWidget {
   final String message;

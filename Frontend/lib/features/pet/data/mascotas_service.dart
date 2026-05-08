@@ -3,7 +3,7 @@ import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
 
 class MascotasService {
-  static const String baseUrl = 'http://10.177.24.228:3000/api/pets';
+  static const String baseUrl = 'http://10.0.2.2:3000/api/pets';
 
   static Future<Map<String, dynamic>> registrarMascota({
     required int fkUsuario,

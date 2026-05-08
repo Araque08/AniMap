@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
-import '../../map/presentation/pages/map_page.dart';
+import '../../../../widgets/bottom_menu_animap.dart';
+import '../../../../widgets/top_menu_animap.dart';
+import '../../../map/presentation/pages/map_page.dart';
 import 'profile_options_pages.dart';
 
 class ProfilePage extends StatelessWidget {
@@ -42,6 +44,7 @@ class ProfilePage extends StatelessWidget {
 
     return Scaffold(
       backgroundColor: Colors.white,
+      drawer: const AniMapSideMenu(),
       body: SafeArea(
         child: Column(
           children: [
@@ -166,10 +169,8 @@ class ProfilePage extends StatelessWidget {
           ],
         ),
       ),
-      bottomNavigationBar: _BottomNavBar(
-        onHome: onHome,
-        onPets: onPets,
-        onProfile: onProfile,
+      bottomNavigationBar: const BottomMenuAnimap(
+        currentIndex: 2,
       ),
     );
   }
@@ -202,48 +203,7 @@ class _Header extends StatelessWidget {
               color: ProfilePage.primaryGreen,
             ),
           ),
-          Positioned(
-            top: 0,
-            left: 0,
-            right: 0,
-            child: Container(
-              height: 52,
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              decoration: const BoxDecoration(
-                color: Color(0xFFEAF6EE),
-              ),
-              child: Row(
-                children: [
-                  IconButton(
-                    onPressed: onMenu,
-                    icon: const Icon(Icons.menu),
-                    color: ProfilePage.textDark,
-                  ),
-                  const Spacer(),
-                  const Icon(
-                    Icons.pets,
-                    color: ProfilePage.darkGreen,
-                    size: 24,
-                  ),
-                  const SizedBox(width: 5),
-                  const Text(
-                    'AniMap',
-                    style: TextStyle(
-                      color: ProfilePage.textDark,
-                      fontSize: 25,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                  const Spacer(),
-                  IconButton(
-                    onPressed: onNotifications,
-                    icon: const Icon(Icons.notifications),
-                    color: ProfilePage.textDark,
-                  ),
-                ],
-              ),
-            ),
-          ),
+          const TopMenuAnimap(),
           Positioned(
             left: 0,
             right: 0,
@@ -335,105 +295,6 @@ class _ProfileOption extends StatelessWidget {
             ],
           ),
         ),
-      ),
-    );
-  }
-}
-
-class _BottomNavBar extends StatelessWidget {
-  const _BottomNavBar({
-    this.onHome,
-    this.onPets,
-    this.onProfile,
-  });
-
-  final VoidCallback? onHome;
-  final VoidCallback? onPets;
-  final VoidCallback? onProfile;
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      height: 58,
-      child: Stack(
-        clipBehavior: Clip.none,
-        alignment: Alignment.center,
-        children: [
-          Container(
-            height: 58,
-            decoration: const BoxDecoration(
-              color: Colors.white,
-              border: Border(
-                top: BorderSide(
-                  color: Color(0xFFE0E0E0),
-                  width: 1,
-                ),
-              ),
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceAround,
-              children: [
-                IconButton(
-                  onPressed: () {
-                    Navigator.pushReplacement(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => const MapPage(userName: 'sebas',),
-                      ),
-                    );
-                  },
-                  icon: const Icon(Icons.home),
-                  color: ProfilePage.darkGreen,
-                  iconSize: 29,
-                ),
-                const SizedBox(width: 80),
-                IconButton(
-                  onPressed: () {
-                    Navigator.pushReplacement(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => const ProfilePage(),
-                      ),
-                    );
-                  },
-                  icon: const Icon(Icons.person),
-                  color: ProfilePage.darkGreen,
-                  iconSize: 29,
-                ),
-              ],
-            ),
-          ),
-          Positioned(
-            top: -22,
-            child: GestureDetector(
-              onTap: onPets,
-              child: Container(
-                width: 68,
-                height: 68,
-                decoration: BoxDecoration(
-                  color: ProfilePage.darkGreen,
-                  shape: BoxShape.circle,
-                  border: Border.all(
-                    color: Colors.white,
-                    width: 5,
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.16),
-                      blurRadius: 8,
-                      offset: const Offset(0, 3),
-                    ),
-                  ],
-                ),
-                child: const Icon(
-                  Icons.pets,
-                  color: Colors.white,
-                  size: 34,
-                ),
-              ),
-            ),
-          ),
-        ],
       ),
     );
   }

@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import '../../../../widgets/bottom_menu_animap.dart';
+import '../../../../widgets/top_menu_animap.dart';
 import '../../data/catalogos_service.dart';
 import '../../../map/presentation/pages/map_page.dart';
 import 'dart:io';
@@ -546,43 +548,11 @@ class _RegisterPetPageState extends State<RegisterPetPage> {
 
     return Scaffold(
       backgroundColor: background,
+      drawer: const AniMapSideMenu(),
       body: SafeArea(
         child: Column(
           children: [
-            Container(
-              height: 105,
-              width: double.infinity,
-              color: lightGreen,
-              padding: const EdgeInsets.symmetric(horizontal: 18),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Icon(Icons.menu, size: 36, color: Colors.black87),
-                  Row(
-                    children: [
-                      Image.asset(
-                        'assets/images/Logo_Principal_AniMap.png',
-                        height: 55,
-                      ),
-                      const SizedBox(width: 8),
-                      const Text(
-                        'AniMap',
-                        style: TextStyle(
-                          fontSize: 38,
-                          fontWeight: FontWeight.bold,
-                          color: Color(0xFF344955),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const Icon(
-                    Icons.notifications,
-                    size: 36,
-                    color: Colors.black87,
-                  ),
-                ],
-              ),
-            ),
+            const TopMenuAnimap(),
 
             Expanded(
               child: SingleChildScrollView(
@@ -1053,94 +1023,8 @@ class _RegisterPetPageState extends State<RegisterPetPage> {
           ],
         ),
       ),
-      bottomNavigationBar: Container(
-        height: 95,
-        margin: const EdgeInsets.only(left: 16, right: 16, bottom: 10),
-        decoration: BoxDecoration(
-          color: const Color(0xFFF8F8F4),
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(
-            color: const Color(0xFF7ECF9A),
-            width: 1.5,
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.15),
-              blurRadius: 8,
-              offset: const Offset(0, 3),
-            ),
-          ],
-        ),
-        child: Stack(
-          alignment: Alignment.center,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceAround,
-              children: [
-                IconButton(
-                  onPressed: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => const MapPage(userName: '',),
-                      ),
-                    );
-                  },
-                  icon: const Icon(
-                    Icons.home,
-                    size: 42,
-                    color: Color(0xFF4D9B72),
-                  ),
-                ),
-
-                const SizedBox(width: 80),
-
-                IconButton(
-                  onPressed: () {},
-                  icon: const Icon(
-                    Icons.person,
-                    size: 42,
-                    color: Color(0xFF407F72),
-                  ),
-                ),
-              ],
-            ),
-
-            Positioned(
-              top: -5,
-              child: Container(
-                width: 105,
-                height: 105,
-                decoration: const BoxDecoration(
-                  color: Color(0xFFF8F8F4),
-                  shape: BoxShape.circle,
-                ),
-                child: Center(
-                  child: Container(
-                    width: 72,
-                    height: 72,
-                    decoration: const BoxDecoration(
-                      shape: BoxShape.circle,
-                      gradient: LinearGradient(
-                        colors: [
-                          Color(0xFF68B96D),
-                          Color(0xFF09613D),
-                        ],
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                      ),
-                    ),
-                    child: const Icon(
-                      Icons.pets,
-                      color: Colors.white,
-                      size: 45,
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ),
+      bottomNavigationBar: const BottomMenuAnimap(
+        currentIndex: 1,
       ),
     );
   }

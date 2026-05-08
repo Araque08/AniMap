@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../../widgets/bottom_menu_animap.dart';
 import '../../data/pets_service.dart';
 import 'register_pet_page.dart';
 import 'pet_profile_page.dart';
@@ -51,6 +52,7 @@ class _MyPetsPageState extends State<MyPetsPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFF7F8FA),
+
       appBar: AppBar(
         backgroundColor: const Color(0xFFF7F8FA),
         elevation: 0,
@@ -63,8 +65,11 @@ class _MyPetsPageState extends State<MyPetsPage> {
             fontSize: 20,
           ),
         ),
-        iconTheme: const IconThemeData(color: Color(0xFF1F2937)),
+        iconTheme: const IconThemeData(
+          color: Color(0xFF1F2937),
+        ),
       ),
+
       body: FutureBuilder<List<Map<String, dynamic>>>(
         future: _futureMascotas,
         builder: (context, snapshot) {
@@ -116,7 +121,7 @@ class _MyPetsPageState extends State<MyPetsPage> {
           return RefreshIndicator(
             onRefresh: _refreshPets,
             child: ListView.builder(
-              padding: const EdgeInsets.fromLTRB(18, 12, 18, 100),
+              padding: const EdgeInsets.fromLTRB(18, 12, 18, 120),
               itemCount: mascotasActivas.length,
               itemBuilder: (context, index) {
                 final pet = mascotasActivas[index];
@@ -130,7 +135,6 @@ class _MyPetsPageState extends State<MyPetsPage> {
                   status: pet['estado']?.toString() ?? 'ACTIVA',
                   imageUrl: imageUrl,
 
-                  // Click en la tarjeta: abre perfil/detalle
                   onTap: () async {
                     final result = await Navigator.push(
                       context,
@@ -149,26 +153,8 @@ class _MyPetsPageState extends State<MyPetsPage> {
                         );
                       });
                     }
-
                   },
 
-                  /*esto es para navegar a perfil de mascota en modo publico*/
-                  /*Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      bui
-                      lder: (_) => PetProfilePage(
-                        mascotaId: mascota['id'] is int
-                            ? mascota['id']
-                            : int.parse(mascota['id'].toString()),
-                        mostrarAccionesDueno: false,
-                      ),
-                    ),
-                  );*/
-
-
-
-                  // Click en editar: abre formulario de edición
                   onEdit: () async {
                     final updated = await Navigator.push(
                       context,
@@ -189,28 +175,41 @@ class _MyPetsPageState extends State<MyPetsPage> {
           );
         },
       ),
-      floatingActionButton: _hayMascotasActivas
-          ? FloatingActionButton.extended(
-        backgroundColor: const Color(0xFF2563EB),
-        onPressed: () async {
-          final created = await Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (context) => const RegisterPetPage(),
-            ),
-          );
 
-          if (created == true) {
-            _refreshPets();
-          }
-        },
-        icon: const Icon(Icons.add, color: Colors.white),
-        label: const Text(
-          'Agregar',
-          style: TextStyle(color: Colors.white),
+      floatingActionButton: _hayMascotasActivas
+          ? Padding(
+        padding: const EdgeInsets.only(bottom: 90),
+        child: FloatingActionButton.extended(
+          backgroundColor: const Color(0xFF2563EB),
+          onPressed: () async {
+            final created = await Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => const RegisterPetPage(),
+              ),
+            );
+
+            if (created == true) {
+              _refreshPets();
+            }
+          },
+          icon: const Icon(
+            Icons.add,
+            color: Colors.white,
+          ),
+          label: const Text(
+            'Agregar',
+            style: TextStyle(
+              color: Colors.white,
+            ),
+          ),
         ),
       )
           : null,
+
+      bottomNavigationBar: const BottomMenuAnimap(
+        currentIndex: 1,
+      ),
     );
   }
 }
@@ -357,8 +356,11 @@ class _PetCard extends StatelessWidget {
             ],
           ),
         ),
+
       ),
+
     );
+
   }
 }
 
@@ -487,8 +489,10 @@ class _EmptyPetsView extends StatelessWidget {
             ),
           ),
         ],
+
       ),
     );
+
   }
 }
 
