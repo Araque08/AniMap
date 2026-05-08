@@ -26,7 +26,7 @@ const router = express.Router();
 
 /*
   Ruta de prueba para verificar que la API está funcionando.
-  la podemos consultar desde el navegador en:
+  Se puede consultar desde el navegador en:
   http://localhost:3000/api/health
 */
 router.get('/health', (req, res) => {
@@ -52,6 +52,9 @@ router.use('/catalogos', catalogosRoutes);
 
 /*
   Aquí conecto las rutas de mascotas.
+  En el proyecto existen dos archivos de rutas relacionados con mascotas.
+  Se mantienen ambos para no dañar funcionalidades que ya están trabajando
+  tus compañeros, como registro, consulta, edición, imágenes y eliminación.
 */
 router.use('/pets', mascotasRoutes);
 router.use('/pets', petsRoutes);

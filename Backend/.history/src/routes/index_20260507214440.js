@@ -52,6 +52,7 @@ router.use('/catalogos', catalogosRoutes);
 
 /*
   Aquí conecto las rutas de mascotas.
+  En el proyecto existen dos archivos de rutas relacionados con mascotas.
 */
 router.use('/pets', mascotasRoutes);
 router.use('/pets', petsRoutes);
