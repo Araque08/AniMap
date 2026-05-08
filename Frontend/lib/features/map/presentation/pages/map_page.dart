@@ -919,8 +919,8 @@ class _Header extends StatelessWidget {
               en el encabezado principal del mapa.
             */
             Image.asset(
-              'assets/images/Logo_Principal_AniMap.png',
-              height: 50,
+              'assets/images/logo_animap.png',
+              height: 42,
               fit: BoxFit.contain,
             ),
 
@@ -1623,8 +1623,8 @@ class _SideMenu extends StatelessWidget {
                     coherencia visual con el encabezado principal.
                   */
                   Image.asset(
-                    'assets/images/Logo_Principal_AniMap.png',
-                    height: 52,
+                    'assets/images/logo_animap.png',
+                    height: 42,
                     fit: BoxFit.contain,
                   ),
                   const SizedBox(width: 6),
