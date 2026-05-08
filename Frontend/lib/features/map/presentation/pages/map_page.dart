@@ -1,8 +1,10 @@
+import 'dart:convert';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:http/http.dart' as http;
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../faq/presentation/screens/faq_screen.dart';
@@ -43,17 +45,13 @@ enum ReportType {
 }
 
 /* ============================================================================
-   MODELO TEMPORAL PARA LOS REPORTES DEL MAPA
+   MODELO PARA LOS REPORTES DEL MAPA
    ============================================================================ */
 
 /*
-  Aquí definí un modelo temporal para representar los reportes y avistamientos
-  que se muestran en el mapa. Por ahora estos datos están quemados en el código,
-  porque mi parte actual es dejar funcional la interfaz del mapa sin depender
-  todavía del backend.
-
-  Más adelante, estos datos deben venir desde la base de datos y los endpoints
-  correspondientes de reportes, avistamientos y ubicaciones.
+  Este modelo representa los reportes que se muestran en el mapa.
+  Antes esta información estaba quemada en el código, pero ahora se construye
+  desde la respuesta JSON que entrega el backend en /api/map/reports.
 */
 class MapReport {
   final String id;
@@ -68,13 +66,9 @@ class MapReport {
   final ReportType type;
 
   /*
-    Aquí agregué los datos de contacto del dueño. Esto aplica principalmente
-    para reportes de pérdida.
-
-    La idea es respetar la lógica del campo mostrar_contacto: si el dueño
-    autorizó mostrar sus datos, el detalle permite ver nombre y teléfono.
-    No muestro el correo en la interfaz porque para este flujo es más útil
-    contactar directamente por llamada.
+    Aquí guardo los datos de contacto del dueño.
+    Estos datos solo se muestran cuando el backend indica que el dueño autorizó
+    mostrar contacto mediante showContact.
   */
   final bool showContact;
   final String ownerName;
@@ -97,6 +91,87 @@ class MapReport {
     required this.ownerPhone,
     required this.ownerEmail,
   });
+
+  /*
+    Aquí convierto cada registro que llega desde el backend en un MapReport.
+    Esto permite que el mapa pinte datos reales de PostgreSQL sin cambiar
+    la estructura visual que ya teníamos funcionando.
+  */
+  factory MapReport.fromJson(Map<String, dynamic> json) {
+    return MapReport(
+      id: json['id']?.toString() ?? '',
+      title: json['title']?.toString() ?? 'Reporte',
+      petName: json['petName']?.toString() ?? 'No identificado',
+      details: json['details']?.toString() ?? '',
+      location: json['location']?.toString() ?? 'Ubicación no disponible',
+      description: json['description']?.toString() ?? 'Sin descripción',
+      dateText: _formatDateText(json['dateText']),
+      imageAsset: 'assets/images/logo_animap.png',
+      position: LatLng(
+        _toDouble(json['lat']),
+        _toDouble(json['lng']),
+      ),
+      type: _parseReportType(json['type']),
+      showContact: json['showContact'] == true,
+      ownerName: json['ownerName']?.toString() ?? '',
+      ownerPhone: json['ownerPhone']?.toString() ?? '',
+      ownerEmail: json['ownerEmail']?.toString() ?? '',
+    );
+  }
+
+  /*
+    Aquí convierto el texto que llega desde el backend al enum que usa Flutter.
+    Esto define si el marcador será de mascota perdida, avistamiento o mascota
+    encontrada.
+  */
+  static ReportType _parseReportType(dynamic value) {
+    switch (value?.toString()) {
+      case 'lost':
+        return ReportType.lost;
+      case 'found':
+        return ReportType.found;
+      case 'sighting':
+        return ReportType.sighting;
+      default:
+        return ReportType.sighting;
+    }
+  }
+
+  /*
+    Aquí convierto coordenadas que pueden llegar como número o como texto.
+    Si llega un valor inválido uso 0.0 para evitar que la app se rompa.
+  */
+  static double _toDouble(dynamic value) {
+    if (value is num) return value.toDouble();
+
+    return double.tryParse(value?.toString() ?? '') ?? 0.0;
+  }
+
+  /*
+    Aquí doy un formato sencillo a la fecha recibida desde PostgreSQL.
+    No agrego paquetes adicionales para no tocar dependencias del proyecto.
+  */
+  static String _formatDateText(dynamic value) {
+    final String rawDate = value?.toString() ?? '';
+
+    if (rawDate.isEmpty) {
+      return 'Fecha no disponible';
+    }
+
+    final DateTime? parsedDate = DateTime.tryParse(rawDate);
+
+    if (parsedDate == null) {
+      return rawDate;
+    }
+
+    final String day = parsedDate.day.toString().padLeft(2, '0');
+    final String month = parsedDate.month.toString().padLeft(2, '0');
+    final String year = parsedDate.year.toString();
+    final String hour = parsedDate.hour.toString().padLeft(2, '0');
+    final String minute = parsedDate.minute.toString().padLeft(2, '0');
+
+    return '$day/$month/$year, $hour:$minute';
+  }
 }
 
 /* ============================================================================
@@ -131,128 +206,29 @@ class _MapPageState extends State<MapPage> {
   */
   static const LatLng _ciudadSalitre = LatLng(4.6569, -74.1095);
 
+  /*
+    Aquí defino la URL del backend que entrega los reportes del mapa.
+
+    Para Android Emulator se usa 10.0.2.2 porque localhost dentro del emulador
+    apunta al propio emulador, no al computador donde corre el backend.
+
+    Si luego pruebas en un celular físico, esta URL debe cambiarse por la IP
+    local del computador, por ejemplo: http://192.168.x.x:3000/api/map/reports.
+  */
+  static const String _mapReportsUrl =
+      'http://10.0.2.2:3000/api/map/reports';
+
   /* --------------------------------------------------------------------------
-     DATOS QUEMADOS TEMPORALES
+     DATOS DEL MAPA CONSULTADOS DESDE EL BACKEND
      -------------------------------------------------------------------------- */
 
   /*
-    Aquí quemé algunos reportes activos para simular mascotas perdidas y
-    avistamientos dentro de Ciudad Salitre Occidental.
-
-    Estos datos me permiten probar el comportamiento del mapa, los marcadores,
-    el panel inferior y la pantalla de detalle sin depender todavía del backend.
+    Aquí ya no dejo reportes quemados en el código.
+    Estas listas se llenan con la información real que llega desde PostgreSQL
+    por medio del backend.
   */
-  final List<MapReport> _activeReports = const [
-    MapReport(
-      id: 'lost_1',
-      title: 'Mascota perdida',
-      petName: 'Max',
-      details: 'Perro · Golden Retriever · Dorado',
-      location: 'Carrera 53, Ciudad Salitre Occidental',
-      description:
-      'Visto por última vez corriendo hacia la avenida. Parece asustado y responde al nombre de Max.',
-      dateText: '12 Abr 2024, 10:30 AM',
-      imageAsset: 'assets/images/logo_animap.png',
-      position: LatLng(4.6577, -74.1082),
-      type: ReportType.lost,
-      showContact: true,
-      ownerName: 'Felipe Quevedo',
-      ownerPhone: '300 123 4567',
-      ownerEmail: 'FelipeQuevedo@gmail.com',
-    ),
-    MapReport(
-      id: 'lost_2',
-      title: 'Mascota perdida',
-      petName: 'Luna',
-      details: 'Gato · Criollo · Gris',
-      location: 'Calle 24C, Ciudad Salitre Occidental',
-      description:
-      'Se perdió cerca al conjunto residencial. Tiene collar azul y suele esconderse en zonas verdes.',
-      dateText: '12 Abr 2024, 2:15 PM',
-      imageAsset: 'assets/images/logo_animap.png',
-      position: LatLng(4.6559, -74.1112),
-      type: ReportType.lost,
-      showContact: true,
-      ownerName: 'Laura Gómez',
-      ownerPhone: '311 456 7890',
-      ownerEmail: 'laura.gomez@email.com',
-    ),
-    MapReport(
-      id: 'sighting_1',
-      title: 'Avistamiento',
-      petName: 'No identificado',
-      details: 'Especie: Perro · Color claro',
-      location: 'Parque Ciudad Salitre',
-      description:
-      'Fue visto caminando solo cerca de la zona verde. No tenía collar visible.',
-      dateText: '12 Abr 2024, 3:40 PM',
-      imageAsset: 'assets/images/logo_animap.png',
-      position: LatLng(4.6586, -74.1101),
-      type: ReportType.sighting,
-      showContact: false,
-      ownerName: 'Usuario de la comunidad',
-      ownerPhone: '',
-      ownerEmail: '',
-    ),
-    MapReport(
-      id: 'sighting_2',
-      title: 'Avistamiento',
-      petName: 'No identificado',
-      details: 'Especie: Gato · Color oscuro',
-      location: 'Carrera 60, Ciudad Salitre Occidental',
-      description:
-      'Visto cerca a la Carrera 60. Parece estar perdido y se mantiene cerca de los edificios.',
-      dateText: '13 Abr 2024, 8:20 AM',
-      imageAsset: 'assets/images/logo_animap.png',
-      position: LatLng(4.6549, -74.1078),
-      type: ReportType.sighting,
-      showContact: false,
-      ownerName: 'Usuario de la comunidad',
-      ownerPhone: '',
-      ownerEmail: '',
-    ),
-  ];
-
-  /*
-    Aquí quemé reportes encontrados para probar el filtro "Encontrados".
-    En la versión final, estos datos deberían venir del backend filtrados
-    por estado del reporte.
-  */
-  final List<MapReport> _foundReports = const [
-    MapReport(
-      id: 'found_1',
-      title: 'Mascota encontrada',
-      petName: 'Pluto',
-      details: 'Perro · Golden Retriever · Macho',
-      location: 'Pablo Andrade, Ciudad Salitre Occidental',
-      description:
-      'El reporte fue finalizado porque el dueño confirmó que la mascota fue encontrada.',
-      dateText: '14 Abr 2024, 11:00 AM',
-      imageAsset: 'assets/images/logo_animap.png',
-      position: LatLng(4.6565, -74.1068),
-      type: ReportType.found,
-      showContact: false,
-      ownerName: 'Equipo AniMap',
-      ownerPhone: '',
-      ownerEmail: '',
-    ),
-    MapReport(
-      id: 'found_2',
-      title: 'Mascota encontrada',
-      petName: 'Milo',
-      details: 'Gato · Criollo · Gris',
-      location: 'Av. La Esperanza, Ciudad Salitre Occidental',
-      description: 'El dueño cerró el caso porque la mascota regresó a casa.',
-      dateText: '15 Abr 2024, 6:45 PM',
-      imageAsset: 'assets/images/logo_animap.png',
-      position: LatLng(4.6591, -74.1124),
-      type: ReportType.found,
-      showContact: false,
-      ownerName: 'Equipo AniMap',
-      ownerPhone: '',
-      ownerEmail: '',
-    ),
-  ];
+  List<MapReport> _activeReports = [];
+  List<MapReport> _foundReports = [];
 
   /* --------------------------------------------------------------------------
      DATOS VISIBLES SEGÚN FILTRO
@@ -436,6 +412,97 @@ class _MapPageState extends State<MapPage> {
     return BitmapDescriptor.fromBytes(bytes);
   }
 
+
+  /* --------------------------------------------------------------------------
+     CONSULTA DE REPORTES DEL MAPA DESDE EL BACKEND
+     -------------------------------------------------------------------------- */
+
+  /*
+    Aquí consulto el backend para traer los reportes reales del mapa.
+    La información viene desde PostgreSQL por medio de la ruta /api/map/reports.
+
+    Esta función reemplaza los datos quemados que antes estaban en _activeReports
+    y _foundReports.
+  */
+  Future<void> _loadMapReports() async {
+    try {
+      final Uri url = Uri.parse(_mapReportsUrl);
+      final http.Response response = await http.get(url);
+
+      if (response.statusCode != 200) {
+        if (!mounted) return;
+
+        setState(() {
+          _status = MapStatus.error;
+          _selectedReport = null;
+        });
+
+        return;
+      }
+
+      final Map<String, dynamic> decodedBody =
+      jsonDecode(response.body) as Map<String, dynamic>;
+
+      final List<dynamic> data = decodedBody['data'] as List<dynamic>? ?? [];
+
+      final List<MapReport> reports = data
+          .map(
+            (item) => MapReport.fromJson(
+          item as Map<String, dynamic>,
+        ),
+      )
+          .where(
+        /*
+              Aquí evito pintar marcadores sin coordenadas válidas.
+              Esto protege el mapa si llega algún registro incompleto desde
+              la base de datos.
+            */
+            (report) =>
+        report.position.latitude != 0.0 &&
+            report.position.longitude != 0.0,
+      )
+          .toList();
+
+      final List<MapReport> activeReports = reports
+          .where(
+            (report) =>
+        report.type == ReportType.lost ||
+            report.type == ReportType.sighting,
+      )
+          .toList();
+
+      final List<MapReport> foundReports = reports
+          .where(
+            (report) => report.type == ReportType.found,
+      )
+          .toList();
+
+      final List<MapReport> visibleReports =
+      _selectedFilter == MapFilter.active ? activeReports : foundReports;
+
+      if (!mounted) return;
+
+      setState(() {
+        _activeReports = activeReports;
+        _foundReports = foundReports;
+        _status = visibleReports.isEmpty ? MapStatus.empty : MapStatus.loaded;
+        _selectedReport =
+        visibleReports.isNotEmpty ? visibleReports.first : null;
+      });
+
+      if (visibleReports.isNotEmpty) {
+        await _moveCamera(visibleReports.first.position);
+      }
+    } catch (error) {
+      if (!mounted) return;
+
+      setState(() {
+        _status = MapStatus.error;
+        _selectedReport = null;
+      });
+    }
+  }
+
   /* --------------------------------------------------------------------------
      ACCIONES DEL MAPA
      -------------------------------------------------------------------------- */
@@ -462,18 +529,10 @@ class _MapPageState extends State<MapPage> {
 
   /*
     Aquí reintento cargar el mapa cuando ocurra un error.
-    Por ahora vuelve a cargar los datos quemados disponibles.
+    Ahora vuelve a consultar el backend para traer información actualizada.
   */
   void _retryLoad() {
-    final List<MapReport> reports =
-    _selectedFilter == MapFilter.active ? _activeReports : _foundReports;
-
-    setState(() {
-      _status = reports.isEmpty ? MapStatus.empty : MapStatus.loaded;
-      _selectedReport = reports.isNotEmpty ? reports.first : null;
-    });
-
-    _moveCamera(_ciudadSalitre);
+    _loadMapReports();
   }
 
   /*
@@ -554,19 +613,18 @@ class _MapPageState extends State<MapPage> {
     super.initState();
 
     /*
-      Aquí dejo seleccionado el primer reporte activo para que al entrar
-      al mapa se vea una tarjeta inicial.
-    */
-    if (_activeReports.isNotEmpty) {
-      _selectedReport = _activeReports.first;
-    }
-
-    /*
       Aquí inicio la creación de los marcadores con huellita.
       Se cargan al iniciar la pantalla para que el GoogleMap pueda usarlos
       en reportes perdidos, avistamientos y encontrados.
     */
     _loadCustomMarkers();
+
+    /*
+      Aquí consulto el backend apenas entra la pantalla.
+      Así el mapa se carga con datos reales de PostgreSQL en lugar de datos
+      quemados dentro del archivo.
+    */
+    _loadMapReports();
   }
 
   @override
@@ -683,14 +741,23 @@ class _MapPageState extends State<MapPage> {
             _SideMenu(
               onClose: _toggleMenu,
               onLostPets: () {
+                final MapReport? firstActiveReport =
+                _activeReports.isNotEmpty ? _activeReports.first : null;
+
                 setState(() {
                   _menuOpen = false;
                   _selectedFilter = MapFilter.active;
-                  _status = MapStatus.loaded;
-                  _selectedReport =
-                  _activeReports.isNotEmpty ? _activeReports.first : null;
+                  _status = _activeReports.isEmpty
+                      ? MapStatus.empty
+                      : MapStatus.loaded;
+                  _selectedReport = firstActiveReport;
                 });
-                _moveCamera(_ciudadSalitre);
+
+                if (firstActiveReport != null) {
+                  _moveCamera(firstActiveReport.position);
+                } else {
+                  _moveCamera(_ciudadSalitre);
+                }
               },
               onMyPets: () {
                 setState(() {
