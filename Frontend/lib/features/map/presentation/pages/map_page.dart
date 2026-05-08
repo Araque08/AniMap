@@ -1,3 +1,6 @@
+import 'dart:typed_data';
+import 'dart:ui' as ui;
+
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -108,6 +111,18 @@ class _MapPageState extends State<MapPage> {
   bool _menuOpen = false;
   MapReport? _selectedReport;
 
+  /*
+    Aquí guardo los íconos personalizados del mapa.
+    Estos íconos se crean por código con Canvas para no depender
+    de imágenes externas por cada marcador.
+
+    Mientras los íconos terminan de cargarse, el mapa usa los
+    marcadores normales de Google Maps como respaldo.
+  */
+  BitmapDescriptor? _lostMarkerIcon;
+  BitmapDescriptor? _sightingMarkerIcon;
+  BitmapDescriptor? _foundMarkerIcon;
+
   static const Color backgroundColor = Color(0xFFDDEFE2);
 
   /*
@@ -115,12 +130,6 @@ class _MapPageState extends State<MapPage> {
     esa es la zona definida como alcance inicial del proyecto.
   */
   static const LatLng _ciudadSalitre = LatLng(4.6569, -74.1095);
-
-  void _moveCamera(LatLng position) {
-    _mapController?.animateCamera(
-      CameraUpdate.newLatLngZoom(position, 15),
-    );
-  }
 
   /* --------------------------------------------------------------------------
      DATOS QUEMADOS TEMPORALES
@@ -265,18 +274,31 @@ class _MapPageState extends State<MapPage> {
 
   /*
     Aquí convierto los reportes visibles en marcadores de Google Maps.
-    Uso rojo para mascotas perdidas y verde para avistamientos o encontradas.
+    Ahora uso marcadores personalizados con forma de pin y una huellita blanca
+    en el centro.
+
+    Para no romper la carga inicial del mapa, dejo un marcador normal de Google
+    como respaldo mientras se generan los íconos personalizados.
   */
   Set<Marker> get _markers {
     return _visibleReports.map((report) {
-      final BitmapDescriptor markerColor = report.type == ReportType.lost
-          ? BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed)
-          : BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen);
+      BitmapDescriptor markerIcon;
+
+      if (report.type == ReportType.lost) {
+        markerIcon = _lostMarkerIcon ??
+            BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed);
+      } else if (report.type == ReportType.found) {
+        markerIcon = _foundMarkerIcon ??
+            BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen);
+      } else {
+        markerIcon = _sightingMarkerIcon ??
+            BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen);
+      }
 
       return Marker(
         markerId: MarkerId(report.id),
         position: report.position,
-        icon: markerColor,
+        icon: markerIcon,
 
         /*
           Aquí dejé desactivado el texto nativo del marcador para que la
@@ -290,6 +312,128 @@ class _MapPageState extends State<MapPage> {
         },
       );
     }).toSet();
+  }
+
+
+  /* --------------------------------------------------------------------------
+     MARCADORES PERSONALIZADOS DEL MAPA
+     -------------------------------------------------------------------------- */
+
+  /*
+    Aquí cargo los marcadores personalizados que se van a usar en el GoogleMap.
+    El marcador rojo/coral se usa para mascotas perdidas y el marcador verde
+    se usa para avistamientos y mascotas encontradas.
+  */
+  Future<void> _loadCustomMarkers() async {
+    _lostMarkerIcon = await _createPawMarker(
+      pinColor: const Color(0xFFE96F67),
+    );
+
+    _sightingMarkerIcon = await _createPawMarker(
+      pinColor: const Color(0xFF4E967B),
+    );
+
+    _foundMarkerIcon = await _createPawMarker(
+      pinColor: const Color(0xFF4E967B),
+    );
+
+    /*
+      Aquí actualizo la pantalla cuando los íconos ya están listos.
+      Esto hace que los marcadores normales sean reemplazados por los pines
+      personalizados sin afectar la carga inicial del mapa.
+    */
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
+  /*
+    Aquí dibujo el marcador personalizado directamente con Canvas.
+    Esto permite tener un pin con huellita blanca sin agregar archivos PNG
+    adicionales al proyecto.
+  */
+  Future<BitmapDescriptor> _createPawMarker({
+    required Color pinColor,
+  }) async {
+    const int width = 120;
+    const int height = 150;
+
+    final ui.PictureRecorder recorder = ui.PictureRecorder();
+    final Canvas canvas = Canvas(recorder);
+
+    final Paint shadowPaint = Paint()
+      ..color = Colors.black.withOpacity(0.25)
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6);
+
+    final Paint pinPaint = Paint()
+      ..color = pinColor
+      ..style = PaintingStyle.fill;
+
+    final Paint pawPaint = Paint()
+      ..color = Colors.white
+      ..style = PaintingStyle.fill;
+
+    /*
+      Aquí dibujo una sombra inferior para que el pin se vea con más profundidad
+      sobre el mapa.
+    */
+    canvas.drawOval(
+      const Rect.fromLTWH(38, 128, 44, 12),
+      shadowPaint,
+    );
+
+    /*
+      Aquí dibujo la forma principal del pin. La punta queda hacia abajo para
+      que señale la ubicación exacta del reporte o avistamiento.
+    */
+    final Path pinPath = Path()
+      ..moveTo(width / 2, height - 12)
+      ..cubicTo(30, 95, 18, 75, 18, 52)
+      ..cubicTo(18, 22, 42, 8, width / 2, 8)
+      ..cubicTo(78, 8, 102, 22, 102, 52)
+      ..cubicTo(102, 75, 90, 95, width / 2, height - 12)
+      ..close();
+
+    canvas.drawPath(pinPath, shadowPaint);
+    canvas.drawPath(pinPath, pinPaint);
+
+    /*
+      Aquí agrego un brillo suave dentro del pin para que no se vea plano.
+    */
+    final Paint innerPaint = Paint()
+      ..color = Colors.white.withOpacity(0.10)
+      ..style = PaintingStyle.fill;
+
+    canvas.drawCircle(const Offset(width / 2, 52), 36, innerPaint);
+
+    /*
+      Aquí dibujo la huellita blanca del centro del marcador.
+      Ajusté la separación entre los dedos para que la huella se entienda mejor
+      visualmente y no se vea tan compacta sobre el pin.
+    */
+    canvas.drawOval(
+      const Rect.fromLTWH(44, 57, 32, 26),
+      pawPaint,
+    );
+
+    /*
+      Aquí separé un poco más las cuatro patitas de la huella.
+      También reduje levemente su tamaño para que cada dedo se diferencie mejor.
+    */
+    canvas.drawCircle(const Offset(34, 47), 7, pawPaint);
+    canvas.drawCircle(const Offset(48, 34), 7, pawPaint);
+    canvas.drawCircle(const Offset(72, 34), 7, pawPaint);
+    canvas.drawCircle(const Offset(86, 47), 7, pawPaint);
+
+    final ui.Picture picture = recorder.endRecording();
+    final ui.Image image = await picture.toImage(width, height);
+    final ByteData? byteData = await image.toByteData(
+      format: ui.ImageByteFormat.png,
+    );
+
+    final Uint8List bytes = byteData!.buffer.asUint8List();
+
+    return BitmapDescriptor.fromBytes(bytes);
   }
 
   /* --------------------------------------------------------------------------
@@ -332,51 +476,108 @@ class _MapPageState extends State<MapPage> {
     _moveCamera(_ciudadSalitre);
   }
 
+  /*
+    Aquí abro o cierro el menú lateral.
+  */
   void _toggleMenu() {
     setState(() {
       _menuOpen = !_menuOpen;
     });
   }
 
-  void _showEmptyState() {
+  /*
+    Aquí muevo la cámara del mapa hacia un punto específico.
+    Lo uso cuando cambio de filtro o cuando quiero volver al centro principal.
+  */
+  Future<void> _moveCamera(LatLng target) async {
+    final controller = _mapController;
+
+    if (controller == null) return;
+
+    await controller.animateCamera(
+      CameraUpdate.newCameraPosition(
+        CameraPosition(
+          target: target,
+          zoom: 15.5,
+        ),
+      ),
+    );
+  }
+
+  /*
+    Aquí conecté el botón + con el zoom real del GoogleMap.
+    Antes el control era visual, pero no modificaba la cámara del mapa.
+  */
+  Future<void> _zoomIn() async {
+    final controller = _mapController;
+
+    if (controller == null) return;
+
+    await controller.animateCamera(
+      CameraUpdate.zoomIn(),
+    );
+  }
+
+  /*
+    Aquí conecté el botón - con el zoom real del GoogleMap.
+    Esto permite alejar el mapa sin mostrar los controles nativos de Google.
+  */
+  Future<void> _zoomOut() async {
+    final controller = _mapController;
+
+    if (controller == null) return;
+
+    await controller.animateCamera(
+      CameraUpdate.zoomOut(),
+    );
+  }
+
+  /*
+    Aquí hice funcional el botón de ubicación.
+    Por ahora no uso la ubicación real del usuario, sino que regreso el mapa
+    al centro definido para Ciudad Salitre Occidental.
+  */
+  Future<void> _goToProjectZone() async {
+    await _moveCamera(_ciudadSalitre);
+
     setState(() {
-      _status = MapStatus.empty;
       _selectedReport = null;
     });
   }
 
-  void _showErrorState() {
-    setState(() {
-      _status = MapStatus.error;
-      _selectedReport = null;
-    });
-  }
+  /* --------------------------------------------------------------------------
+     CICLO DE VIDA
+     -------------------------------------------------------------------------- */
 
-  String _getReportCardType(MapReport report) {
-    if (report.type == ReportType.lost) {
-      return 'lost';
-    }
+  @override
+  void initState() {
+    super.initState();
 
-    if (report.type == ReportType.sighting) {
-      return 'sighting';
-    }
-
-    return 'found';
-  }
-
-  MapReport? _getFirstLostReport() {
-    for (final report in _activeReports) {
-      if (report.type == ReportType.lost) {
-        return report;
-      }
-    }
-
+    /*
+      Aquí dejo seleccionado el primer reporte activo para que al entrar
+      al mapa se vea una tarjeta inicial.
+    */
     if (_activeReports.isNotEmpty) {
-      return _activeReports.first;
+      _selectedReport = _activeReports.first;
     }
 
-    return null;
+    /*
+      Aquí inicio la creación de los marcadores con huellita.
+      Se cargan al iniciar la pantalla para que el GoogleMap pueda usarlos
+      en reportes perdidos, avistamientos y encontrados.
+    */
+    _loadCustomMarkers();
   }
+
+  @override
+  void dispose() {
+    _mapController?.dispose();
+    super.dispose();
+  }
+
+  /* --------------------------------------------------------------------------
+     UI PRINCIPAL
+     -------------------------------------------------------------------------- */
 
   @override
   Widget build(BuildContext context) {
@@ -397,17 +598,28 @@ class _MapPageState extends State<MapPage> {
               Expanded(
                 child: Stack(
                   children: [
-                    GoogleMap(
-                      initialCameraPosition: const CameraPosition(
-                        target: _ciudadSalitre,
-                        zoom: 15,
-                      ),
+                    _GoogleMapArea(
+                      status: _status,
                       markers: _markers,
+                      initialPosition: _ciudadSalitre,
                       onMapCreated: (controller) {
                         _mapController = controller;
                       },
-                      myLocationButtonEnabled: false,
-                      zoomControlsEnabled: false,
+                      onZoomIn: _zoomIn,
+                      onZoomOut: _zoomOut,
+                      onMyLocationTap: _goToProjectZone,
+                      onMapTap: () {
+                        setState(() {
+                          _selectedReport = null;
+                        });
+                      },
+                    ),
+                    Positioned(
+                      top: 16,
+                      left: 14,
+                      child: _Legend(
+                        selectedFilter: _selectedFilter,
+                      ),
                     ),
                     if (_status == MapStatus.empty) const _EmptyStateCard(),
                     if (_status == MapStatus.error)
@@ -418,9 +630,15 @@ class _MapPageState extends State<MapPage> {
                       Positioned(
                         left: 16,
                         right: 16,
-                        bottom: 18,
+
+                        /*
+                          Aquí subo un poco la tarjeta del reporte para que el botón "Ver Detalle"
+                          no quede montado sobre la barra inferior de ubicación.
+                        */
+                        bottom: 38,
+
                         child: _ReportPreviewCard(
-                          type: _getReportCardType(_selectedReport!),
+                          report: _selectedReport!,
                           onClose: () {
                             setState(() {
                               _selectedReport = null;
@@ -428,7 +646,8 @@ class _MapPageState extends State<MapPage> {
                           },
                         ),
                       ),
-                    Positioned(
+
+                    const Positioned(
                       left: 0,
                       right: 0,
                       bottom: 0,
@@ -464,20 +683,14 @@ class _MapPageState extends State<MapPage> {
             _SideMenu(
               onClose: _toggleMenu,
               onLostPets: () {
-                final MapReport? firstLostReport = _getFirstLostReport();
-
                 setState(() {
                   _menuOpen = false;
                   _selectedFilter = MapFilter.active;
-                  _status = _activeReports.isEmpty
-                      ? MapStatus.empty
-                      : MapStatus.loaded;
-                  _selectedReport = firstLostReport;
+                  _status = MapStatus.loaded;
+                  _selectedReport =
+                  _activeReports.isNotEmpty ? _activeReports.first : null;
                 });
-
-                if (firstLostReport != null) {
-                  _moveCamera(firstLostReport.position);
-                }
+                _moveCamera(_ciudadSalitre);
               },
               onMyPets: () {
                 setState(() {
@@ -495,9 +708,11 @@ class _MapPageState extends State<MapPage> {
                 setState(() {
                   _menuOpen = false;
                 });
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Aquí irá Preguntas Frecuentes.'),
+
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const FaqScreen(),
                   ),
                 );
               },
@@ -515,31 +730,93 @@ class _MapPageState extends State<MapPage> {
                 );
               },
             ),
-          Positioned(
-            right: 12,
-            top: 130,
-            child: Column(
-              children: [
-                _DevStateButton(
-                  label: 'Mapa',
-                  onTap: _retryLoad,
-                ),
-                _DevStateButton(
-                  label: 'Vacío',
-                  onTap: _showEmptyState,
-                ),
-                _DevStateButton(
-                  label: 'Error',
-                  onTap: _showErrorState,
-                ),
-              ],
-            ),
-          ),
         ],
       ),
     );
   }
 }
+
+/* ============================================================================
+   COMPONENTE DEL GOOGLE MAP REAL
+   ============================================================================ */
+
+class _GoogleMapArea extends StatelessWidget {
+  final MapStatus status;
+  final Set<Marker> markers;
+  final LatLng initialPosition;
+  final ValueChanged<GoogleMapController> onMapCreated;
+  final VoidCallback onZoomIn;
+  final VoidCallback onZoomOut;
+  final VoidCallback onMyLocationTap;
+  final VoidCallback onMapTap;
+
+  const _GoogleMapArea({
+    required this.status,
+    required this.markers,
+    required this.initialPosition,
+    required this.onMapCreated,
+    required this.onZoomIn,
+    required this.onZoomOut,
+    required this.onMyLocationTap,
+    required this.onMapTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final bool disabled = status == MapStatus.empty || status == MapStatus.error;
+
+    return Stack(
+      children: [
+        Positioned.fill(
+          child: Opacity(
+            opacity: disabled ? 0.45 : 1,
+            child: GoogleMap(
+              initialCameraPosition: CameraPosition(
+                target: initialPosition,
+                zoom: 15,
+              ),
+              markers: markers,
+              onTap: (_) => onMapTap(),
+              onMapCreated: onMapCreated,
+              myLocationButtonEnabled: false,
+              myLocationEnabled: false,
+              zoomControlsEnabled: false,
+              mapToolbarEnabled: false,
+              compassEnabled: true,
+            ),
+          ),
+        ),
+        Positioned(
+          top: 80,
+          left: 14,
+          child: _ZoomControl(
+            onZoomIn: onZoomIn,
+            onZoomOut: onZoomOut,
+          ),
+        ),
+        Positioned(
+          right: 18,
+          bottom: 80,
+          child: GestureDetector(
+            onTap: onMyLocationTap,
+            child: CircleAvatar(
+              backgroundColor: Colors.white,
+              radius: 20,
+              child: Icon(
+                Icons.my_location,
+                color: Colors.grey.shade700,
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/* ============================================================================
+   HEADER SUPERIOR ANIMAP
+   ============================================================================ */
 
 class _Header extends StatelessWidget {
   final VoidCallback onMenuTap;
@@ -569,12 +846,19 @@ class _Header extends StatelessWidget {
               ),
             ),
             const Spacer(),
+
+            /*
+              Este es el logo que aparece centrado junto a la palabra AniMap
+              en el encabezado principal del mapa.
+            */
             Image.asset(
               'assets/images/Logo_Principal_AniMap.png',
               height: 50,
               fit: BoxFit.contain,
             ),
-            const SizedBox(width: 6),
+
+            const SizedBox(width: 8),
+
             const Text(
               'AniMap',
               style: TextStyle(
@@ -583,7 +867,9 @@ class _Header extends StatelessWidget {
                 fontWeight: FontWeight.bold,
               ),
             ),
+
             const Spacer(),
+
             const Icon(
               Icons.notifications,
               size: 26,
@@ -596,6 +882,10 @@ class _Header extends StatelessWidget {
   }
 }
 
+/* ============================================================================
+   FILTROS DEL MAPA
+   ============================================================================ */
+
 class _FilterBar extends StatelessWidget {
   final MapFilter selectedFilter;
   final VoidCallback onActiveTap;
@@ -606,8 +896,6 @@ class _FilterBar extends StatelessWidget {
     required this.onActiveTap,
     required this.onFoundTap,
   });
-
-  static const Color primaryGreen = Color(0xFF4E967B);
 
   @override
   Widget build(BuildContext context) {
@@ -623,7 +911,7 @@ class _FilterBar extends StatelessWidget {
               selected: selectedFilter == MapFilter.active,
               onTap: onActiveTap,
             ),
-            const SizedBox(width: 12),
+            const SizedBox(width: 8),
             _FilterButton(
               text: 'Encontrados',
               selected: selectedFilter == MapFilter.found,
@@ -652,8 +940,8 @@ class _FilterButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      width: 108,
-      height: 32,
+      width: 128,
+      height: 34,
       child: ElevatedButton(
         onPressed: onTap,
         style: ElevatedButton.styleFrom(
@@ -669,8 +957,10 @@ class _FilterButton extends StatelessWidget {
         ),
         child: Text(
           text,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
           style: const TextStyle(
-            fontSize: 13,
+            fontSize: 12,
             fontWeight: FontWeight.w600,
           ),
         ),
@@ -679,143 +969,9 @@ class _FilterButton extends StatelessWidget {
   }
 }
 
-class _MapMock extends StatelessWidget {
-  final MapFilter selectedFilter;
-  final MapStatus status;
-  final VoidCallback onLostTap;
-  final VoidCallback onSightingTap;
-  final VoidCallback onFoundTap;
-
-  const _MapMock({
-    required this.selectedFilter,
-    required this.status,
-    required this.onLostTap,
-    required this.onSightingTap,
-    required this.onFoundTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final bool isError = status == MapStatus.error;
-    final bool isEmpty = status == MapStatus.empty;
-
-    return Stack(
-      children: [
-        Positioned.fill(
-          child: Opacity(
-            opacity: isError || isEmpty ? 0.45 : 1,
-            child: Image.network(
-              'https://maps.googleapis.com/maps/api/staticmap?center=Ciudad%20Salitre%20Occidental,Bogota,Colombia&zoom=15&size=600x900&maptype=roadmap&key=',
-              fit: BoxFit.cover,
-              errorBuilder: (_, __, ___) {
-                return Container(
-                  color: const Color(0xFFE4EFE7),
-                  child: CustomPaint(
-                    painter: _SimpleMapPainter(),
-                  ),
-                );
-              },
-            ),
-          ),
-        ),
-        Positioned(
-          top: 16,
-          left: 14,
-          child: _Legend(
-            selectedFilter: selectedFilter,
-          ),
-        ),
-        Positioned(
-          top: 80,
-          left: 14,
-          child: _ZoomControl(),
-        ),
-        if (!isError && !isEmpty && selectedFilter == MapFilter.active) ...[
-          _MapMarker(
-            top: 84,
-            left: 80,
-            color: const Color(0xFFE96F67),
-            onTap: onLostTap,
-          ),
-          _MapMarker(
-            top: 135,
-            left: 160,
-            color: const Color(0xFFE96F67),
-            onTap: onLostTap,
-          ),
-          _MapMarker(
-            top: 220,
-            left: 40,
-            color: const Color(0xFFE96F67),
-            onTap: onLostTap,
-          ),
-          _MapMarker(
-            top: 110,
-            right: 52,
-            color: const Color(0xFF4E967B),
-            onTap: onSightingTap,
-          ),
-          _MapMarker(
-            top: 185,
-            right: 105,
-            color: const Color(0xFF4E967B),
-            onTap: onSightingTap,
-          ),
-          _MapMarker(
-            top: 300,
-            right: 65,
-            color: const Color(0xFF4E967B),
-            onTap: onSightingTap,
-          ),
-          _MapMarker(
-            top: 270,
-            left: 120,
-            color: const Color(0xFFE96F67),
-            onTap: onLostTap,
-          ),
-        ],
-        if (!isError && !isEmpty && selectedFilter == MapFilter.found) ...[
-          _MapMarker(
-            top: 75,
-            left: 55,
-            color: const Color(0xFF4E967B),
-            onTap: onFoundTap,
-          ),
-          _MapMarker(
-            top: 118,
-            left: 165,
-            color: const Color(0xFF4E967B),
-            onTap: onFoundTap,
-          ),
-          _MapMarker(
-            top: 195,
-            right: 75,
-            color: const Color(0xFF4E967B),
-            onTap: onFoundTap,
-          ),
-          _MapMarker(
-            top: 285,
-            left: 105,
-            color: const Color(0xFF4E967B),
-            onTap: onFoundTap,
-          ),
-        ],
-        Positioned(
-          right: 18,
-          bottom: 80,
-          child: CircleAvatar(
-            backgroundColor: Colors.white,
-            radius: 20,
-            child: Icon(
-              Icons.my_location,
-              color: Colors.grey.shade700,
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-}
+/* ============================================================================
+   LEYENDA DEL MAPA arriba a la izquierda(mascota perdida, avistamiento)
+   ============================================================================ */
 
 class _Legend extends StatelessWidget {
   final MapFilter selectedFilter;
@@ -829,7 +985,7 @@ class _Legend extends StatelessWidget {
     final bool found = selectedFilter == MapFilter.found;
 
     return Container(
-      width: 138,
+      width: 150,
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
       decoration: BoxDecoration(
         color: Colors.white.withOpacity(0.95),
@@ -844,11 +1000,13 @@ class _Legend extends StatelessWidget {
       child: found
           ? const Row(
         children: [
-          Icon(Icons.pets, size: 15, color: Color(0xFF4E967B)),
+          Icon(Icons.location_on, size: 16, color: Color(0xFF4E967B)),
           SizedBox(width: 5),
-          Text(
-            'Mascota encontrada',
-            style: TextStyle(fontSize: 11),
+          Expanded(
+            child: Text(
+              'Mascota encontrada',
+              style: TextStyle(fontSize: 11),
+            ),
           ),
         ],
       )
@@ -857,22 +1015,26 @@ class _Legend extends StatelessWidget {
         children: [
           Row(
             children: [
-              Icon(Icons.pets, size: 15, color: Color(0xFFE96F67)),
+              Icon(Icons.location_on, size: 16, color: Color(0xFFE96F67)),
               SizedBox(width: 5),
-              Text(
-                'Mascota Perdida',
-                style: TextStyle(fontSize: 11),
+              Expanded(
+                child: Text(
+                  'Mascota perdida',
+                  style: TextStyle(fontSize: 11),
+                ),
               ),
             ],
           ),
           SizedBox(height: 5),
           Row(
             children: [
-              Icon(Icons.pets, size: 15, color: Color(0xFF4E967B)),
+              Icon(Icons.location_on, size: 16, color: Color(0xFF4E967B)),
               SizedBox(width: 5),
-              Text(
-                'Avistamiento',
-                style: TextStyle(fontSize: 11),
+              Expanded(
+                child: Text(
+                  'Avistamiento',
+                  style: TextStyle(fontSize: 11),
+                ),
               ),
             ],
           ),
@@ -882,8 +1044,18 @@ class _Legend extends StatelessWidget {
   }
 }
 
+/* ============================================================================
+   CONTROL DE ZOOM PERSONALIZADO
+   ============================================================================ */
+
 class _ZoomControl extends StatelessWidget {
-  const _ZoomControl();
+  final VoidCallback onZoomIn;
+  final VoidCallback onZoomOut;
+
+  const _ZoomControl({
+    required this.onZoomIn,
+    required this.onZoomOut,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -899,58 +1071,43 @@ class _ZoomControl extends StatelessWidget {
           ),
         ],
       ),
-      child: const Column(
+      child: Column(
         children: [
-          SizedBox(height: 6),
-          Text('+', style: TextStyle(fontSize: 25)),
-          Divider(height: 1),
-          Text('−', style: TextStyle(fontSize: 25)),
-          SizedBox(height: 6),
+          GestureDetector(
+            onTap: onZoomIn,
+            child: const SizedBox(
+              height: 36,
+              child: Center(
+                child: Text('+', style: TextStyle(fontSize: 25)),
+              ),
+            ),
+          ),
+          const Divider(height: 1),
+          GestureDetector(
+            onTap: onZoomOut,
+            child: const SizedBox(
+              height: 36,
+              child: Center(
+                child: Text('−', style: TextStyle(fontSize: 25)),
+              ),
+            ),
+          ),
         ],
       ),
     );
   }
 }
 
-class _MapMarker extends StatelessWidget {
-  final double? top;
-  final double? left;
-  final double? right;
-  final Color color;
-  final VoidCallback onTap;
-
-  const _MapMarker({
-    this.top,
-    this.left,
-    this.right,
-    required this.color,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Positioned(
-      top: top,
-      left: left,
-      right: right,
-      child: GestureDetector(
-        onTap: onTap,
-        child: Icon(
-          Icons.location_on,
-          size: 38,
-          color: color,
-        ),
-      ),
-    );
-  }
-}
+/* ============================================================================
+   TARJETA INFERIOR DEL REPORTE SELECCIONADO
+   ============================================================================ */
 
 class _ReportPreviewCard extends StatelessWidget {
-  final String type;
+  final MapReport report;
   final VoidCallback onClose;
 
   const _ReportPreviewCard({
-    required this.type,
+    required this.report,
     required this.onClose,
   });
 
@@ -959,38 +1116,14 @@ class _ReportPreviewCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final bool isLost = type == 'lost';
-    final bool isSighting = type == 'sighting';
+    final bool isLost = report.type == ReportType.lost;
+    final bool isSighting = report.type == ReportType.sighting;
 
-    final title = isLost
-        ? 'Mascota Perdida'
+    final String dateLabel = isLost
+        ? 'Última vez visto'
         : isSighting
-        ? 'Avistamiento'
-        : 'Mascota encontrada';
-
-    final name = isLost
-        ? 'Max'
-        : isSighting
-        ? 'No identificado'
-        : 'Pluto';
-
-    final details = isLost
-        ? 'Perro · Raza: Golden Retriever'
-        : isSighting
-        ? 'Especie: Gato'
-        : 'Macho · Golden Retriever';
-
-    final location = isLost
-        ? 'Carrera 53'
-        : isSighting
-        ? 'Carrera 60'
-        : 'Pablo Andrade';
-
-    final description = isLost
-        ? 'Visto por última vez corriendo hacia la avenida, parece asustado.'
-        : isSighting
-        ? 'Visto cerca a la Carrera 60, parece estar perdido.'
-        : 'El reporte fue finalizado porque la mascota fue encontrada.';
+        ? 'Reportado el'
+        : 'Fecha de cierre';
 
     return Container(
       padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
@@ -1014,8 +1147,8 @@ class _ReportPreviewCard extends StatelessWidget {
                 radius: 28,
                 backgroundColor: const Color(0xFFDDEFE2),
                 child: Icon(
-                  isSighting ? Icons.pets : Icons.pets,
-                  color: primaryGreen,
+                  Icons.pets,
+                  color: isLost ? const Color(0xFFE96F67) : primaryGreen,
                   size: 30,
                 ),
               ),
@@ -1027,7 +1160,7 @@ class _ReportPreviewCard extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        title,
+                        report.title,
                         style: const TextStyle(
                           color: darkText,
                           fontSize: 14,
@@ -1035,7 +1168,7 @@ class _ReportPreviewCard extends StatelessWidget {
                         ),
                       ),
                       Text(
-                        '$name · $details',
+                        '${report.petName} · ${report.details}',
                         style: const TextStyle(
                           color: Color(0xFF65756C),
                           fontSize: 11,
@@ -1043,17 +1176,19 @@ class _ReportPreviewCard extends StatelessWidget {
                         ),
                       ),
                       const SizedBox(height: 7),
-                      const Text(
-                        'Perdido: 12 Abr 2024, 10:30 AM',
-                        style: TextStyle(fontSize: 10),
+                      Text(
+                        '$dateLabel: ${report.dateText}',
+                        style: const TextStyle(fontSize: 10),
                       ),
                       Text(
-                        'Ubicación: $location',
+                        'Ubicación: ${report.location}',
                         style: const TextStyle(fontSize: 10),
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        'Descripción: $description',
+                        'Descripción: ${report.description}',
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
                         style: const TextStyle(fontSize: 10, height: 1.25),
                       ),
                       const SizedBox(height: 8),
@@ -1062,9 +1197,12 @@ class _ReportPreviewCard extends StatelessWidget {
                         width: double.infinity,
                         child: ElevatedButton(
                           onPressed: () {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text('Aquí irá el detalle del reporte.'),
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => _ReportDetailPage(
+                                  report: report,
+                                ),
                               ),
                             );
                           },
@@ -1108,6 +1246,10 @@ class _ReportPreviewCard extends StatelessWidget {
     );
   }
 }
+
+/* ============================================================================
+   ESTADO VACÍO
+   ============================================================================ */
 
 class _EmptyStateCard extends StatelessWidget {
   const _EmptyStateCard();
@@ -1155,6 +1297,10 @@ class _EmptyStateCard extends StatelessWidget {
     );
   }
 }
+
+/* ============================================================================
+   ESTADO DE ERROR
+   ============================================================================ */
 
 class _ErrorStateCard extends StatelessWidget {
   final VoidCallback onRetry;
@@ -1228,6 +1374,10 @@ class _ErrorStateCard extends StatelessWidget {
   }
 }
 
+/* ============================================================================
+   BARRA DE UBICACIÓN INFERIOR
+   ============================================================================ */
+
 class _LocationBar extends StatelessWidget {
   const _LocationBar();
 
@@ -1264,6 +1414,10 @@ class _LocationBar extends StatelessWidget {
     );
   }
 }
+
+/* ============================================================================
+   NAVEGACIÓN INFERIOR
+   ============================================================================ */
 
 class _BottomNavigation extends StatelessWidget {
   final VoidCallback onHomeTap;
@@ -1357,6 +1511,10 @@ class _BottomNavigation extends StatelessWidget {
   }
 }
 
+/* ============================================================================
+   MENÚ LATERAL (Menú hamburguesa)
+   ============================================================================ */
+
 class _SideMenu extends StatelessWidget {
   final VoidCallback onClose;
   final VoidCallback onLostPets;
@@ -1393,9 +1551,14 @@ class _SideMenu extends StatelessWidget {
             children: [
               Row(
                 children: [
+                  /*
+                    Aquí uso el mismo logo nuevo en el menú lateral para mantener
+                    coherencia visual con el encabezado principal.
+                  */
                   Image.asset(
                     'assets/images/Logo_Principal_AniMap.png',
                     height: 52,
+                    fit: BoxFit.contain,
                   ),
                   const SizedBox(width: 6),
                   const Text(
@@ -1470,99 +1633,351 @@ class _MenuItem extends StatelessWidget {
   }
 }
 
-class _DevStateButton extends StatelessWidget {
-  final String label;
-  final VoidCallback onTap;
+/* ============================================================================
+   PANTALLA TEMPORAL DE DETALLE DEL REPORTE
+   ============================================================================ */
 
-  const _DevStateButton({
-    required this.label,
-    required this.onTap,
+/*
+  Aquí dejé una pantalla temporal para el detalle del reporte.
+  La idea es que el botón "Ver Detalle" ya tenga una navegación real.
+
+  En la versión final esta pantalla debería conectarse con el backend para traer
+  la información completa del reporte, la mascota, sus fotos, ubicación y datos
+  permitidos del dueño.
+*/
+class _ReportDetailPage extends StatelessWidget {
+  final MapReport report;
+
+  const _ReportDetailPage({
+    required this.report,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Opacity(
-      opacity: 0.75,
-      child: Padding(
-        padding: const EdgeInsets.only(bottom: 5),
-        child: SizedBox(
-          width: 58,
-          height: 24,
-          child: ElevatedButton(
-            onPressed: onTap,
-            style: ElevatedButton.styleFrom(
-              padding: EdgeInsets.zero,
-              backgroundColor: Colors.white,
-              foregroundColor: const Color(0xFF4E967B),
-              elevation: 1,
-            ),
-            child: Text(
-              label,
-              style: const TextStyle(fontSize: 10),
-            ),
-          ),
+    final bool isLost = report.type == ReportType.lost;
+    final bool isSighting = report.type == ReportType.sighting;
+    final bool isFound = report.type == ReportType.found;
+
+    final String dateLabel = isLost
+        ? 'Última vez visto'
+        : isSighting
+        ? 'Reportado el'
+        : 'Fecha de cierre';
+
+    final String statusLabel = isFound
+        ? 'Finalizado'
+        : isSighting
+        ? 'Avistamiento'
+        : 'Activo';
+
+    final Color statusColor =
+    isLost ? const Color(0xFFE96F67) : const Color(0xFF4E967B);
+
+    return Scaffold(
+      backgroundColor: const Color(0xFFDDEFE2),
+      appBar: AppBar(
+        backgroundColor: const Color(0xFFDDF2E7),
+        elevation: 0,
+        foregroundColor: const Color(0xFF405466),
+        title: Text(report.title),
+      ),
+      body: SafeArea(
+        top: false,
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            return SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 18),
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  /*
+                    Aquí hago que la tarjeta ocupe prácticamente toda la pantalla
+                    disponible, para que el detalle no quede flotando arriba con
+                    mucho espacio vacío en la parte inferior.
+                  */
+                  minHeight: constraints.maxHeight - 34,
+                ),
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.fromLTRB(18, 18, 18, 20),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.96),
+                    borderRadius: BorderRadius.circular(18),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.10),
+                        blurRadius: 8,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Center(
+                        child: CircleAvatar(
+                          radius: 42,
+                          backgroundColor: const Color(0xFFDDEFE2),
+                          child: Icon(
+                            Icons.pets,
+                            size: 46,
+                            color: statusColor,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 22),
+                      Text(
+                        report.petName,
+                        style: const TextStyle(
+                          color: Color(0xFF405466),
+                          fontSize: 24,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        report.details,
+                        style: const TextStyle(
+                          color: Color(0xFF65756C),
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 18),
+                      _StatusChip(
+                        text: statusLabel,
+                        color: statusColor,
+                      ),
+                      const SizedBox(height: 22),
+
+                      /*
+                        Aquí muestro la información principal del reporte.
+                        La etiqueta de fecha cambia según el tipo de caso:
+                        perdido, avistamiento o encontrado.
+                      */
+                      _DetailRow(
+                        label: 'Tipo',
+                        value: report.title,
+                      ),
+                      _DetailRow(
+                        label: dateLabel,
+                        value: report.dateText,
+                      ),
+                      _DetailRow(
+                        label: 'Ubicación',
+                        value: report.location,
+                      ),
+                      const SizedBox(height: 20),
+                      const Text(
+                        'Descripción',
+                        style: TextStyle(
+                          color: Color(0xFF405466),
+                          fontSize: 15,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        report.description,
+                        style: const TextStyle(
+                          color: Color(0xFF65756C),
+                          fontSize: 14,
+                          height: 1.35,
+                        ),
+                      ),
+
+                      /*
+                        Aquí agrego espacio flexible para que, cuando el detalle
+                        tenga poca información, el contenido no se vea comprimido
+                        arriba y la tarjeta conserve presencia en toda la pantalla.
+                      */
+                      if (report.type != ReportType.lost)
+                        const SizedBox(height: 32),
+
+                      if (report.type == ReportType.lost) ...[
+                        const SizedBox(height: 24),
+                        const Text(
+                          'Contacto del dueño',
+                          style: TextStyle(
+                            color: Color(0xFF405466),
+                            fontSize: 15,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        if (report.showContact)
+                          _OwnerContactCard(report: report)
+                        else
+                          const Text(
+                            'El dueño no ha habilitado contacto directo para este reporte.',
+                            style: TextStyle(
+                              color: Color(0xFF65756C),
+                              fontSize: 14,
+                              height: 1.35,
+                            ),
+                          ),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+            );
+          },
         ),
       ),
     );
   }
 }
 
-class _SimpleMapPainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    final Paint background = Paint()
-      ..color = const Color(0xFFE5EFE8)
-      ..style = PaintingStyle.fill;
+class _OwnerContactCard extends StatelessWidget {
+  final MapReport report;
 
-    final Paint street = Paint()
-      ..color = Colors.white.withOpacity(0.9)
-      ..strokeWidth = 4
-      ..style = PaintingStyle.stroke;
+  const _OwnerContactCard({
+    required this.report,
+  });
 
-    final Paint mainStreet = Paint()
-      ..color = const Color(0xFFECD46B)
-      ..strokeWidth = 8
-      ..style = PaintingStyle.stroke;
+  /*
+    Aquí abro la aplicación de teléfono del dispositivo con el número del dueño.
+    No realizo la llamada automáticamente; solo dejo el número listo para que
+    el usuario decida si quiere llamar.
+  */
+  Future<void> _openPhoneDialer(BuildContext context) async {
+    final String cleanPhone = report.ownerPhone.replaceAll(' ', '');
 
-    canvas.drawRect(Rect.fromLTWH(0, 0, size.width, size.height), background);
-
-    for (double y = 30; y < size.height; y += 55) {
-      canvas.drawLine(Offset(0, y), Offset(size.width, y + 25), street);
-    }
-
-    for (double x = 20; x < size.width; x += 70) {
-      canvas.drawLine(Offset(x, 0), Offset(x + 35, size.height), street);
-    }
-
-    canvas.drawLine(
-      Offset(0, size.height * 0.35),
-      Offset(size.width, size.height * 0.55),
-      mainStreet,
+    final Uri phoneUri = Uri(
+      scheme: 'tel',
+      path: cleanPhone,
     );
 
-    final textPainter = TextPainter(
-      text: const TextSpan(
-        text: 'Ciudad Salitre\nOccidental',
-        style: TextStyle(
-          color: Color(0xFF52675C),
-          fontSize: 16,
-          fontWeight: FontWeight.w600,
+    final bool opened = await launchUrl(
+      phoneUri,
+      mode: LaunchMode.externalApplication,
+    );
+
+    if (!opened && context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No fue posible abrir la aplicación de teléfono.'),
         ),
-      ),
-      textDirection: TextDirection.ltr,
-      textAlign: TextAlign.center,
-    );
-
-    textPainter.layout();
-    textPainter.paint(
-      canvas,
-      Offset(
-        (size.width - textPainter.width) / 2,
-        size.height * 0.38,
-      ),
-    );
+      );
+    }
   }
 
   @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFEAF6EF),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: const Color(0xFFC7E1D1),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _DetailRow(
+            label: 'Nombre',
+            value: report.ownerName,
+          ),
+          _DetailRow(
+            label: 'Teléfono',
+            value: report.ownerPhone,
+          ),
+          const SizedBox(height: 10),
+          SizedBox(
+            width: double.infinity,
+            height: 38,
+            child: ElevatedButton.icon(
+              onPressed: () => _openPhoneDialer(context),
+              icon: const Icon(Icons.phone, size: 18),
+              label: const Text('Contactar dueño'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF4E967B),
+                foregroundColor: Colors.white,
+                elevation: 0,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(22),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _StatusChip extends StatelessWidget {
+  final String text;
+  final Color color;
+
+  const _StatusChip({
+    required this.text,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(
+        horizontal: 12,
+        vertical: 6,
+      ),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.14),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: color),
+      ),
+      child: Text(
+        text,
+        style: TextStyle(
+          color: color,
+          fontSize: 12,
+          fontWeight: FontWeight.bold,
+        ),
+      ),
+    );
+  }
+}
+
+class _DetailRow extends StatelessWidget {
+  final String label;
+  final String value;
+
+  const _DetailRow({
+    required this.label,
+    required this.value,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 9),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 108,
+            child: Text(
+              '$label:',
+              style: const TextStyle(
+                color: Color(0xFF405466),
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              style: const TextStyle(
+                color: Color(0xFF65756C),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
