@@ -9,9 +9,6 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../../../widgets/bottom_menu_animap.dart';
 import '../../../../widgets/top_menu_animap.dart';
-import '../../../faq/presentation/screens/faq_page.dart';
-import '../../../pet/presentation/pages/my_pets_page.dart';
-import '../../../user/presentation/pages/profile_page.dart';
 
 class MapPage extends StatefulWidget {
   final String userName;
@@ -52,8 +49,8 @@ enum ReportType {
 
 /*
   Este modelo representa los reportes que se muestran en el mapa.
-  Antes esta información estaba quemada en el código, pero ahora se construye
-  desde la respuesta JSON que entrega el backend en /api/map/reports.
+  Esta información se construye desde la respuesta JSON que entrega
+  el backend en /api/map/reports.
 */
 class MapReport {
   final String id;
@@ -185,7 +182,6 @@ class _MapPageState extends State<MapPage> {
 
   MapFilter _selectedFilter = MapFilter.active;
   MapStatus _status = MapStatus.loaded;
-  bool _menuOpen = false;
   MapReport? _selectedReport;
 
   /*
@@ -214,7 +210,7 @@ class _MapPageState extends State<MapPage> {
     Para Android Emulator se usa 10.0.2.2 porque localhost dentro del emulador
     apunta al propio emulador, no al computador donde corre el backend.
 
-    Si luego pruebas en un celular físico, esta URL debe cambiarse por la IP
+    Si luego probamos en un celular físico, esta URL debe cambiarse por la IP
     local del computador, por ejemplo: http://192.168.x.x:3000/api/map/reports.
   */
   static const String _mapReportsUrl =
@@ -225,7 +221,6 @@ class _MapPageState extends State<MapPage> {
      -------------------------------------------------------------------------- */
 
   /*
-    Aquí ya no dejo reportes quemados en el código.
     Estas listas se llenan con la información real que llega desde PostgreSQL
     por medio del backend.
   */
@@ -299,7 +294,7 @@ class _MapPageState extends State<MapPage> {
 
   /*
     Aquí cargo los marcadores personalizados que se van a usar en el GoogleMap.
-    El marcador rojo/coral se usa para mascotas perdidas y el marcador verde
+    El marcador rojo se usa para mascotas perdidas y el marcador verde
     se usa para avistamientos y mascotas encontradas.
   */
   Future<void> _loadCustomMarkers() async {
@@ -386,7 +381,7 @@ class _MapPageState extends State<MapPage> {
 
     /*
       Aquí dibujo la huellita blanca del centro del marcador.
-      Ajusté la separación entre los dedos para que la huella se entienda mejor
+      Ajustamos la separación entre los dedos para que la huella se entienda mejor
       visualmente y no se vea tan compacta sobre el pin.
     */
     canvas.drawOval(
@@ -531,19 +526,10 @@ class _MapPageState extends State<MapPage> {
 
   /*
     Aquí reintento cargar el mapa cuando ocurra un error.
-    Ahora vuelve a consultar el backend para traer información actualizada.
+    Ahoram el sistema vuelve a consultar el backend para traer información actualizada.
   */
   void _retryLoad() {
     _loadMapReports();
-  }
-
-  /*
-    Aquí abro o cierro el menú lateral.
-  */
-  void _toggleMenu() {
-    setState(() {
-      _menuOpen = !_menuOpen;
-    });
   }
 
   /*
@@ -597,12 +583,14 @@ class _MapPageState extends State<MapPage> {
     Aquí hice funcional el botón de ubicación.
     Por ahora no uso la ubicación real del usuario, sino que regreso el mapa
     al centro definido para Ciudad Salitre Occidental.
+
+    Importante: no cambio el estado del mapa a empty, porque eso ocultaría
+    los reportes que ya fueron cargados desde la base de datos.
   */
   Future<void> _goToProjectZone() async {
     await _moveCamera(_ciudadSalitre);
 
     setState(() {
-      _status = MapStatus.empty;
       _selectedReport = null;
     });
   }
@@ -644,9 +632,19 @@ class _MapPageState extends State<MapPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: backgroundColor,
+
+      /*
+        Aquí mantengo el nuevo menú lateral reutilizable que se agregó en el
+        proyecto. Así el mapa queda integrado con la navegación general sin
+        volver al menú hamburguesa local que teníamos antes.
+      */
       drawer: const AniMapSideMenu(),
+
       body: Column(
         children: [
+          /*
+            Aquí uso el encabezado reutilizable, el cuál es el logo del proyecto.
+          */
           const TopMenuAnimap(),
 
           _FilterBar(
@@ -683,8 +681,7 @@ class _MapPageState extends State<MapPage> {
                   ),
                 ),
 
-                if (_status == MapStatus.empty)
-                  const _EmptyStateCard(),
+                if (_status == MapStatus.empty) const _EmptyStateCard(),
 
                 if (_status == MapStatus.error)
                   _ErrorStateCard(
@@ -695,7 +692,9 @@ class _MapPageState extends State<MapPage> {
                   Positioned(
                     left: 16,
                     right: 16,
-                    bottom: 88,
+
+                    bottom: 38,
+
                     child: _ReportPreviewCard(
                       report: _selectedReport!,
                       onClose: () {
@@ -717,6 +716,11 @@ class _MapPageState extends State<MapPage> {
           ),
         ],
       ),
+
+      /*
+        Aquí mantengo la barra inferior nueva del proyecto para no romper los
+        cambios de navegación que agregaron tus compañeros.
+      */
       bottomNavigationBar: const BottomMenuAnimap(
         currentIndex: 0,
       ),
@@ -817,8 +821,6 @@ class _FilterBar extends StatelessWidget {
     required this.onFoundTap,
   });
 
-  static const Color primaryGreen = Color(0xFF4E967B);
-
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -892,7 +894,7 @@ class _FilterButton extends StatelessWidget {
 }
 
 /* ============================================================================
-   LEYENDA DEL MAPA arriba a la izquierda(mascota perdida, avistamiento)
+   LEYENDA - CARTÉL DEL MAPA arriba a la izquierda(mascota perdida, avistamiento)
    ============================================================================ */
 
 class _Legend extends StatelessWidget {
@@ -1169,6 +1171,10 @@ class _ReportPreviewCard extends StatelessWidget {
   }
 }
 
+/* ============================================================================
+   ESTADO VACÍO
+   ============================================================================ */
+
 class _EmptyStateCard extends StatelessWidget {
   const _EmptyStateCard();
 
@@ -1215,6 +1221,10 @@ class _EmptyStateCard extends StatelessWidget {
     );
   }
 }
+
+/* ============================================================================
+   ESTADO DE ERROR
+   ============================================================================ */
 
 class _ErrorStateCard extends StatelessWidget {
   final VoidCallback onRetry;
@@ -1288,6 +1298,10 @@ class _ErrorStateCard extends StatelessWidget {
   }
 }
 
+/* ============================================================================
+   BARRA DE UBICACIÓN INFERIOR
+   ============================================================================ */
+
 class _LocationBar extends StatelessWidget {
   const _LocationBar();
 
@@ -1321,224 +1335,6 @@ class _LocationBar extends StatelessWidget {
           ),
         ],
       ),
-    );
-  }
-}
-
-/* ============================================================================
-   NAVEGACIÓN INFERIOR
-   ============================================================================ */
-
-class _BottomNavigation extends StatelessWidget {
-  final VoidCallback onHomeTap;
-  final VoidCallback onCreateTap;
-  final VoidCallback onProfileTap;
-
-  const _BottomNavigation({
-    required this.onHomeTap,
-    required this.onCreateTap,
-    required this.onProfileTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      height: 88,
-      decoration: const BoxDecoration(
-        color: Color(0xFFF8FBF8),
-        borderRadius: BorderRadius.vertical(
-          top: Radius.circular(12),
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black12,
-            blurRadius: 5,
-            offset: Offset(0, -2),
-          ),
-        ],
-      ),
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
-            children: [
-              IconButton(
-                onPressed: onHomeTap,
-                icon: const Icon(
-                  Icons.home,
-                  color: Color(0xFF4E967B),
-                  size: 34,
-                ),
-              ),
-              const SizedBox(width: 72),
-              IconButton(
-                onPressed: onProfileTap,
-                icon: const Icon(
-                  Icons.person,
-                  color: Color(0xFF4E967B),
-                  size: 34,
-                ),
-              ),
-            ],
-          ),
-          Positioned(
-            top: -3,
-            child: GestureDetector(
-              onTap: onCreateTap,
-              child: Container(
-                width: 82,
-                height: 82,
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  shape: BoxShape.circle,
-                  border: Border.all(
-                    color: const Color(0xFFE2E6E1),
-                    width: 2,
-                  ),
-                ),
-                child: Center(
-                  child: Container(
-                    width: 61,
-                    height: 61,
-                    decoration: const BoxDecoration(
-                      color: Color(0xFF73C15A),
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Icon(
-                      Icons.pets,
-                      color: Colors.white,
-                      size: 38,
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/* ============================================================================
-   MENÚ LATERAL (Menú hamburguesa)
-   ============================================================================ */
-
-class _SideMenu extends StatelessWidget {
-  final VoidCallback onClose;
-  final VoidCallback onLostPets;
-  final VoidCallback onMyPets;
-  final VoidCallback onFaq;
-  final VoidCallback onLogout;
-  final VoidCallback onCreateReport;
-
-  const _SideMenu({
-    required this.onClose,
-    required this.onLostPets,
-    required this.onMyPets,
-    required this.onFaq,
-    required this.onLogout,
-    required this.onCreateReport,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Stack(
-      children: [
-        GestureDetector(
-          onTap: onClose,
-          child: Container(
-            color: Colors.black.withOpacity(0.25),
-          ),
-        ),
-        Container(
-          width: MediaQuery.of(context).size.width * 0.78,
-          height: double.infinity,
-          color: const Color(0xFFFAFCF7),
-          padding: const EdgeInsets.fromLTRB(24, 60, 24, 24),
-          child: Column(
-            children: [
-              Row(
-                children: [
-                  /*
-                    Aquí uso el mismo logo nuevo en el menú lateral para mantener
-                    coherencia visual con el encabezado principal.
-                  */
-                  Image.asset(
-                    'assets/images/logo_animap.png',
-                    height: 42,
-                    fit: BoxFit.contain,
-                  ),
-                  const SizedBox(width: 6),
-                  const Text(
-                    'AniMap',
-                    style: TextStyle(
-                      color: Color(0xFF405466),
-                      fontSize: 28,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 65),
-              _MenuItem(
-                text: 'Mascotas Perdidas',
-                onTap: onLostPets,
-              ),
-              _MenuItem(
-                text: 'Mis Mascotas',
-                onTap: onMyPets,
-              ),
-              _MenuItem(
-                text: 'Preguntas Frecuentes',
-                onTap: onFaq,
-              ),
-              _MenuItem(
-                text: 'Cerrar sesión',
-                onTap: onLogout,
-              ),
-              _MenuItem(
-                text: 'Crear reporte',
-                onTap: onCreateReport,
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _MenuItem extends StatelessWidget {
-  final String text;
-  final VoidCallback onTap;
-
-  const _MenuItem({
-    required this.text,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      children: [
-        const Divider(
-          color: Color(0xFFC8D5CC),
-          thickness: 1,
-        ),
-        ListTile(
-          onTap: onTap,
-          title: Text(
-            text,
-            textAlign: TextAlign.center,
-            style: const TextStyle(
-              color: Colors.black87,
-              fontSize: 14,
-            ),
-          ),
-        ),
-      ],
     );
   }
 }
@@ -1747,7 +1543,7 @@ class _OwnerContactCard extends StatelessWidget {
 
   /*
     Aquí abro la aplicación de teléfono del dispositivo con el número del dueño.
-    No realizo la llamada automáticamente; solo dejo el número listo para que
+    No realiza la llamada automáticamente; solo dejo el número listo para que
     el usuario decida si quiere llamar.
   */
   Future<void> _openPhoneDialer(BuildContext context) async {
