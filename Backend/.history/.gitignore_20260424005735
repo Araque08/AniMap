@@ -1,5 +1,0 @@
-echo .idea/ >> .gitignore
-echo */.idea/ >> .gitignore
-git add .gitignore
-git commit -m "Ignora carpetas del IDE"
-git push origin main
