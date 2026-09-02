@@ -7,7 +7,7 @@ const env = {
 DB_HOST: process.env.DB_HOST || '127.0.0.1',
 DB_PORT: Number(process.env.DB_PORT || 15432),
 DB_USER: process.env.DB_USER || 'postgres',
-DB_PASSWORD: process.env.DB_PASSWORD || '$\\Arp4@31ZHY|*L7',
+DB_PASSWORD: process.env.DB_PASSWORD || 'e]F~tly|{&/.$Mud',
 DB_NAME: process.env.DB_NAME || 'animap',
 DB_SSL: process.env.DB_SSL === 'true',
 
