@@ -4,12 +4,12 @@ const env = {
   NODE_ENV: process.env.NODE_ENV || 'development',
   PORT: Number(process.env.PORT || 3000),
 
-  DB_HOST: process.env.DB_HOST || 'localhost',
-  DB_PORT: Number(process.env.DB_PORT || 5432),
-  DB_USER: process.env.DB_USER || 'postgres',
-  DB_PASSWORD: process.env.DB_PASSWORD || '1234',
-  DB_NAME: process.env.DB_NAME || 'animap_db',
-  DB_SSL: process.env.DB_SSL === 'true',
+DB_HOST: process.env.DB_HOST || '127.0.0.1',
+DB_PORT: Number(process.env.DB_PORT || 15432),
+DB_USER: process.env.DB_USER || 'postgres',
+DB_PASSWORD: process.env.DB_PASSWORD || '$\\Arp4@31ZHY|*L7',
+DB_NAME: process.env.DB_NAME || 'animap',
+DB_SSL: process.env.DB_SSL === 'true',
 
   JWT_ACCESS_SECRET: process.env.JWT_ACCESS_SECRET || 'access-dev-secret',
   JWT_REFRESH_SECRET: process.env.JWT_REFRESH_SECRET || 'refresh-dev-secret',
