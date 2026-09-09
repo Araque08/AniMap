@@ -1,92 +1,170 @@
 const db = require('../../config/postgres_db');
 const env = require('../../config/env');
+
 const { hashText, compareHash } = require('../../utils/hash');
-const { signAccessToken, signRefreshToken } = require('../../utils/jwt');
-const { sendVerificationCodeEmail } = require('../../utils/mailer');
+
+const { randomInt } = require('node:crypto');
+
+const {
+  signAccessToken,
+  signRefreshToken,
+} = require('../../utils/jwt');
+
+const {
+  sendVerificationCodeEmail,
+  sendPasswordResetCodeEmail,
+} = require('../../utils/mailer');
+
 
 /*
-  Aquí hicimos una función para generar códigos de verificación de 6 dígitos.
-  Usamos números aleatorios y luego los convertimos a texto para poder enviarlos
-  por correo y validarlos como cadena.
+  ============================================================
+  FUNCIONES AUXILIARES
+  ============================================================
+*/
+
+
+/*
+  Aquí generamos un código de verificación de cuenta
+  compuesto por 6 dígitos.
 */
 function generateVerificationCode() {
-  return String(Math.floor(100000 + Math.random() * 900000));
+  return String(
+    Math.floor(100000 + Math.random() * 900000)
+  );
 }
 
+
 /*
-  Aquí hicimos una función auxiliar para crear errores HTTP controlados.
-  Esto nos permite devolver mensajes claros al frontend.
+  Aquí generamos un código de recuperación de contraseña
+  de 6 dígitos.
+
+  Para recuperación utilizamos randomInt de crypto.
+*/
+function generatePasswordResetCode() {
+  return String(
+    randomInt(100000, 1000000)
+  );
+}
+
+
+/*
+  Aquí creamos errores HTTP controlados para poder enviar
+  códigos de estado y mensajes claros al frontend.
 */
 function createHttpError(message, statusCode) {
   const error = new Error(message);
+
   error.statusCode = statusCode;
+
   return error;
 }
 
+
 /*
-  Aquí hicimos la función de registro.
-  Creamos el usuario, su perfil, su rol y también generamos un código de verificación.
-  El código se envía al correo, pero en base de datos guardamos solo su hash.
+  ============================================================
+  REGISTRO DE USUARIO
+  ============================================================
 */
+
 async function registerUser(data) {
-  const { nombre, email, telefono, password, aceptaTyC } = data;
+
+  const {
+    nombre,
+    email,
+    telefono,
+    password,
+    aceptaTyC,
+  } = data;
+
   const client = await db.pool.connect();
 
   try {
+
     await client.query('BEGIN');
 
+
     /*
-      Aquí verificamos si el correo ya existe para evitar usuarios duplicados.
+      Verificamos si ya existe un usuario con ese correo.
     */
     const existingUser = await client.query(
-      'SELECT id FROM usuario WHERE email = $1 LIMIT 1',
+      `
+        SELECT id
+        FROM usuario
+        WHERE email = $1
+        LIMIT 1
+      `,
       [email]
     );
 
+
     if (existingUser.rowCount > 0) {
-      throw createHttpError('El correo ya está registrado', 409);
+
+      throw createHttpError(
+        'El correo ya está registrado',
+        409
+      );
+
     }
 
-    /*
-      Aquí encriptamos la contraseña antes de guardarla.
-      No guardamos la contraseña en texto plano.
-    */
-    const passwordHash = await hashText(password);
 
     /*
-      Aquí generamos el código de verificación.
-      Guardamos su hash y definimos una expiración de 15 minutos.
+      Encriptamos la contraseña antes de almacenarla.
     */
-    const verificationCode = generateVerificationCode();
-    const verificationCodeHash = await hashText(verificationCode);
+    const passwordHash =
+      await hashText(password);
+
 
     /*
-      Aquí insertamos el usuario.
-      La cuenta queda con is_verified en false hasta que confirme el código.
+      Generamos código de verificación.
+    */
+    const verificationCode =
+      generateVerificationCode();
+
+
+    /*
+      Guardamos solamente el hash del código.
+    */
+    const verificationCodeHash =
+      await hashText(
+        verificationCode
+      );
+
+
+    /*
+      Creamos el usuario.
     */
     const userResult = await client.query(
       `
         INSERT INTO usuario (
+
           nombre,
           email,
           telefono,
           password_hash,
           acepta_tyc,
+
           verification_code_hash,
           verification_code_expires_at,
           verification_code_sent_at
+
         )
+
         VALUES (
+
           $1,
           $2,
           $3,
           $4,
           $5,
           $6,
+
           NOW() + INTERVAL '15 minutes',
           NOW()
+
         )
+
         RETURNING
+
           id,
           nombre,
           email,
@@ -106,452 +184,1284 @@ async function registerUser(data) {
       ]
     );
 
-    const user = userResult.rows[0];
+
+    const user =
+      userResult.rows[0];
+
 
     /*
-      Aquí creamos el perfil asociado al usuario.
+      Creamos el perfil asociado al usuario.
     */
     await client.query(
       `
         INSERT INTO perfil (
+
           fk_usuario,
           foto_url,
           notificaciones_activas
+
         )
-        VALUES ($1, NULL, TRUE)
+
+        VALUES (
+
+          $1,
+          NULL,
+          TRUE
+
+        )
       `,
-      [user.id]
+      [
+        user.id
+      ]
     );
+
 
     /*
-      Aquí buscamos el rol USUARIO para asignárselo al nuevo usuario.
+      Buscamos el rol USUARIO.
     */
-    const roleResult = await client.query(
-      `SELECT id FROM rol WHERE UPPER(nombre) = 'USUARIO' LIMIT 1`
-    );
+    const roleResult =
+      await client.query(
+        `
+          SELECT id
+
+          FROM rol
+
+          WHERE UPPER(nombre) = 'USUARIO'
+
+          LIMIT 1
+        `
+      );
+
 
     if (roleResult.rowCount === 0) {
+
       throw createHttpError(
         'No existe el rol USUARIO. Debes crearlo antes de registrar usuarios.',
         500
       );
+
     }
 
+
     /*
-      Aquí asociamos el usuario con el rol USUARIO.
+      Asociamos el usuario con su rol.
     */
     await client.query(
       `
-        INSERT INTO usuario_rol (fk_usuario, fk_rol)
-        VALUES ($1, $2)
+        INSERT INTO usuario_rol (
+
+          fk_usuario,
+          fk_rol
+
+        )
+
+        VALUES (
+
+          $1,
+          $2
+
+        )
       `,
-      [user.id, roleResult.rows[0].id]
+      [
+        user.id,
+        roleResult.rows[0].id,
+      ]
     );
+
 
     await client.query('COMMIT');
 
+
     /*
-      Aquí enviamos el código después de confirmar la transacción.
-      Si no hay correo SMTP configurado, mailer.js imprimirá el código en consola.
+      Enviamos el código de verificación.
     */
     await sendVerificationCodeEmail({
+
       to: email,
+
       code: verificationCode,
+
     });
 
+
     return user;
+
+
   } catch (error) {
+
     await client.query('ROLLBACK');
+
     throw error;
+
+
   } finally {
+
     client.release();
+
   }
+
 }
 
+
 /*
-  Aquí hicimos el inicio de sesión.
-  Validamos que el usuario exista, esté activo, esté verificado y que la contraseña coincida.
+  ============================================================
+  INICIO DE SESIÓN
+  ============================================================
 */
+
 async function loginUser(data) {
-  const { email, password, deviceId = 'mobile-app' } = data;
-  const client = await db.pool.connect();
+
+  const {
+
+    email,
+    password,
+
+    deviceId = 'mobile-app',
+
+  } = data;
+
+
+  const client =
+    await db.pool.connect();
+
 
   try {
+
     await client.query('BEGIN');
 
+
     /*
-      Aquí buscamos al usuario por correo.
+      Buscamos el usuario.
     */
-    const result = await client.query(
-      `
-        SELECT
-          id,
-          nombre,
-          email,
-          telefono,
-          password_hash,
-          is_verified,
-          estado_cuenta,
-          last_login_at
-        FROM usuario
-        WHERE email = $1
-        LIMIT 1
-      `,
-      [email]
-    );
+    const result =
+      await client.query(
+        `
+          SELECT
+
+            id,
+            nombre,
+            email,
+            telefono,
+            password_hash,
+            is_verified,
+            estado_cuenta,
+            last_login_at
+
+          FROM usuario
+
+          WHERE email = $1
+
+          LIMIT 1
+        `,
+        [
+          email
+        ]
+      );
+
 
     if (result.rowCount === 0) {
-      throw createHttpError('Credenciales inválidas', 401);
+
+      throw createHttpError(
+        'Credenciales inválidas',
+        401
+      );
+
     }
 
-    const user = result.rows[0];
+
+    const user =
+      result.rows[0];
+
 
     /*
-      Aquí verificamos que la cuenta esté activa.
+      Verificamos que la cuenta esté activa.
     */
-    if (user.estado_cuenta !== 'ACTIVO') {
-      throw createHttpError('La cuenta no está activa', 403);
+    if (
+      user.estado_cuenta !== 'ACTIVO'
+    ) {
+
+      throw createHttpError(
+        'La cuenta no está activa',
+        403
+      );
+
     }
 
+
     /*
-      Aquí bloqueamos el login si la cuenta todavía no ha sido verificada.
+      Verificamos que la cuenta esté verificada.
     */
     if (!user.is_verified) {
-      throw createHttpError('La cuenta aún no ha sido verificada', 403);
+
+      throw createHttpError(
+        'La cuenta aún no ha sido verificada',
+        403
+      );
+
     }
 
+
     /*
-      Aquí comparamos la contraseña enviada con el hash guardado en la base.
+      Comparamos la contraseña.
     */
-    const passwordOk = await compareHash(password, user.password_hash);
+    const passwordOk =
+      await compareHash(
+        password,
+        user.password_hash
+      );
+
 
     if (!passwordOk) {
-      throw createHttpError('Credenciales inválidas', 401);
+
+      throw createHttpError(
+        'Credenciales inválidas',
+        401
+      );
+
     }
 
+
     /*
-      Aquí actualizamos la fecha del último inicio de sesión.
+      Actualizamos último inicio de sesión.
     */
     await client.query(
       `
         UPDATE usuario
-        SET last_login_at = NOW()
+
+        SET
+          last_login_at = NOW()
+
         WHERE id = $1
       `,
-      [user.id]
+      [
+        user.id
+      ]
     );
 
+
     /*
-      Aquí generamos los tokens de sesión.
+      Creamos Access Token.
     */
-    const accessToken = signAccessToken({
-      sub: user.id,
-      email: user.email,
-      role: 'USUARIO',
-    });
+    const accessToken =
+      signAccessToken({
 
-    const refreshToken = signRefreshToken({
-      sub: user.id,
-      deviceId,
-    });
+        sub: user.id,
 
-    const refreshTokenHash = await hashText(refreshToken);
+        email: user.email,
+
+        role: 'USUARIO',
+
+      });
+
 
     /*
-      Aquí cerramos cualquier sesión vigente anterior del mismo usuario y dispositivo.
-      Lo hacemos antes de insertar la nueva sesión para evitar conflictos con el índice único parcial.
+      Creamos Refresh Token.
+    */
+    const refreshToken =
+      signRefreshToken({
+
+        sub: user.id,
+
+        deviceId,
+
+      });
+
+
+    const refreshTokenHash =
+      await hashText(
+        refreshToken
+      );
+
+
+    /*
+      Cerramos sesiones anteriores del mismo dispositivo.
     */
     await client.query(
       `
         UPDATE device_session
-        SET vigente = FALSE
-        WHERE fk_usuario = $1
+
+        SET
+          vigente = FALSE
+
+        WHERE
+          fk_usuario = $1
+
           AND device_id = $2
+
           AND vigente = TRUE
       `,
-      [user.id, deviceId]
+      [
+        user.id,
+        deviceId,
+      ]
     );
 
+
     /*
-      Aquí insertamos una nueva sesión vigente para el dispositivo.
+      Registramos la nueva sesión.
     */
     await client.query(
       `
         INSERT INTO device_session (
+
           fk_usuario,
           device_id,
           refresh_token_hash,
           creado_en,
           expira_en,
           vigente
+
         )
+
         VALUES (
+
           $1,
           $2,
           $3,
+
           NOW(),
-          NOW() + ($4 || ' days')::interval,
+
+          NOW()
+          + ($4 || ' days')::interval,
+
           TRUE
+
         )
       `,
-      [user.id, deviceId, refreshTokenHash, String(env.REFRESH_TOKEN_TTL_DAYS)]
+      [
+
+        user.id,
+
+        deviceId,
+
+        refreshTokenHash,
+
+        String(
+          env.REFRESH_TOKEN_TTL_DAYS
+        ),
+
+      ]
     );
+
 
     /*
-      Aquí consultamos nuevamente al usuario para devolver datos actualizados.
+      Consultamos nuevamente los datos actualizados.
     */
-    const freshUserResult = await client.query(
-      `
-        SELECT
-          id,
-          nombre,
-          email,
-          telefono,
-          is_verified,
-          estado_cuenta,
-          fecha_registro,
-          last_login_at
-        FROM usuario
-        WHERE id = $1
-      `,
-      [user.id]
-    );
+    const freshUserResult =
+      await client.query(
+        `
+          SELECT
+
+            id,
+            nombre,
+            email,
+            telefono,
+            is_verified,
+            estado_cuenta,
+            fecha_registro,
+            last_login_at
+
+          FROM usuario
+
+          WHERE id = $1
+        `,
+        [
+          user.id
+        ]
+      );
+
 
     await client.query('COMMIT');
+
 
     return {
-      user: freshUserResult.rows[0],
+
+      user:
+        freshUserResult.rows[0],
+
       accessToken,
+
       refreshToken,
+
     };
+
+
   } catch (error) {
+
     await client.query('ROLLBACK');
+
     throw error;
+
+
   } finally {
+
     client.release();
+
   }
+
 }
 
+
 /*
-  Aquí hicimos la verificación de cuenta.
-  Recibimos el correo y el código, validamos que exista, que no haya expirado
-  y que coincida con el hash guardado.
+  ============================================================
+  VERIFICACIÓN DE CUENTA
+  ============================================================
 */
+
 async function verifyAccount(data) {
-  const { email, code } = data;
-  const client = await db.pool.connect();
+
+  const {
+    email,
+    code,
+  } = data;
+
+
+  const client =
+    await db.pool.connect();
+
 
   try {
+
     await client.query('BEGIN');
 
+
     /*
-      Aquí buscamos el usuario con sus datos de verificación.
+      Buscamos el usuario.
     */
-    const result = await client.query(
-      `
-        SELECT
-          id,
-          nombre,
-          email,
-          telefono,
-          is_verified,
-          estado_cuenta,
-          verification_code_hash,
-          verification_code_expires_at
-        FROM usuario
-        WHERE email = $1
-        LIMIT 1
-      `,
-      [email]
-    );
+    const result =
+      await client.query(
+        `
+          SELECT
+
+            id,
+            nombre,
+            email,
+            telefono,
+            is_verified,
+            estado_cuenta,
+            verification_code_hash,
+            verification_code_expires_at
+
+          FROM usuario
+
+          WHERE email = $1
+
+          LIMIT 1
+        `,
+        [
+          email
+        ]
+      );
+
 
     if (result.rowCount === 0) {
-      throw createHttpError('No existe una cuenta con este correo', 404);
+
+      throw createHttpError(
+        'No existe una cuenta con este correo',
+        404
+      );
+
     }
 
-    const user = result.rows[0];
 
-    /*
-      Aquí validamos que la cuenta esté activa.
-    */
-    if (user.estado_cuenta !== 'ACTIVO') {
-      throw createHttpError('La cuenta no está activa', 403);
+    const user =
+      result.rows[0];
+
+
+    if (
+      user.estado_cuenta !== 'ACTIVO'
+    ) {
+
+      throw createHttpError(
+        'La cuenta no está activa',
+        403
+      );
+
     }
 
+
     /*
-      Aquí evitamos verificar dos veces una cuenta que ya está verificada.
+      Si ya estaba verificada devolvemos sus datos.
     */
     if (user.is_verified) {
+
       await client.query('COMMIT');
 
+
       return {
-        id: user.id,
-        nombre: user.nombre,
-        email: user.email,
-        telefono: user.telefono,
-        is_verified: user.is_verified,
-        estado_cuenta: user.estado_cuenta,
+
+        id:
+          user.id,
+
+        nombre:
+          user.nombre,
+
+        email:
+          user.email,
+
+        telefono:
+          user.telefono,
+
+        is_verified:
+          user.is_verified,
+
+        estado_cuenta:
+          user.estado_cuenta,
+
       };
+
     }
 
+
     /*
-      Aquí validamos que exista un código pendiente.
+      Validamos que exista código.
     */
-    if (!user.verification_code_hash || !user.verification_code_expires_at) {
-      throw createHttpError('No hay un código de verificación activo', 400);
+    if (
+      !user.verification_code_hash
+      ||
+      !user.verification_code_expires_at
+    ) {
+
+      throw createHttpError(
+        'No hay un código de verificación activo',
+        400
+      );
+
     }
 
-    /*
-      Aquí validamos que el código no haya expirado.
-    */
-    const expiresAt = new Date(user.verification_code_expires_at);
 
-    if (expiresAt.getTime() < Date.now()) {
-      throw createHttpError('El código de verificación ha expirado', 400);
+    /*
+      Validamos expiración.
+    */
+    const expiresAt =
+      new Date(
+        user.verification_code_expires_at
+      );
+
+
+    if (
+      expiresAt.getTime()
+      <
+      Date.now()
+    ) {
+
+      throw createHttpError(
+        'El código de verificación ha expirado',
+        400
+      );
+
     }
 
+
     /*
-      Aquí comparamos el código escrito por el usuario contra el hash guardado.
+      Comparamos el código con su hash.
     */
-    const codeOk = await compareHash(code, user.verification_code_hash);
+    const codeOk =
+      await compareHash(
+
+        code,
+
+        user.verification_code_hash
+
+      );
+
 
     if (!codeOk) {
-      throw createHttpError('El código de verificación es incorrecto', 400);
+
+      throw createHttpError(
+        'El código de verificación es incorrecto',
+        400
+      );
+
     }
 
+
     /*
-      Aquí marcamos la cuenta como verificada y limpiamos los datos del código.
+      Verificamos la cuenta y eliminamos el código usado.
     */
-    const verifiedResult = await client.query(
-      `
-        UPDATE usuario
-        SET
-          is_verified = TRUE,
-          verification_code_hash = NULL,
-          verification_code_expires_at = NULL,
-          verification_code_sent_at = NULL
-        WHERE id = $1
-        RETURNING
-          id,
-          nombre,
-          email,
-          telefono,
-          is_verified,
-          estado_cuenta,
-          fecha_registro,
-          last_login_at
-      `,
-      [user.id]
-    );
+    const verifiedResult =
+      await client.query(
+        `
+          UPDATE usuario
+
+          SET
+
+            is_verified = TRUE,
+
+            verification_code_hash = NULL,
+
+            verification_code_expires_at = NULL,
+
+            verification_code_sent_at = NULL
+
+          WHERE id = $1
+
+          RETURNING
+
+            id,
+            nombre,
+            email,
+            telefono,
+            is_verified,
+            estado_cuenta,
+            fecha_registro,
+            last_login_at
+        `,
+        [
+          user.id
+        ]
+      );
+
 
     await client.query('COMMIT');
 
+
     return verifiedResult.rows[0];
+
+
   } catch (error) {
+
     await client.query('ROLLBACK');
+
     throw error;
+
+
   } finally {
+
     client.release();
+
   }
+
 }
 
+
 /*
-  Aquí hicimos el reenvío del código de verificación.
-  Si el usuario existe y todavía no está verificado, generamos un nuevo código.
+  ============================================================
+  REENVIAR CÓDIGO DE VERIFICACIÓN
+  ============================================================
 */
+
 async function resendVerificationCode(data) {
-  const { email } = data;
-  const client = await db.pool.connect();
+
+  const {
+    email
+  } = data;
+
+
+  const client =
+    await db.pool.connect();
+
 
   try {
+
     await client.query('BEGIN');
 
-    /*
-      Aquí buscamos al usuario por correo.
-    */
-    const result = await client.query(
-      `
-        SELECT
-          id,
-          nombre,
-          email,
-          telefono,
-          is_verified,
-          estado_cuenta
-        FROM usuario
-        WHERE email = $1
-        LIMIT 1
-      `,
-      [email]
-    );
+
+    const result =
+      await client.query(
+        `
+          SELECT
+
+            id,
+            nombre,
+            email,
+            telefono,
+            is_verified,
+            estado_cuenta
+
+          FROM usuario
+
+          WHERE email = $1
+
+          LIMIT 1
+        `,
+        [
+          email
+        ]
+      );
+
 
     if (result.rowCount === 0) {
-      throw createHttpError('No existe una cuenta con este correo', 404);
+
+      throw createHttpError(
+        'No existe una cuenta con este correo',
+        404
+      );
+
     }
 
-    const user = result.rows[0];
 
-    /*
-      Aquí validamos que la cuenta esté activa.
-    */
-    if (user.estado_cuenta !== 'ACTIVO') {
-      throw createHttpError('La cuenta no está activa', 403);
+    const user =
+      result.rows[0];
+
+
+    if (
+      user.estado_cuenta !== 'ACTIVO'
+    ) {
+
+      throw createHttpError(
+        'La cuenta no está activa',
+        403
+      );
+
     }
 
-    /*
-      Aquí evitamos reenviar códigos a cuentas que ya están verificadas.
-    */
+
     if (user.is_verified) {
-      throw createHttpError('La cuenta ya está verificada', 400);
+
+      throw createHttpError(
+        'La cuenta ya está verificada',
+        400
+      );
+
     }
 
-    /*
-      Aquí generamos un nuevo código y reemplazamos el anterior.
-    */
-    const verificationCode = generateVerificationCode();
-    const verificationCodeHash = await hashText(verificationCode);
+
+    const verificationCode =
+      generateVerificationCode();
+
+
+    const verificationCodeHash =
+      await hashText(
+        verificationCode
+      );
+
 
     await client.query(
       `
         UPDATE usuario
+
         SET
+
           verification_code_hash = $1,
-          verification_code_expires_at = NOW() + INTERVAL '15 minutes',
-          verification_code_sent_at = NOW()
+
+          verification_code_expires_at =
+            NOW() + INTERVAL '15 minutes',
+
+          verification_code_sent_at =
+            NOW()
+
         WHERE id = $2
       `,
-      [verificationCodeHash, user.id]
+      [
+        verificationCodeHash,
+        user.id,
+      ]
     );
+
 
     await client.query('COMMIT');
 
-    /*
-      Aquí enviamos el nuevo código.
-      Si no hay SMTP configurado, se imprime en la consola.
-    */
+
     await sendVerificationCodeEmail({
+
       to: email,
+
       code: verificationCode,
+
     });
 
+
     return {
+
       email,
+
       sent: true,
+
     };
+
+
   } catch (error) {
+
     await client.query('ROLLBACK');
+
     throw error;
+
+
   } finally {
+
     client.release();
+
   }
+
 }
 
+
 /*
-  Aquí exportamos las funciones para que el controlador pueda usarlas.
+  ============================================================
+  SOLICITAR RECUPERACIÓN DE CONTRASEÑA
+  ============================================================
+
+  Este método corresponde a:
+
+  POST /forgot-password
+
+  Recibe:
+
+  {
+    "email": "correo@gmail.com"
+  }
+
+  Genera un código temporal y envía el código al correo.
 */
+
+async function requestPasswordReset(data) {
+
+  const {
+    email
+  } = data;
+
+
+  const client =
+    await db.pool.connect();
+
+
+  try {
+
+    await client.query('BEGIN');
+
+
+    /*
+      Buscamos la cuenta.
+    */
+    const result =
+      await client.query(
+        `
+          SELECT
+
+            id,
+            email,
+            estado_cuenta
+
+          FROM usuario
+
+          WHERE email = $1
+
+          LIMIT 1
+        `,
+        [
+          email
+        ]
+      );
+
+
+    /*
+      El correo debe existir.
+    */
+    if (result.rowCount === 0) {
+
+      throw createHttpError(
+        'No existe una cuenta con este correo',
+        404
+      );
+
+    }
+
+
+    const user =
+      result.rows[0];
+
+
+    /*
+      La cuenta debe estar activa.
+    */
+    if (
+      user.estado_cuenta !== 'ACTIVO'
+    ) {
+
+      throw createHttpError(
+        'La cuenta no está activa',
+        403
+      );
+
+    }
+
+
+    /*
+      Generamos el código temporal.
+    */
+    const resetCode =
+      generatePasswordResetCode();
+
+
+    /*
+      Guardamos únicamente su hash.
+    */
+    const resetCodeHash =
+      await hashText(
+        resetCode
+      );
+
+
+    /*
+      Guardamos el código de recuperación.
+
+      Tendrá una vigencia de 15 minutos.
+    */
+    await client.query(
+      `
+        UPDATE usuario
+
+        SET
+
+          password_reset_code_hash = $1,
+
+          password_reset_code_expires_at =
+            NOW() + INTERVAL '15 minutes',
+
+          password_reset_code_sent_at =
+            NOW()
+
+        WHERE id = $2
+      `,
+      [
+        resetCodeHash,
+        user.id,
+      ]
+    );
+
+
+    await client.query('COMMIT');
+
+
+    /*
+      Enviamos el código real por correo.
+    */
+    await sendPasswordResetCodeEmail({
+
+      to: user.email,
+
+      code: resetCode,
+
+    });
+
+
+    return {
+
+      email:
+        user.email,
+
+      sent:
+        true,
+
+    };
+
+
+  } catch (error) {
+
+    /*
+      Si el error ocurrió después del COMMIT
+      no queremos que un segundo error de ROLLBACK
+      oculte el error original.
+    */
+    try {
+
+      await client.query(
+        'ROLLBACK'
+      );
+
+    } catch (_) {
+
+      // No hacemos nada.
+
+    }
+
+
+    throw error;
+
+
+  } finally {
+
+    client.release();
+
+  }
+
+}
+
+
+/*
+  ============================================================
+  RESTABLECER CONTRASEÑA
+  ============================================================
+
+  Este método corresponde a:
+
+  POST /reset-password
+
+  Recibe:
+
+  {
+    "email": "correo@gmail.com",
+    "code": "123456",
+    "newPassword": "Nueva123*",
+    "confirmPassword": "Nueva123*"
+  }
+
+  confirmPassword ya fue validado previamente por Zod.
+*/
+
+async function resetPassword(data) {
+
+  const {
+
+    email,
+
+    code,
+
+    newPassword,
+
+  } = data;
+
+
+  const client =
+    await db.pool.connect();
+
+
+  try {
+
+    await client.query('BEGIN');
+
+
+    /*
+      Buscamos los datos de recuperación del usuario.
+
+      FOR UPDATE bloquea temporalmente el registro
+      mientras se realiza el cambio.
+    */
+    const result =
+      await client.query(
+        `
+          SELECT
+
+            id,
+            email,
+            estado_cuenta,
+            password_reset_code_hash,
+            password_reset_code_expires_at
+
+          FROM usuario
+
+          WHERE email = $1
+
+          LIMIT 1
+
+          FOR UPDATE
+        `,
+        [
+          email
+        ]
+      );
+
+
+    /*
+      Validamos existencia del correo.
+    */
+    if (result.rowCount === 0) {
+
+      throw createHttpError(
+        'No existe una cuenta con este correo',
+        404
+      );
+
+    }
+
+
+    const user =
+      result.rows[0];
+
+
+    /*
+      Validamos estado de la cuenta.
+    */
+    if (
+      user.estado_cuenta !== 'ACTIVO'
+    ) {
+
+      throw createHttpError(
+        'La cuenta no está activa',
+        403
+      );
+
+    }
+
+
+    /*
+      Debe existir un código de recuperación pendiente.
+    */
+    if (
+
+      !user.password_reset_code_hash
+
+      ||
+
+      !user.password_reset_code_expires_at
+
+    ) {
+
+      throw createHttpError(
+        'No hay un código de recuperación activo',
+        400
+      );
+
+    }
+
+
+    /*
+      Comprobamos que el código no haya vencido.
+    */
+    const expiresAt =
+      new Date(
+        user.password_reset_code_expires_at
+      );
+
+
+    if (
+      expiresAt.getTime()
+      <
+      Date.now()
+    ) {
+
+      throw createHttpError(
+        'El código de recuperación ha expirado',
+        400
+      );
+
+    }
+
+
+    /*
+      Comparamos el código recibido con el hash.
+    */
+    const codeOk =
+      await compareHash(
+
+        code,
+
+        user.password_reset_code_hash
+
+      );
+
+
+    if (!codeOk) {
+
+      throw createHttpError(
+        'El código de recuperación es incorrecto',
+        400
+      );
+
+    }
+
+
+    /*
+      Generamos el hash de la nueva contraseña.
+    */
+    const newPasswordHash =
+      await hashText(
+        newPassword
+      );
+
+
+    /*
+      Reemplazamos la contraseña anterior.
+
+      También eliminamos completamente el código
+      de recuperación para impedir que vuelva a usarse.
+    */
+    await client.query(
+      `
+        UPDATE usuario
+
+        SET
+
+          password_hash = $1,
+
+          password_reset_code_hash = NULL,
+
+          password_reset_code_expires_at = NULL,
+
+          password_reset_code_sent_at = NULL
+
+        WHERE id = $2
+      `,
+      [
+        newPasswordHash,
+        user.id,
+      ]
+    );
+
+
+    /*
+      Cerramos cualquier sesión que estuviera vigente.
+
+      De esta manera las sesiones antiguas tendrán
+      que volver a autenticarse.
+    */
+    await client.query(
+      `
+        UPDATE device_session
+
+        SET
+          vigente = FALSE
+
+        WHERE
+          fk_usuario = $1
+
+          AND vigente = TRUE
+      `,
+      [
+        user.id
+      ]
+    );
+
+
+    await client.query('COMMIT');
+
+
+    return {
+
+      email:
+        user.email,
+
+      passwordReset:
+        true,
+
+    };
+
+
+  } catch (error) {
+
+    await client.query('ROLLBACK');
+
+    throw error;
+
+
+  } finally {
+
+    client.release();
+
+  }
+
+}
+
+
+/*
+  ============================================================
+  EXPORTACIONES
+  ============================================================
+*/
+
 module.exports = {
+
   registerUser,
+
   loginUser,
+
   verifyAccount,
+
   resendVerificationCode,
+
+  requestPasswordReset,
+
+  resetPassword,
+
 };
