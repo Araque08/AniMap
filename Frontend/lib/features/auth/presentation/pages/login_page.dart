@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'register_page.dart';
 import '../../data/auth_service.dart';
 import '../../../map/presentation/pages/map_page.dart';
+import 'forgot_password_page.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -67,7 +68,7 @@ class _LoginPageState extends State<LoginPage> {
       setState(() {
         _hasLoginError = true;
         _loginErrorMessage = e.message == 'Credenciales inválidas'
-            ? 'No fue posible iniciar sesión. Correo o contraseña incorrectos'
+            ? 'Correo o contraseña incorrectos'
             : e.message;
       });
     } catch (_) {
@@ -75,7 +76,7 @@ class _LoginPageState extends State<LoginPage> {
 
       setState(() {
         _hasLoginError = true;
-        _loginErrorMessage = 'Ocurrió un error inesperado al iniciar sesión';
+        _loginErrorMessage = 'Error inesperado al iniciar sesión';
       });
     } finally {
       if (mounted) {
@@ -96,9 +97,10 @@ class _LoginPageState extends State<LoginPage> {
   }
   /* Este guiara a la pagina para la recuperacion de la cuenta */
   void _forgotPassword() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Aquí irá la recuperación de contraseña.'),
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => const ForgotPasswordPage(),
       ),
     );
   }
