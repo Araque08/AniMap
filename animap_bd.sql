@@ -433,6 +433,3 @@ INSERT INTO rol (nombre) VALUES
 INSERT INTO especie (nombre) VALUES
 ('Perro'),
 ('Gato');
-
-DELETE FROM usuario
-WHERE email = 'felialej123@gmail.com';

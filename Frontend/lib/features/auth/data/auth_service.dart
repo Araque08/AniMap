@@ -18,26 +18,25 @@ class AuthException implements Exception {
   String toString() => message;
 }
 
-
 /*
   Servicio encargado de comunicarse con los endpoints
   relacionados con autenticación y cuenta.
 */
 class AuthService {
+  static String? _accessToken;
+
+  static String? get accessToken => _accessToken;
+
+  static void clearAccessToken() {
+    _accessToken = null;
+  }
+
   /*
     Aquí definimos la URL base del backend.
 
-    Actualmente usamos la dirección IP local del computador
-    donde está ejecutándose el backend de AniMap.
-
-    El dispositivo móvil debe encontrarse conectado a la misma
-    red para poder acceder a esta dirección.
-
-    Backend:
-    http://192.168.0.8:3000
+    Android Emulator usa 10.0.2.2 para acceder al localhost del equipo.
   */
-  static const String baseUrl = 'http://192.168.0.8:3000/api';
-
+  static const String baseUrl = 'http://10.0.2.2:3000/api';
 
   /*
     ============================================================
@@ -59,15 +58,11 @@ class AuthService {
     required String password,
     required bool aceptaTyC,
   }) async {
-    final url = Uri.parse(
-      '$baseUrl/auth/register',
-    );
+    final url = Uri.parse('$baseUrl/auth/register');
 
     final response = await http.post(
       url,
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers: {'Content-Type': 'application/json'},
       body: jsonEncode({
         'nombre': nombre,
         'email': email,
@@ -77,22 +72,16 @@ class AuthService {
       }),
     );
 
-    final Map<String, dynamic> data =
-    _decodeResponse(response);
+    final Map<String, dynamic> data = _decodeResponse(response);
 
-    if (
-    response.statusCode >= 200 &&
-        response.statusCode < 300
-    ) {
+    if (response.statusCode >= 200 && response.statusCode < 300) {
       return data;
     }
 
     throw AuthException(
-      data['message']?.toString() ??
-          'Error al registrar usuario',
+      _extractErrorMessage(data, 'Error al registrar usuario'),
     );
   }
-
 
   /*
     ============================================================
@@ -118,15 +107,11 @@ class AuthService {
     required String password,
     required String deviceId,
   }) async {
-    final url = Uri.parse(
-      '$baseUrl/auth/login',
-    );
+    final url = Uri.parse('$baseUrl/auth/login');
 
     final response = await http.post(
       url,
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers: {'Content-Type': 'application/json'},
       body: jsonEncode({
         'email': email,
         'password': password,
@@ -134,22 +119,23 @@ class AuthService {
       }),
     );
 
-    final Map<String, dynamic> data =
-    _decodeResponse(response);
+    final Map<String, dynamic> data = _decodeResponse(response);
 
-    if (
-    response.statusCode >= 200 &&
-        response.statusCode < 300
-    ) {
+    if (response.statusCode >= 200 && response.statusCode < 300) {
+      final token = data['data']?['accessToken']?.toString();
+
+      if (token == null || token.isEmpty) {
+        throw AuthException(
+          'El servidor no devolvió un token de acceso válido',
+        );
+      }
+
+      _accessToken = token;
       return data;
     }
 
-    throw AuthException(
-      data['message']?.toString() ??
-          'Error al iniciar sesión',
-    );
+    throw AuthException(_extractErrorMessage(data, 'Error al iniciar sesión'));
   }
-
 
   /*
     ============================================================
@@ -170,37 +156,24 @@ class AuthService {
     required String email,
     required String code,
   }) async {
-    final url = Uri.parse(
-      '$baseUrl/auth/verify-account',
-    );
+    final url = Uri.parse('$baseUrl/auth/verify-account');
 
     final response = await http.post(
       url,
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: jsonEncode({
-        'email': email,
-        'code': code,
-      }),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'email': email, 'code': code}),
     );
 
-    final Map<String, dynamic> data =
-    _decodeResponse(response);
+    final Map<String, dynamic> data = _decodeResponse(response);
 
-    if (
-    response.statusCode >= 200 &&
-        response.statusCode < 300
-    ) {
+    if (response.statusCode >= 200 && response.statusCode < 300) {
       return data;
     }
 
     throw AuthException(
-      data['message']?.toString() ??
-          'Error al verificar la cuenta',
+      _extractErrorMessage(data, 'Error al verificar la cuenta'),
     );
   }
-
 
   /*
     ============================================================
@@ -219,36 +192,24 @@ class AuthService {
   Future<Map<String, dynamic>> resendVerificationCode({
     required String email,
   }) async {
-    final url = Uri.parse(
-      '$baseUrl/auth/resend-verification-code',
-    );
+    final url = Uri.parse('$baseUrl/auth/resend-verification-code');
 
     final response = await http.post(
       url,
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: jsonEncode({
-        'email': email,
-      }),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'email': email}),
     );
 
-    final Map<String, dynamic> data =
-    _decodeResponse(response);
+    final Map<String, dynamic> data = _decodeResponse(response);
 
-    if (
-    response.statusCode >= 200 &&
-        response.statusCode < 300
-    ) {
+    if (response.statusCode >= 200 && response.statusCode < 300) {
       return data;
     }
 
     throw AuthException(
-      data['message']?.toString() ??
-          'Error al reenviar el código',
+      _extractErrorMessage(data, 'Error al reenviar el código'),
     );
   }
-
 
   /*
     ============================================================
@@ -276,39 +237,28 @@ class AuthService {
       "email": "usuario@gmail.com"
     }
   */
-  Future<Map<String, dynamic>> forgotPassword({
-    required String email,
-  }) async {
-    final url = Uri.parse(
-      '$baseUrl/auth/forgot-password',
-    );
+  Future<Map<String, dynamic>> forgotPassword({required String email}) async {
+    final url = Uri.parse('$baseUrl/auth/forgot-password');
 
     final response = await http.post(
       url,
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: jsonEncode({
-        'email': email,
-      }),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'email': email}),
     );
 
-    final Map<String, dynamic> data =
-    _decodeResponse(response);
+    final Map<String, dynamic> data = _decodeResponse(response);
 
-    if (
-    response.statusCode >= 200 &&
-        response.statusCode < 300
-    ) {
+    if (response.statusCode >= 200 && response.statusCode < 300) {
       return data;
     }
 
     throw AuthException(
-      data['message']?.toString() ??
-          'Error al solicitar la recuperación de contraseña',
+      _extractErrorMessage(
+        data,
+        'Error al solicitar la recuperación de contraseña',
+      ),
     );
   }
-
 
   /*
     ============================================================
@@ -348,15 +298,11 @@ class AuthService {
     required String newPassword,
     required String confirmPassword,
   }) async {
-    final url = Uri.parse(
-      '$baseUrl/auth/reset-password',
-    );
+    final url = Uri.parse('$baseUrl/auth/reset-password');
 
     final response = await http.post(
       url,
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers: {'Content-Type': 'application/json'},
       body: jsonEncode({
         'email': email,
         'code': code,
@@ -365,22 +311,16 @@ class AuthService {
       }),
     );
 
-    final Map<String, dynamic> data =
-    _decodeResponse(response);
+    final Map<String, dynamic> data = _decodeResponse(response);
 
-    if (
-    response.statusCode >= 200 &&
-        response.statusCode < 300
-    ) {
+    if (response.statusCode >= 200 && response.statusCode < 300) {
       return data;
     }
 
     throw AuthException(
-      data['message']?.toString() ??
-          'Error al restablecer la contraseña',
+      _extractErrorMessage(data, 'Error al restablecer la contraseña'),
     );
   }
-
 
   /*
     ============================================================
@@ -397,26 +337,36 @@ class AuthService {
     devolvemos un mensaje controlado para evitar que la aplicación
     falle directamente.
   */
-  Map<String, dynamic> _decodeResponse(
-      http.Response response,
-      ) {
+  Map<String, dynamic> _decodeResponse(http.Response response) {
     try {
-      final decoded =
-      jsonDecode(response.body);
+      final decoded = jsonDecode(response.body);
 
       if (decoded is Map<String, dynamic>) {
         return decoded;
       }
 
-      return {
-        'message':
-        'Respuesta inválida del servidor',
-      };
+      return {'message': 'Respuesta inválida del servidor'};
     } catch (_) {
-      return {
-        'message':
-        'No se pudo interpretar la respuesta del servidor',
-      };
+      return {'message': 'No se pudo interpretar la respuesta del servidor'};
     }
+  }
+
+  String _extractErrorMessage(Map<String, dynamic> data, String fallback) {
+    final errors = data['errors'];
+
+    if (errors is List) {
+      final messages = errors
+          .whereType<Map>()
+          .map((error) => error['message']?.toString())
+          .whereType<String>()
+          .where((message) => message.trim().isNotEmpty)
+          .toList();
+
+      if (messages.isNotEmpty) {
+        return messages.join('\n');
+      }
+    }
+
+    return data['message']?.toString() ?? fallback;
   }
 }

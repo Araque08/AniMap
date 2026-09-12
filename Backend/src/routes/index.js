@@ -16,6 +16,7 @@ const petsRoutes = require('../modules/pets/pets.routes');
   para pintar mascotas perdidas, avistamientos y mascotas encontradas.
 */
 const mapRoutes = require('../modules/map/map.routes');
+const profileRoutes = require('../modules/profile/profile.routes');
 
 /*
   Aquí creo el router principal de Express.
@@ -63,6 +64,7 @@ router.use('/pets', petsRoutes);
   http://localhost:3000/api/map/reports
 */
 router.use('/map', mapRoutes);
+router.use('/profile', profileRoutes);
 
 /*
   Exporto el router principal para que app.js lo pueda montar en /api.

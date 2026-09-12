@@ -28,9 +28,7 @@ const {
   compuesto por 6 dígitos.
 */
 function generateVerificationCode() {
-  return String(
-    Math.floor(100000 + Math.random() * 900000)
-  );
+  return String(randomInt(100000, 1000000));
 }
 
 
@@ -77,10 +75,12 @@ async function registerUser(data) {
   } = data;
 
   const client = await db.pool.connect();
+  let transactionOpen = false;
 
   try {
 
     await client.query('BEGIN');
+    transactionOpen = true;
 
 
     /*
@@ -270,26 +270,35 @@ async function registerUser(data) {
 
 
     await client.query('COMMIT');
+    transactionOpen = false;
 
 
-    /*
-      Enviamos el código de verificación.
-    */
-    await sendVerificationCodeEmail({
+    let verificationEmailSent = true;
 
-      to: email,
+    try {
+      await sendVerificationCodeEmail({
+        to: email,
+        code: verificationCode,
+      });
+    } catch (_) {
+      verificationEmailSent = false;
+    }
 
-      code: verificationCode,
-
-    });
-
-
-    return user;
+    return {
+      ...user,
+      verificationEmailSent,
+    };
 
 
   } catch (error) {
 
-    await client.query('ROLLBACK');
+    if (transactionOpen) {
+      await client.query('ROLLBACK');
+    }
+
+    if (error.code === '23505') {
+      throw createHttpError('El correo ya está registrado', 409);
+    }
 
     throw error;
 
@@ -640,7 +649,8 @@ async function verifyAccount(data) {
             is_verified,
             estado_cuenta,
             verification_code_hash,
-            verification_code_expires_at
+            verification_code_expires_at,
+            verification_code_expires_at <= NOW() AS verification_code_expired
 
           FROM usuario
 
@@ -681,35 +691,10 @@ async function verifyAccount(data) {
 
 
     /*
-      Si ya estaba verificada devolvemos sus datos.
+      Una cuenta ya verificada no debe reutilizar el flujo del código.
     */
     if (user.is_verified) {
-
-      await client.query('COMMIT');
-
-
-      return {
-
-        id:
-          user.id,
-
-        nombre:
-          user.nombre,
-
-        email:
-          user.email,
-
-        telefono:
-          user.telefono,
-
-        is_verified:
-          user.is_verified,
-
-        estado_cuenta:
-          user.estado_cuenta,
-
-      };
-
+      throw createHttpError('La cuenta ya está verificada', 400);
     }
 
 
@@ -731,25 +716,10 @@ async function verifyAccount(data) {
 
 
     /*
-      Validamos expiración.
+      PostgreSQL evalúa la expiración para evitar diferencias de zona horaria.
     */
-    const expiresAt =
-      new Date(
-        user.verification_code_expires_at
-      );
-
-
-    if (
-      expiresAt.getTime()
-      <
-      Date.now()
-    ) {
-
-      throw createHttpError(
-        'El código de verificación ha expirado',
-        400
-      );
-
+    if (user.verification_code_expired) {
+      throw createHttpError('El código de verificación ha expirado', 400);
     }
 
 
@@ -850,11 +820,13 @@ async function resendVerificationCode(data) {
 
   const client =
     await db.pool.connect();
+  let transactionOpen = false;
 
 
   try {
 
     await client.query('BEGIN');
+    transactionOpen = true;
 
 
     const result =
@@ -951,29 +923,35 @@ async function resendVerificationCode(data) {
 
 
     await client.query('COMMIT');
+    transactionOpen = false;
 
 
-    await sendVerificationCodeEmail({
+    let sent = true;
 
-      to: email,
-
-      code: verificationCode,
-
-    });
+    try {
+      await sendVerificationCodeEmail({
+        to: email,
+        code: verificationCode,
+      });
+    } catch (_) {
+      sent = false;
+    }
 
 
     return {
 
       email,
 
-      sent: true,
+      sent,
 
     };
 
 
   } catch (error) {
 
-    await client.query('ROLLBACK');
+    if (transactionOpen) {
+      await client.query('ROLLBACK');
+    }
 
     throw error;
 
@@ -1014,11 +992,13 @@ async function requestPasswordReset(data) {
 
   const client =
     await db.pool.connect();
+  let transactionOpen = false;
 
 
   try {
 
     await client.query('BEGIN');
+    transactionOpen = true;
 
 
     /*
@@ -1122,18 +1102,19 @@ async function requestPasswordReset(data) {
 
 
     await client.query('COMMIT');
+    transactionOpen = false;
 
 
-    /*
-      Enviamos el código real por correo.
-    */
-    await sendPasswordResetCodeEmail({
+    let sent = true;
 
-      to: user.email,
-
-      code: resetCode,
-
-    });
+    try {
+      await sendPasswordResetCodeEmail({
+        to: user.email,
+        code: resetCode,
+      });
+    } catch (_) {
+      sent = false;
+    }
 
 
     return {
@@ -1141,29 +1122,15 @@ async function requestPasswordReset(data) {
       email:
         user.email,
 
-      sent:
-        true,
+      sent,
 
     };
 
 
   } catch (error) {
 
-    /*
-      Si el error ocurrió después del COMMIT
-      no queremos que un segundo error de ROLLBACK
-      oculte el error original.
-    */
-    try {
-
-      await client.query(
-        'ROLLBACK'
-      );
-
-    } catch (_) {
-
-      // No hacemos nada.
-
+    if (transactionOpen) {
+      await client.query('ROLLBACK');
     }
 
 
@@ -1237,7 +1204,8 @@ async function resetPassword(data) {
             email,
             estado_cuenta,
             password_reset_code_hash,
-            password_reset_code_expires_at
+            password_reset_code_expires_at,
+            password_reset_code_expires_at <= NOW() AS password_reset_code_expired
 
           FROM usuario
 
@@ -1307,25 +1275,10 @@ async function resetPassword(data) {
 
 
     /*
-      Comprobamos que el código no haya vencido.
+      PostgreSQL evalúa la expiración para evitar diferencias de zona horaria.
     */
-    const expiresAt =
-      new Date(
-        user.password_reset_code_expires_at
-      );
-
-
-    if (
-      expiresAt.getTime()
-      <
-      Date.now()
-    ) {
-
-      throw createHttpError(
-        'El código de recuperación ha expirado',
-        400
-      );
-
+    if (user.password_reset_code_expired) {
+      throw createHttpError('El código de recuperación ha expirado', 400);
     }
 
 

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'login_page.dart';
 import 'verify_account_page.dart';
 import '../../data/auth_service.dart';
@@ -8,20 +9,17 @@ class RegisterPage extends StatefulWidget {
 
   @override
   State<RegisterPage> createState() => _RegisterPageState();
-
-
 }
 
 class _RegisterPageState extends State<RegisterPage> {
   final _formKey = GlobalKey<FormState>();
 
-
-
   final TextEditingController _nameController = TextEditingController();
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _phoneController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
-  final TextEditingController _confirmPasswordController = TextEditingController();
+  final TextEditingController _confirmPasswordController =
+      TextEditingController();
   final AuthService _authService = AuthService();
 
   /* Estados en los que se encuentra la interfaz de registro */
@@ -109,24 +107,20 @@ class _RegisterPageState extends State<RegisterPage> {
 
       final response = await _authService.register(
         nombre: _nameController.text.trim(),
-        email: email,
+        email: email.toLowerCase(),
         telefono: _phoneController.text.trim(),
         password: _passwordController.text,
         aceptaTyC: _acceptedPolicies,
       );
 
-      final user = response['data'];
-      final nombre = user?['nombre']?.toString() ?? 'usuario';
+      final message =
+          response['message']?.toString() ?? 'Usuario registrado correctamente';
 
       if (!mounted) return;
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Registro exitoso para $nombre. Ingresa el código de verificación.',
-          ),
-        ),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(message)));
 
       /*
         Aquí cambiamos el flujo anterior.
@@ -136,19 +130,15 @@ class _RegisterPageState extends State<RegisterPage> {
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(
-          builder: (context) => VerifyAccountPage(
-            email: email,
-          ),
+          builder: (context) => VerifyAccountPage(email: email),
         ),
       );
     } on AuthException catch (e) {
       if (!mounted) return;
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(e.message),
-        ),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(e.message)));
     } catch (_) {
       if (!mounted) return;
 
@@ -172,12 +162,9 @@ class _RegisterPageState extends State<RegisterPage> {
   void _goToLogin() {
     Navigator.pushReplacement(
       context,
-      MaterialPageRoute(
-        builder: (context) => const LoginPage(),
-      ),
+      MaterialPageRoute(builder: (context) => const LoginPage()),
     );
   }
-
 
   @override
   Widget build(BuildContext context) {
@@ -186,12 +173,7 @@ class _RegisterPageState extends State<RegisterPage> {
       resizeToAvoidBottomInset: false,
       body: Stack(
         children: [
-          const Positioned(
-            left: 0,
-            right: 0,
-            bottom: 0,
-            child: _BottomWaves(),
-          ),
+          const Positioned(left: 0, right: 0, bottom: 0, child: _BottomWaves()),
           SafeArea(
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 35, vertical: 5),
@@ -275,6 +257,12 @@ class _RegisterPageState extends State<RegisterPage> {
                       child: TextFormField(
                         controller: _phoneController,
                         keyboardType: TextInputType.phone,
+                        inputFormatters: [
+                          FilteringTextInputFormatter.allow(
+                            RegExp(r'[0-9+\-\s()]'),
+                          ),
+                          LengthLimitingTextInputFormatter(20),
+                        ],
                         decoration: _inputDecoration(
                           hint: 'Número de teléfono',
                           prefixIcon: Icons.phone,
@@ -284,10 +272,11 @@ class _RegisterPageState extends State<RegisterPage> {
                             return 'Ingresa tu teléfono';
                           }
 
-                          final phone =
-                          value.replaceAll(RegExp(r'\s+'), '');
+                          final phone = value.trim();
 
-                          if (phone.length < 10) {
+                          if (phone.length < 10 ||
+                              phone.length > 20 ||
+                              !RegExp(r'^[0-9+\-\s()]+$').hasMatch(phone)) {
                             return 'Número no válido';
                           }
 
@@ -340,7 +329,7 @@ class _RegisterPageState extends State<RegisterPage> {
                             onPressed: () {
                               setState(() {
                                 _obscureConfirmPassword =
-                                !_obscureConfirmPassword;
+                                    !_obscureConfirmPassword;
                               });
                             },
                             icon: Icon(
@@ -352,7 +341,9 @@ class _RegisterPageState extends State<RegisterPage> {
                           ),
                         ),
                         validator: (value) {
-                          final passwordError = _validatePassword(_passwordController.text);
+                          final passwordError = _validatePassword(
+                            _passwordController.text,
+                          );
                           if (passwordError != null) {
                             return 'Primero ingresa una contraseña válida';
                           }
@@ -444,20 +435,20 @@ class _RegisterPageState extends State<RegisterPage> {
                         ),
                         child: _isLoading
                             ? const SizedBox(
-                          width: 24,
-                          height: 24,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2.6,
-                            color: Colors.white,
-                          ),
-                        )
+                                width: 24,
+                                height: 24,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2.6,
+                                  color: Colors.white,
+                                ),
+                              )
                             : const Text(
-                          'Registrarme',
-                          style: TextStyle(
-                            fontSize: 21,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
+                                'Registrarme',
+                                style: TextStyle(
+                                  fontSize: 21,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
                       ),
                     ),
 
@@ -508,10 +499,7 @@ class _RegisterPageState extends State<RegisterPage> {
       filled: true,
       fillColor: inputBackground,
       hintText: hint,
-      hintStyle: const TextStyle(
-        color: hintText,
-        fontWeight: FontWeight.w700,
-      ),
+      hintStyle: const TextStyle(color: hintText, fontWeight: FontWeight.w700),
       prefixIcon: Icon(prefixIcon, color: accentGreen),
       suffixIcon: suffixIcon,
       contentPadding: const EdgeInsets.symmetric(vertical: 17),
@@ -543,9 +531,7 @@ class _BottomWaves extends StatelessWidget {
     return SizedBox(
       height: 140,
       width: double.infinity,
-      child: CustomPaint(
-        painter: _BottomWavesPainter(),
-      ),
+      child: CustomPaint(painter: _BottomWavesPainter()),
     );
   }
 }

@@ -12,12 +12,14 @@ async function register(req, res, next) {
       await authService.registerUser(
         req.validatedBody
       );
+    const verificationEmailSent = user.verificationEmailSent;
 
     return res.status(201).json({
       ok: true,
 
-      message:
-        'Usuario registrado correctamente. Te enviamos un código de verificación a tu correo.',
+      message: verificationEmailSent
+        ? 'Usuario registrado correctamente. Te enviamos un código de verificación a tu correo.'
+        : 'Usuario registrado correctamente, pero no fue posible enviar el correo. Solicita un nuevo código desde la pantalla de verificación.',
 
       data: user,
     });
@@ -110,8 +112,9 @@ async function resendVerificationCode(
 
       ok: true,
 
-      message:
-        'Te enviamos un nuevo código de verificación.',
+      message: result.sent
+        ? 'Te enviamos un nuevo código de verificación.'
+        : 'El código fue renovado, pero no fue posible enviar el correo. Intenta reenviarlo nuevamente.',
 
       data: result,
 
@@ -159,8 +162,9 @@ async function forgotPassword(
 
       ok: true,
 
-      message:
-        'Te enviamos un código para recuperar tu contraseña.',
+      message: result.sent
+        ? 'Te enviamos un código para recuperar tu contraseña.'
+        : 'El código fue generado, pero no fue posible enviar el correo.',
 
       data: result,
 

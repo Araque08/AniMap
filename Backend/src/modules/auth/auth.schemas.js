@@ -14,7 +14,7 @@ const { z } = require('zod');
   para mantener las mismas reglas de seguridad.
 */
 const passwordSchema = z
-  .string()
+  .string({ error: 'La contraseña es obligatoria' })
   .min(8, 'La contraseña debe tener mínimo 8 caracteres')
   .regex(/[A-Z]/, 'La contraseña debe incluir al menos una mayúscula')
   .regex(/[a-z]/, 'La contraseña debe incluir al menos una minúscula')
@@ -35,7 +35,7 @@ const registerSchema = z.object({
     o textos demasiado largos.
   */
   nombre: z
-    .string()
+    .string({ error: 'El nombre es obligatorio' })
     .trim()
     .min(3, 'El nombre es muy corto')
     .max(120),
@@ -47,7 +47,7 @@ const registerSchema = z.object({
     correo@gmail.com y Correo@gmail.com.
   */
   email: z
-    .string()
+    .string({ error: 'El correo es obligatorio' })
     .trim()
     .toLowerCase()
     .email('Correo no válido')
@@ -59,7 +59,7 @@ const registerSchema = z.object({
     Permitimos números, espacios, paréntesis, guiones y el símbolo +.
   */
   telefono: z
-    .string()
+    .string({ error: 'El teléfono es obligatorio' })
     .trim()
     .min(10, 'Número de teléfono no válido')
     .max(20)
@@ -77,9 +77,7 @@ const registerSchema = z.object({
     Aquí obligamos a que el usuario acepte términos y condiciones.
   */
   aceptaTyC: z.literal(true, {
-    errorMap: () => ({
-      message: 'Debes aceptar términos y condiciones',
-    }),
+    error: 'Debes aceptar términos y condiciones',
   }),
 });
 
@@ -91,7 +89,7 @@ const loginSchema = z.object({
     Aquí validamos y normalizamos el correo.
   */
   email: z
-    .string()
+    .string({ error: 'El correo es obligatorio' })
     .trim()
     .toLowerCase()
     .email('Correo no válido')
@@ -104,7 +102,7 @@ const loginSchema = z.object({
     dentro del servicio.
   */
   password: z
-    .string()
+    .string({ error: 'La contraseña es obligatoria' })
     .min(1, 'La contraseña es obligatoria')
     .max(100),
 
@@ -125,14 +123,14 @@ const loginSchema = z.object({
 */
 const verifyAccountSchema = z.object({
   email: z
-    .string()
+    .string({ error: 'El correo es obligatorio' })
     .trim()
     .toLowerCase()
     .email('Correo no válido')
     .max(150),
 
   code: z
-    .string()
+    .string({ error: 'El código es obligatorio' })
     .trim()
     .regex(
       /^\d{6}$/,
@@ -146,7 +144,7 @@ const verifyAccountSchema = z.object({
 */
 const resendVerificationCodeSchema = z.object({
   email: z
-    .string()
+    .string({ error: 'El correo es obligatorio' })
     .trim()
     .toLowerCase()
     .email('Correo no válido')
@@ -166,7 +164,7 @@ const resendVerificationCodeSchema = z.object({
 */
 const forgotPasswordSchema = z.object({
   email: z
-    .string()
+    .string({ error: 'El correo es obligatorio' })
     .trim()
     .toLowerCase()
     .email('Correo no válido')
@@ -185,7 +183,7 @@ const forgotPasswordSchema = z.object({
 const resetPasswordSchema = z
   .object({
     email: z
-      .string()
+      .string({ error: 'El correo es obligatorio' })
       .trim()
       .toLowerCase()
       .email('Correo no válido')
@@ -195,7 +193,7 @@ const resetPasswordSchema = z
       El código de recuperación tendrá exactamente 6 dígitos.
     */
     code: z
-      .string()
+      .string({ error: 'El código es obligatorio' })
       .trim()
       .regex(
         /^\d{6}$/,

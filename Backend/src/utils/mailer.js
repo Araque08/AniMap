@@ -19,31 +19,21 @@ function getTransporter() {
 
 /*
   Aquí hicimos la función que envía el código de verificación al correo.
-  Primero revisamos si las variables del .env están cargadas.
-  Si no están cargadas, usamos modo prueba y mostramos el código en consola.
+  Si la configuración está incompleta, falla sin exponer el código.
 */
 async function sendVerificationCodeEmail({ to, code }) {
   const mailUser = process.env.MAIL_USER;
   const mailPass = process.env.MAIL_PASS;
   const mailFrom = process.env.MAIL_FROM || `AniMap <${mailUser}>`;
 
-  console.log('[AniMap] Intentando enviar código de verificación...');
-  console.log('[AniMap] MAIL_USER configurado:', Boolean(mailUser));
-  console.log('[AniMap] MAIL_PASS configurado:', Boolean(mailPass));
-  console.log('[AniMap] Destinatario:', to);
-
   if (!mailUser || !mailPass) {
-    console.log(
-      '[AniMap] No hay credenciales SMTP configuradas. Usando modo prueba.'
-    );
-    console.log(`[AniMap] Código de verificación para ${to}: ${code}`);
-    return;
+    throw new Error('Configuración SMTP incompleta');
   }
 
   try {
     const transporter = getTransporter();
 
-    const info = await transporter.sendMail({
+    await transporter.sendMail({
       from: mailFrom,
       to,
       subject: 'Código de verificación - AniMap',
@@ -67,12 +57,9 @@ async function sendVerificationCodeEmail({ to, code }) {
       text: `Tu código de verificación de AniMap es: ${code}. Este código vence en 15 minutos.`,
     });
 
-    console.log('[AniMap] Correo de verificación enviado correctamente.');
-    console.log('[AniMap] Message ID:', info.messageId);
-  } catch (error) {
-    console.error('[AniMap] Error enviando correo de verificación:');
-    console.error(error);
-    throw error;
+  } catch (_) {
+    console.error('[AniMap] No se pudo enviar el correo de verificación.');
+    throw new Error('No se pudo enviar el correo de verificación');
   }
 }
 
@@ -89,31 +76,14 @@ async function sendPasswordResetCodeEmail({ to, code }) {
   const mailPass = process.env.MAIL_PASS;
   const mailFrom = process.env.MAIL_FROM || `AniMap <${mailUser}>`;
 
-  console.log('[AniMap] Intentando enviar código de recuperación de contraseña...');
-  console.log('[AniMap] MAIL_USER configurado:', Boolean(mailUser));
-  console.log('[AniMap] MAIL_PASS configurado:', Boolean(mailPass));
-  console.log('[AniMap] Destinatario:', to);
-
-  /*
-    Si no existen credenciales SMTP, mostramos el código en consola.
-    Esto permite probar la funcionalidad durante desarrollo.
-  */
   if (!mailUser || !mailPass) {
-    console.log(
-      '[AniMap] No hay credenciales SMTP configuradas. Usando modo prueba.'
-    );
-
-    console.log(
-      `[AniMap] Código de recuperación para ${to}: ${code}`
-    );
-
-    return;
+    throw new Error('Configuración SMTP incompleta');
   }
 
   try {
     const transporter = getTransporter();
 
-    const info = await transporter.sendMail({
+    await transporter.sendMail({
       from: mailFrom,
       to,
       subject: 'Recuperación de contraseña - AniMap',
@@ -171,21 +141,9 @@ async function sendPasswordResetCodeEmail({ to, code }) {
         `Si no solicitaste este cambio, ignora este mensaje.`,
     });
 
-    console.log(
-      '[AniMap] Correo de recuperación enviado correctamente.'
-    );
-
-    console.log('[AniMap] Message ID:', info.messageId);
-
-  } catch (error) {
-
-    console.error(
-      '[AniMap] Error enviando correo de recuperación de contraseña:'
-    );
-
-    console.error(error);
-
-    throw error;
+  } catch (_) {
+    console.error('[AniMap] No se pudo enviar el correo de recuperación.');
+    throw new Error('No se pudo enviar el correo de recuperación');
   }
 }
 

@@ -1,14 +1,13 @@
 import 'package:flutter/material.dart';
 import '../../../../widgets/bottom_menu_animap.dart';
 import '../../../../widgets/top_menu_animap.dart';
-import '../../../map/presentation/pages/map_page.dart';
+import '../../../auth/data/auth_service.dart';
+import '../../data/profile_service.dart';
 import 'profile_options_pages.dart';
 
-class ProfilePage extends StatelessWidget {
+class ProfilePage extends StatefulWidget {
   const ProfilePage({
     super.key,
-    this.userName = 'Felipe Meza Rodríguez',
-    this.profilePhotoUrl,
     this.onMenu,
     this.onNotifications,
     this.onLogout,
@@ -17,9 +16,6 @@ class ProfilePage extends StatelessWidget {
     this.onPets,
     this.onProfile,
   });
-
-  final String userName;
-  final String? profilePhotoUrl;
 
   final VoidCallback? onMenu;
   final VoidCallback? onNotifications;
@@ -36,10 +32,83 @@ class ProfilePage extends StatelessWidget {
   static const Color textDark = Color(0xFF263238);
 
   @override
+  State<ProfilePage> createState() => _ProfilePageState();
+}
+
+class _ProfilePageState extends State<ProfilePage> {
+  late Future<Map<String, dynamic>> _profileFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _profileFuture = ProfileService.obtenerPerfil();
+  }
+
+  void _reloadProfile() {
+    if (!mounted) return;
+
+    setState(() {
+      _profileFuture = ProfileService.obtenerPerfil();
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
+    return FutureBuilder<Map<String, dynamic>>(
+      future: _profileFuture,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return _buildStatusScaffold(
+            child: const CircularProgressIndicator(
+              color: ProfilePage.darkGreen,
+            ),
+          );
+        }
+
+        if (snapshot.hasError || snapshot.data == null) {
+          final message = snapshot.error is ProfileException
+              ? (snapshot.error as ProfileException).message
+              : 'No se pudo cargar el perfil';
+
+          return _buildStatusScaffold(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(message, textAlign: TextAlign.center),
+                const SizedBox(height: 12),
+                ElevatedButton(
+                  onPressed: _reloadProfile,
+                  child: const Text('Reintentar'),
+                ),
+              ],
+            ),
+          );
+        }
+
+        return _buildProfile(context, snapshot.data!);
+      },
+    );
+  }
+
+  Widget _buildStatusScaffold({required Widget child}) {
+    return Scaffold(
+      backgroundColor: Colors.white,
+      drawer: const AniMapSideMenu(),
+      body: SafeArea(
+        child: Center(
+          child: Padding(padding: const EdgeInsets.all(24), child: child),
+        ),
+      ),
+      bottomNavigationBar: const BottomMenuAnimap(currentIndex: 2),
+    );
+  }
+
+  Widget _buildProfile(BuildContext context, Map<String, dynamic> profile) {
+    final userName = profile['nombre']?.toString() ?? '';
+    final profilePhotoUrl = profile['foto_url']?.toString();
     final ImageProvider? avatarImage =
-    profilePhotoUrl != null && profilePhotoUrl!.trim().isNotEmpty
-        ? NetworkImage(profilePhotoUrl!)
+        profilePhotoUrl != null && profilePhotoUrl.trim().isNotEmpty
+        ? NetworkImage(profilePhotoUrl)
         : null;
 
     return Scaffold(
@@ -51,8 +120,8 @@ class ProfilePage extends StatelessWidget {
             _Header(
               userName: userName,
               avatarImage: avatarImage,
-              onMenu: onMenu,
-              onNotifications: onNotifications,
+              onMenu: widget.onMenu,
+              onNotifications: widget.onNotifications,
             ),
             Expanded(
               child: Container(
@@ -64,11 +133,14 @@ class ProfilePage extends StatelessWidget {
                     _ProfileOption(
                       icon: Icons.person,
                       text: 'Información Personal',
-                      onTap: () {
-                        Navigator.push(
+                      onTap: () async {
+                        await Navigator.push(
                           context,
                           MaterialPageRoute(
-                            builder: (_) => const PersonalInfoPage(),
+                            builder: (_) => PersonalInfoPage(
+                              profile: profile,
+                              onUpdated: _reloadProfile,
+                            ),
                           ),
                         );
                       },
@@ -92,8 +164,7 @@ class ProfilePage extends StatelessWidget {
                         Navigator.push(
                           context,
                           MaterialPageRoute(
-                            builder: (_) =>
-                            const NotificationPreferencesPage(),
+                            builder: (_) => const NotificationPreferencesPage(),
                           ),
                         );
                       },
@@ -106,20 +177,27 @@ class ProfilePage extends StatelessWidget {
                           context: context,
                           title: 'Cerrar sesión',
                           message:
-                          '¿Estás seguro de que deseas cerrar tu sesión?',
+                              '¿Estás seguro de que deseas cerrar tu sesión?',
                           confirmText: 'Cerrar sesión',
                           onConfirm: () {
                             Navigator.pop(context);
 
                             ScaffoldMessenger.of(context).showSnackBar(
                               const SnackBar(
-                                content:
-                                Text('Sesión cerrada correctamente'),
+                                content: Text('Sesión cerrada correctamente'),
                               ),
                             );
 
-                            if (onLogout != null) {
-                              onLogout!();
+                            AuthService.clearAccessToken();
+
+                            if (widget.onLogout != null) {
+                              widget.onLogout!();
+                            } else {
+                              Navigator.pushNamedAndRemoveUntil(
+                                context,
+                                '/login',
+                                (_) => false,
+                              );
                             }
                           },
                         );
@@ -133,7 +211,7 @@ class ProfilePage extends StatelessWidget {
                           context: context,
                           title: 'Eliminar cuenta',
                           message:
-                          'Esta acción eliminará tu cuenta y la información asociada. ¿Deseas continuar?',
+                              'Esta acción eliminará tu cuenta y la información asociada. ¿Deseas continuar?',
                           confirmText: 'Eliminar',
                           isDanger: true,
                           onConfirm: () {
@@ -147,8 +225,8 @@ class ProfilePage extends StatelessWidget {
                               ),
                             );
 
-                            if (onDeleteAccount != null) {
-                              onDeleteAccount!();
+                            if (widget.onDeleteAccount != null) {
+                              widget.onDeleteAccount!();
                             }
                           },
                         );
@@ -158,9 +236,7 @@ class ProfilePage extends StatelessWidget {
                     SizedBox(
                       height: 80,
                       width: double.infinity,
-                      child: CustomPaint(
-                        painter: _BottomWavePainter(),
-                      ),
+                      child: CustomPaint(painter: _BottomWavePainter()),
                     ),
                   ],
                 ),
@@ -169,9 +245,7 @@ class ProfilePage extends StatelessWidget {
           ],
         ),
       ),
-      bottomNavigationBar: const BottomMenuAnimap(
-        currentIndex: 2,
-      ),
+      bottomNavigationBar: const BottomMenuAnimap(currentIndex: 2),
     );
   }
 }
@@ -198,10 +272,7 @@ class _Header extends StatelessWidget {
         children: [
           ClipPath(
             clipper: _HeaderClipper(),
-            child: Container(
-              height: 190,
-              color: ProfilePage.primaryGreen,
-            ),
+            child: Container(height: 190, color: ProfilePage.primaryGreen),
           ),
           const TopMenuAnimap(),
           Positioned(
@@ -219,10 +290,10 @@ class _Header extends StatelessWidget {
                     backgroundImage: avatarImage,
                     child: avatarImage == null
                         ? const Icon(
-                      Icons.person,
-                      size: 58,
-                      color: Colors.white,
-                    )
+                            Icons.person,
+                            size: 58,
+                            color: Colors.white,
+                          )
                         : null,
                   ),
                 ),
@@ -245,11 +316,7 @@ class _Header extends StatelessWidget {
 }
 
 class _ProfileOption extends StatelessWidget {
-  const _ProfileOption({
-    required this.icon,
-    required this.text,
-    this.onTap,
-  });
+  const _ProfileOption({required this.icon, required this.text, this.onTap});
 
   final IconData icon;
   final String text;
@@ -266,21 +333,14 @@ class _ProfileOption extends StatelessWidget {
           padding: const EdgeInsets.symmetric(vertical: 8),
           decoration: const BoxDecoration(
             border: Border(
-              bottom: BorderSide(
-                color: Color(0xFF777777),
-                width: 0.8,
-              ),
+              bottom: BorderSide(color: Color(0xFF777777), width: 0.8),
             ),
           ),
           child: Row(
             children: [
               SizedBox(
                 width: 35,
-                child: Icon(
-                  icon,
-                  color: Colors.black,
-                  size: 21,
-                ),
+                child: Icon(icon, color: Colors.black, size: 21),
               ),
               Expanded(
                 child: Text(
@@ -402,9 +462,7 @@ void _showConfirmDialog({
     context: context,
     builder: (dialogContext) {
       return AlertDialog(
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(18),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
         title: Text(title),
         content: Text(message),
         actions: [
@@ -417,8 +475,9 @@ void _showConfirmDialog({
           ElevatedButton(
             onPressed: onConfirm,
             style: ElevatedButton.styleFrom(
-              backgroundColor:
-              isDanger ? Colors.red.shade600 : ProfilePage.darkGreen,
+              backgroundColor: isDanger
+                  ? Colors.red.shade600
+                  : ProfilePage.darkGreen,
               foregroundColor: Colors.white,
             ),
             child: Text(confirmText),

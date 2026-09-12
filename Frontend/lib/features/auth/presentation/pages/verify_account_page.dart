@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../data/auth_service.dart';
 import 'login_page.dart';
@@ -11,10 +12,7 @@ import 'login_page.dart';
 class VerifyAccountPage extends StatefulWidget {
   final String email;
 
-  const VerifyAccountPage({
-    super.key,
-    required this.email,
-  });
+  const VerifyAccountPage({super.key, required this.email});
 
   @override
   State<VerifyAccountPage> createState() => _VerifyAccountPageState();
@@ -45,7 +43,7 @@ class _VerifyAccountPageState extends State<VerifyAccountPage> {
   Future<void> _verifyAccount() async {
     final code = _codeController.text.trim();
 
-    if (code.length != 6) {
+    if (!RegExp(r'^\d{6}$').hasMatch(code)) {
       setState(() {
         _errorMessage = 'El código debe tener 6 dígitos';
         _successMessage = null;
@@ -60,10 +58,7 @@ class _VerifyAccountPageState extends State<VerifyAccountPage> {
     });
 
     try {
-      await _authService.verifyAccount(
-        email: widget.email,
-        code: code,
-      );
+      await _authService.verifyAccount(email: widget.email, code: code);
 
       if (!mounted) return;
 
@@ -78,9 +73,7 @@ class _VerifyAccountPageState extends State<VerifyAccountPage> {
 
       Navigator.pushReplacement(
         context,
-        MaterialPageRoute(
-          builder: (_) => const LoginPage(),
-        ),
+        MaterialPageRoute(builder: (_) => const LoginPage()),
       );
     } on AuthException catch (error) {
       if (!mounted) return;
@@ -97,11 +90,11 @@ class _VerifyAccountPageState extends State<VerifyAccountPage> {
         _successMessage = null;
       });
     } finally {
-      if (!mounted) return;
-
-      setState(() {
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
     }
   }
 
@@ -117,15 +110,19 @@ class _VerifyAccountPageState extends State<VerifyAccountPage> {
     });
 
     try {
-      await _authService.resendVerificationCode(
+      final response = await _authService.resendVerificationCode(
         email: widget.email,
       );
 
       if (!mounted) return;
 
+      final sent = response['data']?['sent'] == true;
+      final message =
+          response['message']?.toString() ?? 'No se pudo completar el reenvío';
+
       setState(() {
-        _successMessage = 'Te enviamos un nuevo código';
-        _errorMessage = null;
+        _successMessage = sent ? message : null;
+        _errorMessage = sent ? null : message;
       });
     } on AuthException catch (error) {
       if (!mounted) return;
@@ -142,11 +139,11 @@ class _VerifyAccountPageState extends State<VerifyAccountPage> {
         _successMessage = null;
       });
     } finally {
-      if (!mounted) return;
-
-      setState(() {
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
     }
   }
 
@@ -180,7 +177,8 @@ class _VerifyAccountPageState extends State<VerifyAccountPage> {
               padding: const EdgeInsets.symmetric(horizontal: 28),
               child: ConstrainedBox(
                 constraints: BoxConstraints(
-                  minHeight: MediaQuery.of(context).size.height -
+                  minHeight:
+                      MediaQuery.of(context).size.height -
                       MediaQuery.of(context).padding.top -
                       MediaQuery.of(context).padding.bottom,
                 ),
@@ -205,8 +203,8 @@ class _VerifyAccountPageState extends State<VerifyAccountPage> {
                     const SizedBox(height: 42),
                     Text(
                       'Tu cuenta fue creada correctamente, pero aún no ha sido verificada.\n'
-                          'Te enviamos un código de verificación a tu correo electrónico.\n'
-                          'Ingresa el código para activar tu cuenta.',
+                      'Te enviamos un código de verificación a tu correo electrónico.\n'
+                      'Ingresa el código para activar tu cuenta.',
                       textAlign: TextAlign.center,
                       style: TextStyle(
                         color: darkText.withOpacity(0.65),
@@ -218,6 +216,7 @@ class _VerifyAccountPageState extends State<VerifyAccountPage> {
                     TextField(
                       controller: _codeController,
                       keyboardType: TextInputType.number,
+                      inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                       maxLength: 6,
                       textAlign: TextAlign.left,
                       decoration: InputDecoration(
@@ -305,8 +304,9 @@ class _VerifyAccountPageState extends State<VerifyAccountPage> {
                         style: ElevatedButton.styleFrom(
                           backgroundColor: primaryGreen,
                           foregroundColor: Colors.white,
-                          disabledBackgroundColor:
-                          primaryGreen.withOpacity(0.55),
+                          disabledBackgroundColor: primaryGreen.withOpacity(
+                            0.55,
+                          ),
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(28),
                           ),
@@ -314,20 +314,20 @@ class _VerifyAccountPageState extends State<VerifyAccountPage> {
                         ),
                         child: _isLoading
                             ? const SizedBox(
-                          width: 22,
-                          height: 22,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2.3,
-                            color: Colors.white,
-                          ),
-                        )
+                                width: 22,
+                                height: 22,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2.3,
+                                  color: Colors.white,
+                                ),
+                              )
                             : const Text(
-                          'Verificar',
-                          style: TextStyle(
-                            fontSize: 22,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
+                                'Verificar',
+                                style: TextStyle(
+                                  fontSize: 22,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
                       ),
                     ),
                     const SizedBox(height: 40),

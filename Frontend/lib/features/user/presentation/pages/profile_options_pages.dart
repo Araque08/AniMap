@@ -1,58 +1,178 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import '../../data/profile_service.dart';
 
-class PersonalInfoPage extends StatelessWidget {
-  const PersonalInfoPage({super.key});
+class PersonalInfoPage extends StatefulWidget {
+  const PersonalInfoPage({
+    super.key,
+    required this.profile,
+    required this.onUpdated,
+  });
+
+  final Map<String, dynamic> profile;
+  final VoidCallback onUpdated;
+
+  @override
+  State<PersonalInfoPage> createState() => _PersonalInfoPageState();
+}
+
+class _PersonalInfoPageState extends State<PersonalInfoPage> {
+  final _formKey = GlobalKey<FormState>();
+  late final TextEditingController _nameController;
+  late final TextEditingController _phoneController;
+  bool _isSaving = false;
 
   static const Color primaryGreen = Color(0xFF51BD73);
   static const Color darkGreen = Color(0xFF3F9B67);
 
   @override
+  void initState() {
+    super.initState();
+    _nameController = TextEditingController(
+      text: widget.profile['nombre']?.toString() ?? '',
+    );
+    _phoneController = TextEditingController(
+      text: widget.profile['telefono']?.toString() ?? '',
+    );
+  }
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _phoneController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _saveProfile() async {
+    if (!(_formKey.currentState?.validate() ?? false)) return;
+
+    setState(() {
+      _isSaving = true;
+    });
+
+    try {
+      await ProfileService.actualizarPerfil(
+        nombre: _nameController.text.trim(),
+        telefono: _phoneController.text.trim(),
+      );
+
+      final refreshedProfile = await ProfileService.obtenerPerfil();
+
+      if (!mounted) return;
+
+      _nameController.text = refreshedProfile['nombre']?.toString() ?? '';
+      _phoneController.text = refreshedProfile['telefono']?.toString() ?? '';
+      widget.onUpdated();
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Perfil actualizado correctamente')),
+      );
+    } on ProfileException catch (error) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.message)));
+    } catch (_) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No se pudo actualizar el perfil')),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isSaving = false;
+        });
+      }
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final photoUrl = widget.profile['foto_url']?.toString();
+    final hasPhoto = photoUrl != null && photoUrl.trim().isNotEmpty;
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Información Personal'),
         backgroundColor: primaryGreen,
         foregroundColor: Colors.white,
       ),
-      body: Padding(
-        padding: const EdgeInsets.all(22),
-        child: Column(
+      body: Form(
+        key: _formKey,
+        child: ListView(
+          padding: const EdgeInsets.all(22),
           children: [
-            const CircleAvatar(
+            CircleAvatar(
               radius: 55,
-              backgroundColor: Color(0xFFD7D7D7),
-              child: Icon(
-                Icons.person,
-                size: 60,
-                color: Colors.white,
-              ),
+              backgroundColor: const Color(0xFFD7D7D7),
+              backgroundImage: hasPhoto ? NetworkImage(photoUrl) : null,
+              child: hasPhoto
+                  ? null
+                  : const Icon(Icons.person, size: 60, color: Colors.white),
             ),
             const SizedBox(height: 24),
-            _ReadOnlyField(
+            _ProfileField(
               label: 'Nombre',
-              value: 'Felipe Meza Rodríguez',
+              controller: _nameController,
               icon: Icons.person,
+              enabled: !_isSaving,
+              validator: (value) {
+                if (value == null || value.trim().length < 3) {
+                  return 'El nombre es muy corto';
+                }
+                if (value.trim().length > 120) {
+                  return 'El nombre es demasiado largo';
+                }
+                return null;
+              },
             ),
             const SizedBox(height: 14),
-            _ReadOnlyField(
+            _ProfileField(
               label: 'Correo',
-              value: 'felipe@email.com',
+              initialValue: widget.profile['email']?.toString() ?? '',
               icon: Icons.email,
+              readOnly: true,
             ),
             const SizedBox(height: 14),
-            _ReadOnlyField(
+            _ProfileField(
               label: 'Teléfono',
-              value: '3000000000',
+              controller: _phoneController,
               icon: Icons.phone,
+              enabled: !_isSaving,
+              keyboardType: TextInputType.phone,
+              inputFormatters: [
+                FilteringTextInputFormatter.allow(RegExp(r'[0-9+\-\s()]')),
+                LengthLimitingTextInputFormatter(20),
+              ],
+              validator: (value) {
+                final phone = value?.trim() ?? '';
+                if (phone.length < 10 ||
+                    phone.length > 20 ||
+                    !RegExp(r'^[0-9+\-\s()]+$').hasMatch(phone)) {
+                  return 'Número de teléfono no válido';
+                }
+                return null;
+              },
             ),
             const SizedBox(height: 28),
             SizedBox(
               width: double.infinity,
               height: 48,
               child: ElevatedButton.icon(
-                onPressed: () {},
-                icon: const Icon(Icons.edit),
-                label: const Text('Editar información'),
+                onPressed: _isSaving ? null : _saveProfile,
+                icon: _isSaving
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      )
+                    : const Icon(Icons.save),
+                label: const Text('Guardar información'),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: darkGreen,
                   foregroundColor: Colors.white,
@@ -109,9 +229,7 @@ class ActiveSessionsPage extends StatelessWidget {
             decoration: BoxDecoration(
               color: const Color(0xFFF5F8F6),
               borderRadius: BorderRadius.circular(16),
-              border: Border.all(
-                color: const Color(0xFFE0E0E0),
-              ),
+              border: Border.all(color: const Color(0xFFE0E0E0)),
             ),
             child: Row(
               children: [
@@ -144,10 +262,7 @@ class ActiveSessionsPage extends StatelessWidget {
                   ),
                 ),
                 if (!isCurrent)
-                  TextButton(
-                    onPressed: () {},
-                    child: const Text('Cerrar'),
-                  ),
+                  TextButton(onPressed: () {}, child: const Text('Cerrar')),
               ],
             ),
           );
@@ -208,64 +323,52 @@ class _NotificationPreferencesPageState
             subtitle: const Text('Prioriza alertas cercanas al usuario'),
             onChanged: notificationsEnabled
                 ? (value) {
-              setState(() {
-                onlyMyZone = value;
-              });
-            }
+                    setState(() {
+                      onlyMyZone = value;
+                    });
+                  }
                 : null,
           ),
           const SizedBox(height: 18),
           const Text(
             'Especie',
-            style: TextStyle(
-              fontWeight: FontWeight.w700,
-              fontSize: 14,
-            ),
+            style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
           ),
           const SizedBox(height: 8),
           DropdownButtonFormField<String>(
             value: selectedSpecies,
             decoration: _inputDecoration(),
             items: species.map((item) {
-              return DropdownMenuItem(
-                value: item,
-                child: Text(item),
-              );
+              return DropdownMenuItem(value: item, child: Text(item));
             }).toList(),
             onChanged: notificationsEnabled
                 ? (value) {
-              if (value == null) return;
-              setState(() {
-                selectedSpecies = value;
-              });
-            }
+                    if (value == null) return;
+                    setState(() {
+                      selectedSpecies = value;
+                    });
+                  }
                 : null,
           ),
           const SizedBox(height: 18),
           const Text(
             'Tipo de evento',
-            style: TextStyle(
-              fontWeight: FontWeight.w700,
-              fontSize: 14,
-            ),
+            style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
           ),
           const SizedBox(height: 8),
           DropdownButtonFormField<String>(
             value: selectedEvent,
             decoration: _inputDecoration(),
             items: events.map((item) {
-              return DropdownMenuItem(
-                value: item,
-                child: Text(item),
-              );
+              return DropdownMenuItem(value: item, child: Text(item));
             }).toList(),
             onChanged: notificationsEnabled
                 ? (value) {
-              if (value == null) return;
-              setState(() {
-                selectedEvent = value;
-              });
-            }
+                    if (value == null) return;
+                    setState(() {
+                      selectedEvent = value;
+                    });
+                  }
                 : null,
           ),
           const SizedBox(height: 28),
@@ -296,49 +399,58 @@ class _NotificationPreferencesPageState
       fillColor: const Color(0xFFF5F8F6),
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(14),
-        borderSide: const BorderSide(
-          color: Color(0xFFE0E0E0),
-        ),
+        borderSide: const BorderSide(color: Color(0xFFE0E0E0)),
       ),
       enabledBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(14),
-        borderSide: const BorderSide(
-          color: Color(0xFFE0E0E0),
-        ),
+        borderSide: const BorderSide(color: Color(0xFFE0E0E0)),
       ),
     );
   }
 }
 
-class _ReadOnlyField extends StatelessWidget {
-  const _ReadOnlyField({
+class _ProfileField extends StatelessWidget {
+  const _ProfileField({
     required this.label,
-    required this.value,
     required this.icon,
+    this.controller,
+    this.initialValue,
+    this.readOnly = false,
+    this.enabled = true,
+    this.validator,
+    this.keyboardType,
+    this.inputFormatters,
   });
 
   final String label;
-  final String value;
   final IconData icon;
+  final TextEditingController? controller;
+  final String? initialValue;
+  final bool readOnly;
+  final bool enabled;
+  final String? Function(String?)? validator;
+  final TextInputType? keyboardType;
+  final List<TextInputFormatter>? inputFormatters;
 
   @override
   Widget build(BuildContext context) {
     return TextFormField(
-      initialValue: value,
-      readOnly: true,
+      controller: controller,
+      initialValue: controller == null ? initialValue : null,
+      readOnly: readOnly,
+      enabled: enabled,
+      validator: validator,
+      keyboardType: keyboardType,
+      inputFormatters: inputFormatters,
       decoration: InputDecoration(
         labelText: label,
         prefixIcon: Icon(icon),
         filled: true,
         fillColor: const Color(0xFFF5F8F6),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
-        ),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
-          borderSide: const BorderSide(
-            color: Color(0xFFE0E0E0),
-          ),
+          borderSide: const BorderSide(color: Color(0xFFE0E0E0)),
         ),
       ),
     );
