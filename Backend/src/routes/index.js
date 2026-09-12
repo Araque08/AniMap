@@ -17,6 +17,7 @@ const petsRoutes = require('../modules/pets/pets.routes');
 */
 const mapRoutes = require('../modules/map/map.routes');
 const profileRoutes = require('../modules/profile/profile.routes');
+const reportsRoutes = require('../modules/reports/reports.routes');
 
 /*
   Aquí creo el router principal de Express.
@@ -65,6 +66,7 @@ router.use('/pets', petsRoutes);
 */
 router.use('/map', mapRoutes);
 router.use('/profile', profileRoutes);
+router.use('/reports', reportsRoutes);
 
 /*
   Exporto el router principal para que app.js lo pueda montar en /api.

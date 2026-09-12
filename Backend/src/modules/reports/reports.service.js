@@ -1,0 +1,330 @@
+const postgres = require('../../config/postgres_db');
+
+function createHttpError(message, statusCode) {
+  const error = new Error(message);
+  error.statusCode = statusCode;
+  return error;
+}
+
+function normalizePet(row) {
+  return {
+    id: row.id,
+    nombre: row.nombre,
+    especie: row.especie,
+    raza: row.raza,
+    estado: row.estado,
+    tieneReporteActivo: row.tiene_reporte_activo,
+    fotoPrincipal: row.foto_storage_ref
+      ? {
+          id: row.foto_storage_ref,
+          url: row.foto_url_preview || `/api/pets/images/${row.foto_storage_ref}`,
+        }
+      : null,
+  };
+}
+
+function normalizeReport(row) {
+  return {
+    id: row.id,
+    mascotaId: row.fk_mascota,
+    descripcion: row.descripcion,
+    mostrarContacto: row.mostrar_contacto,
+    estado: row.estado,
+    creadoEn: row.creado_en,
+    cerradoEn: row.cerrado_en,
+    mascota: {
+      id: row.fk_mascota,
+      nombre: row.mascota_nombre,
+      especie: row.especie_nombre,
+      raza: row.raza_nombre,
+      estado: row.mascota_estado,
+      fotoPrincipal: row.foto_storage_ref
+        ? {
+            id: row.foto_storage_ref,
+            url:
+              row.foto_url_preview ||
+              `/api/pets/images/${row.foto_storage_ref}`,
+          }
+        : null,
+    },
+    ubicacion: {
+      metodo: row.ubicacion_metodo,
+      lat: Number(row.lat),
+      lng: Number(row.lng),
+      precisionM:
+        row.precision_m === null ? null : Number(row.precision_m),
+      direccion: row.direccion,
+      placeId: row.place_id,
+    },
+  };
+}
+
+const REPORT_SELECT = `
+  SELECT
+    r.id, r.fk_mascota, r.descripcion, r.mostrar_contacto, r.estado,
+    r.creado_en, r.cerrado_en,
+    m.nombre AS mascota_nombre, m.estado AS mascota_estado,
+    e.nombre AS especie_nombre, raza.nombre AS raza_nombre,
+    ub.metodo AS ubicacion_metodo, ub.lat, ub.lng, ub.precision_m,
+    ub.direccion, ub.place_id,
+    fp.storage_ref AS foto_storage_ref, fp.url_preview AS foto_url_preview
+  FROM reporte r
+  INNER JOIN mascota m ON m.id = r.fk_mascota
+  INNER JOIN especie e ON e.id = m.fk_especie
+  LEFT JOIN raza ON raza.id = m.fk_raza
+  INNER JOIN ubicacion ub ON ub.fk_reporte = r.id
+  LEFT JOIN LATERAL (
+    SELECT storage_ref, url_preview
+    FROM foto_mascota
+    WHERE fk_mascota = m.id AND es_principal = TRUE
+    LIMIT 1
+  ) fp ON TRUE`;
+
+function createReportsService(pool = postgres.pool) {
+  async function listReportablePets(userId) {
+    const result = await pool.query(
+      `SELECT
+        m.id, m.nombre, m.estado, e.nombre AS especie, r.nombre AS raza,
+        EXISTS (
+          SELECT 1 FROM reporte rp
+          WHERE rp.fk_mascota = m.id AND rp.estado = 'ACTIVO'
+        ) AS tiene_reporte_activo,
+        fp.storage_ref AS foto_storage_ref,
+        fp.url_preview AS foto_url_preview
+      FROM mascota m
+      INNER JOIN especie e ON e.id = m.fk_especie
+      LEFT JOIN raza r ON r.id = m.fk_raza
+      LEFT JOIN LATERAL (
+        SELECT storage_ref, url_preview
+        FROM foto_mascota
+        WHERE fk_mascota = m.id AND es_principal = TRUE
+        LIMIT 1
+      ) fp ON TRUE
+      WHERE m.fk_usuario = $1 AND m.estado <> 'INACTIVA'
+      ORDER BY m.nombre, m.id`,
+      [userId]
+    );
+
+    return result.rows.map(normalizePet);
+  }
+
+  async function listOwnReports(userId) {
+    const result = await pool.query(
+      `${REPORT_SELECT}
+       WHERE r.fk_usuario = $1
+       ORDER BY r.creado_en DESC, r.id DESC`,
+      [userId]
+    );
+    return result.rows.map(normalizeReport);
+  }
+
+  async function getOwnReport(userId, reportId) {
+    const result = await pool.query(
+      `${REPORT_SELECT}
+       WHERE r.id = $1 AND r.fk_usuario = $2`,
+      [reportId, userId]
+    );
+    if (result.rowCount === 0) {
+      throw createHttpError('Reporte no encontrado', 404);
+    }
+    return normalizeReport(result.rows[0]);
+  }
+
+  async function createReport(userId, data) {
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      const petResult = await client.query(
+        `SELECT id, estado
+         FROM mascota
+         WHERE id = $1 AND fk_usuario = $2 AND estado <> 'INACTIVA'
+         FOR UPDATE`,
+        [data.mascotaId, userId]
+      );
+      if (petResult.rowCount === 0) {
+        throw createHttpError('Mascota no encontrada o no disponible', 404);
+      }
+
+      const activeResult = await client.query(
+        `SELECT id FROM reporte
+         WHERE fk_mascota = $1 AND estado = 'ACTIVO'`,
+        [data.mascotaId]
+      );
+      if (activeResult.rowCount > 0) {
+        throw createHttpError('La mascota ya tiene un reporte activo', 409);
+      }
+
+      const reportResult = await client.query(
+        `INSERT INTO reporte (
+          fk_usuario, fk_mascota, mostrar_contacto, descripcion, estado
+        ) VALUES ($1, $2, $3, $4, 'ACTIVO')
+        RETURNING id, estado, creado_en`,
+        [
+          userId,
+          data.mascotaId,
+          data.mostrarContacto,
+          data.descripcion || null,
+        ]
+      );
+      const report = reportResult.rows[0];
+
+      await client.query(
+        `INSERT INTO ubicacion (
+          fk_reporte, metodo, lat, lng, precision_m, direccion, place_id
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+        [
+          report.id,
+          data.ubicacion.metodo,
+          data.ubicacion.lat,
+          data.ubicacion.lng,
+          data.ubicacion.precisionM ?? null,
+          data.ubicacion.direccion || null,
+          data.ubicacion.placeId || null,
+        ]
+      );
+
+      await client.query(
+        `UPDATE mascota
+         SET estado = 'PERDIDA', actualizado_en = NOW()
+         WHERE id = $1 AND fk_usuario = $2`,
+        [data.mascotaId, userId]
+      );
+
+      await client.query('COMMIT');
+      return report;
+    } catch (error) {
+      await client.query('ROLLBACK').catch(() => undefined);
+      if (error.code === '23505') {
+        throw createHttpError('La mascota ya tiene un reporte activo', 409);
+      }
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  async function updateReport(userId, reportId, data) {
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      const currentResult = await client.query(
+        `SELECT id, descripcion, mostrar_contacto, estado
+         FROM reporte
+         WHERE id = $1 AND fk_usuario = $2
+         FOR UPDATE`,
+        [reportId, userId]
+      );
+      if (currentResult.rowCount === 0) {
+        throw createHttpError('Reporte no encontrado', 404);
+      }
+      const current = currentResult.rows[0];
+      if (current.estado !== 'ACTIVO') {
+        throw createHttpError('Un reporte finalizado no puede editarse', 409);
+      }
+
+      const descripcion = Object.hasOwn(data, 'descripcion')
+        ? data.descripcion || null
+        : current.descripcion;
+      const mostrarContacto = Object.hasOwn(data, 'mostrarContacto')
+        ? data.mostrarContacto
+        : current.mostrar_contacto;
+
+      await client.query(
+        `UPDATE reporte
+         SET descripcion = $1, mostrar_contacto = $2, actualizado_en = NOW()
+         WHERE id = $3 AND fk_usuario = $4`,
+        [descripcion, mostrarContacto, reportId, userId]
+      );
+
+      if (data.ubicacion) {
+        const locationResult = await client.query(
+          `UPDATE ubicacion
+           SET metodo = $1, lat = $2, lng = $3, precision_m = $4,
+               direccion = $5, place_id = $6, "timestamp" = NOW()
+           WHERE fk_reporte = $7`,
+          [
+            data.ubicacion.metodo,
+            data.ubicacion.lat,
+            data.ubicacion.lng,
+            data.ubicacion.precisionM ?? null,
+            data.ubicacion.direccion || null,
+            data.ubicacion.placeId || null,
+            reportId,
+          ]
+        );
+        if (locationResult.rowCount !== 1) {
+          throw createHttpError('La ubicación del reporte no existe', 409);
+        }
+      }
+
+      await client.query('COMMIT');
+      return { id: reportId, estado: 'ACTIVO' };
+    } catch (error) {
+      await client.query('ROLLBACK').catch(() => undefined);
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  async function closeReport(userId, reportId) {
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      const reportResult = await client.query(
+        `SELECT id, fk_mascota, estado
+         FROM reporte
+         WHERE id = $1 AND fk_usuario = $2
+         FOR UPDATE`,
+        [reportId, userId]
+      );
+      if (reportResult.rowCount === 0) {
+        throw createHttpError('Reporte no encontrado', 404);
+      }
+      const report = reportResult.rows[0];
+      if (report.estado !== 'ACTIVO') {
+        throw createHttpError('El reporte ya está finalizado', 409);
+      }
+
+      await client.query(
+        `UPDATE reporte
+         SET estado = 'FINALIZADO', cerrado_en = NOW()
+         WHERE id = $1 AND fk_usuario = $2`,
+        [reportId, userId]
+      );
+      const petResult = await client.query(
+        `UPDATE mascota
+         SET estado = 'ENCONTRADA', actualizado_en = NOW()
+         WHERE id = $1 AND fk_usuario = $2
+         RETURNING id`,
+        [report.fk_mascota, userId]
+      );
+      if (petResult.rowCount !== 1) {
+        throw createHttpError('No fue posible actualizar la mascota', 409);
+      }
+
+      await client.query('COMMIT');
+      return { id: reportId, estado: 'FINALIZADO' };
+    } catch (error) {
+      await client.query('ROLLBACK').catch(() => undefined);
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  return {
+    closeReport,
+    createReport,
+    getOwnReport,
+    listOwnReports,
+    listReportablePets,
+    updateReport,
+  };
+}
+
+module.exports = {
+  createReportsService,
+  reportsService: createReportsService(),
+};

@@ -208,12 +208,17 @@ router.get('/images/:imageId', async (req, res) => {
       estado: 'ACTIVA',
       });
     const contenido = imagen?.imagen || imagen?.buffer;
-    if (!contenido) {
+    const payload = Buffer.isBuffer(contenido)
+      ? contenido
+      : contenido?.buffer
+        ? Buffer.from(contenido.buffer)
+        : null;
+    if (!payload) {
       return res.status(404).json({ ok: false, message: 'Imagen no encontrada' });
     }
     res.set('Content-Type', imagen.mimeType || 'application/octet-stream');
     res.set('Cache-Control', 'private, max-age=86400');
-    return res.send(contenido);
+    return res.send(payload);
   } catch (error) {
     console.error('Error consultando imagen:', error);
     return res.status(500).json({ ok: false, message: 'Error consultando la imagen' });

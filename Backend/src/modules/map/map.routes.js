@@ -1,7 +1,56 @@
 const express = require('express');
+const { ObjectId } = require('mongodb');
 const pool = require('../../config/postgres_db');
+const { getMongoDb } = require('../../config/mongo_db');
 
 const router = express.Router();
+
+router.get('/images/:imageId', async (req, res) => {
+  const imageId = req.params.imageId;
+  if (!ObjectId.isValid(imageId)) {
+    return res.status(400).json({ ok: false, message: 'ID de imagen inválido' });
+  }
+
+  try {
+    const reference = await pool.query(
+      `SELECT f.fk_mascota
+       FROM foto_mascota f
+       INNER JOIN reporte r
+         ON r.fk_mascota = f.fk_mascota AND r.estado = 'ACTIVO'
+       INNER JOIN mascota m
+         ON m.id = f.fk_mascota AND m.estado = 'PERDIDA'
+       WHERE f.storage_ref = $1 AND f.es_principal = TRUE
+       LIMIT 1`,
+      [imageId]
+    );
+    if (reference.rowCount === 0) {
+      return res.status(404).json({ ok: false, message: 'Imagen no encontrada' });
+    }
+
+    const db = await getMongoDb();
+    const image = await db.collection('ImagenMascota').findOne({
+      _id: new ObjectId(imageId),
+      mascotaIdPg: reference.rows[0].fk_mascota,
+      estado: 'ACTIVA',
+    });
+    const content = image?.imagen || image?.buffer;
+    const payload = Buffer.isBuffer(content)
+      ? content
+      : content?.buffer
+        ? Buffer.from(content.buffer)
+        : null;
+    if (!payload) {
+      return res.status(404).json({ ok: false, message: 'Imagen no encontrada' });
+    }
+
+    res.set('Content-Type', image.mimeType || 'application/octet-stream');
+    res.set('Cache-Control', 'public, max-age=3600');
+    return res.send(payload);
+  } catch (error) {
+    console.error('Error consultando imagen pública del reporte:', error);
+    return res.status(500).json({ ok: false, message: 'Error consultando la imagen' });
+  }
+});
 
 /*
   GET /api/map/reports
@@ -9,7 +58,6 @@ const router = express.Router();
   Esta ruta entrega al mapa los datos que antes estaban quemados en Flutter.
   Por ahora consulta PostgreSQL y arma una respuesta lista para pintar:
   - Mascotas perdidas: vienen de reporte + mascota + ubicación.
-  - Mascotas encontradas: vienen de reporte finalizado + mascota + ubicación.
   - Avistamientos: vienen de avistamiento + ubicación.
 
   Más adelante se puede ampliar para filtros por radio, especie, raza o fecha.
@@ -17,10 +65,7 @@ const router = express.Router();
 router.get('/reports', async (req, res) => {
   try {
     /*
-      Reportes de mascotas perdidas o encontradas.
-
-      Si el reporte está ACTIVO, el mapa lo interpreta como "lost".
-      Si el reporte está FINALIZADO, el mapa lo interpreta como "found".
+      Reportes activos de mascotas perdidas.
     */
     const reportesResult = await pool.query(`
       SELECT
@@ -40,13 +85,15 @@ router.get('/reports', async (req, res) => {
         e.nombre AS especie_nombre,
         raza.nombre AS raza_nombre,
 
-        u.nombre AS owner_name,
-        u.telefono AS owner_phone,
-        u.email AS owner_email,
+        CASE
+          WHEN r.mostrar_contacto = TRUE THEN u.telefono
+          ELSE NULL
+        END AS owner_phone,
 
         ub.lat,
         ub.lng,
-        ub.direccion
+        ub.direccion,
+        fp.storage_ref AS foto_storage_ref
       FROM reporte r
       INNER JOIN mascota m
         ON m.id = r.fk_mascota
@@ -58,7 +105,13 @@ router.get('/reports', async (req, res) => {
         ON u.id = r.fk_usuario
       INNER JOIN ubicacion ub
         ON ub.fk_reporte = r.id
-      WHERE r.estado IN ('ACTIVO', 'FINALIZADO')
+      LEFT JOIN LATERAL (
+        SELECT storage_ref
+        FROM foto_mascota
+        WHERE fk_mascota = m.id AND es_principal = TRUE
+        LIMIT 1
+      ) fp ON TRUE
+      WHERE r.estado = 'ACTIVO' AND m.estado = 'PERDIDA'
       ORDER BY r.creado_en DESC;
     `);
 
@@ -88,11 +141,12 @@ router.get('/reports', async (req, res) => {
     `);
 
     const reportes = reportesResult.rows.map((row) => {
-      const isFound = row.reporte_estado === 'FINALIZADO';
+      const showContact =
+        row.mostrar_contacto === true && Boolean(row.owner_phone);
 
       return {
-        id: `${isFound ? 'found' : 'lost'}_${row.reporte_id}`,
-        title: isFound ? 'Mascota encontrada' : 'Mascota perdida',
+        id: `lost_${row.reporte_id}`,
+        title: 'Mascota perdida',
         petName: row.mascota_nombre,
         details: [
           row.especie_nombre,
@@ -103,21 +157,18 @@ router.get('/reports', async (req, res) => {
           .join(' · '),
         location: row.direccion || 'Ubicación reportada en el mapa',
         description:
-          row.reporte_descripcion ||
-          (isFound
-            ? 'El reporte fue finalizado porque la mascota fue encontrada.'
-            : 'Mascota reportada como perdida.'),
-        dateText: isFound
-          ? row.cerrado_en || row.creado_en
-          : row.creado_en,
-        imageUrl: null,
+          row.reporte_descripcion || 'Mascota reportada como perdida.',
+        dateText: row.creado_en,
+        imageUrl: row.foto_storage_ref
+          ? `/api/map/images/${row.foto_storage_ref}`
+          : null,
         lat: Number(row.lat),
         lng: Number(row.lng),
-        type: isFound ? 'found' : 'lost',
-        showContact: row.mostrar_contacto === true,
-        ownerName: row.mostrar_contacto ? row.owner_name : '',
-        ownerPhone: row.mostrar_contacto ? row.owner_phone : '',
-        ownerEmail: row.mostrar_contacto ? row.owner_email : '',
+        type: 'lost',
+        showContact,
+        ownerName: '',
+        ownerPhone: showContact ? row.owner_phone : '',
+        ownerEmail: '',
       };
     });
 

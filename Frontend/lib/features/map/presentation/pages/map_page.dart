@@ -60,7 +60,7 @@ class MapReport {
   final String location;
   final String description;
   final String dateText;
-  final String imageAsset;
+  final String? imageUrl;
   final LatLng position;
   final ReportType type;
 
@@ -82,7 +82,7 @@ class MapReport {
     required this.location,
     required this.description,
     required this.dateText,
-    required this.imageAsset,
+    required this.imageUrl,
     required this.position,
     required this.type,
     required this.showContact,
@@ -105,7 +105,7 @@ class MapReport {
       location: json['location']?.toString() ?? 'Ubicación no disponible',
       description: json['description']?.toString() ?? 'Sin descripción',
       dateText: _formatDateText(json['dateText']),
-      imageAsset: 'assets/images/logo_animap.png',
+      imageUrl: _imageUrl(json['imageUrl']),
       position: LatLng(
         _toDouble(json['lat']),
         _toDouble(json['lng']),
@@ -116,6 +116,12 @@ class MapReport {
       ownerPhone: json['ownerPhone']?.toString() ?? '',
       ownerEmail: json['ownerEmail']?.toString() ?? '',
     );
+  }
+
+  static String? _imageUrl(dynamic value) {
+    final path = value?.toString();
+    if (path == null || path.isEmpty) return null;
+    return path.startsWith('http') ? path : 'http://10.0.2.2:3000$path';
   }
 
   /*
@@ -1026,6 +1032,45 @@ class _ZoomControl extends StatelessWidget {
    TARJETA INFERIOR DEL REPORTE SELECCIONADO
    ============================================================================ */
 
+class _MapPetPhoto extends StatelessWidget {
+  final String? imageUrl;
+  final double size;
+  final Color color;
+
+  const _MapPetPhoto({
+    required this.imageUrl,
+    required this.size,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final url = imageUrl;
+    if (url == null) return _fallback();
+    return ClipOval(
+      child: Image.network(
+        url,
+        width: size,
+        height: size,
+        fit: BoxFit.cover,
+        errorBuilder: (_, _, _) => _fallback(),
+      ),
+    );
+  }
+
+  Widget _fallback() {
+    return Container(
+      width: size,
+      height: size,
+      decoration: const BoxDecoration(
+        color: Color(0xFFDDEFE2),
+        shape: BoxShape.circle,
+      ),
+      child: Icon(Icons.pets, color: color, size: size * 0.55),
+    );
+  }
+}
+
 class _ReportPreviewCard extends StatelessWidget {
   final MapReport report;
   final VoidCallback onClose;
@@ -1067,14 +1112,10 @@ class _ReportPreviewCard extends StatelessWidget {
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              CircleAvatar(
-                radius: 28,
-                backgroundColor: const Color(0xFFDDEFE2),
-                child: Icon(
-                  Icons.pets,
-                  color: isLost ? const Color(0xFFE96F67) : primaryGreen,
-                  size: 30,
-                ),
+              _MapPetPhoto(
+                imageUrl: report.imageUrl,
+                size: 56,
+                color: isLost ? const Color(0xFFE96F67) : primaryGreen,
               ),
               const SizedBox(width: 10),
               Expanded(
@@ -1420,14 +1461,10 @@ class _ReportDetailPage extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Center(
-                        child: CircleAvatar(
-                          radius: 42,
-                          backgroundColor: const Color(0xFFDDEFE2),
-                          child: Icon(
-                            Icons.pets,
-                            size: 46,
-                            color: statusColor,
-                          ),
+                        child: _MapPetPhoto(
+                          imageUrl: report.imageUrl,
+                          size: 84,
+                          color: statusColor,
                         ),
                       ),
                       const SizedBox(height: 22),
@@ -1583,10 +1620,6 @@ class _OwnerContactCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _DetailRow(
-            label: 'Nombre',
-            value: report.ownerName,
-          ),
           _DetailRow(
             label: 'Teléfono',
             value: report.ownerPhone,
