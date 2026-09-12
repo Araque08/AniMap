@@ -1,12 +1,38 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
+import '../../auth/data/auth_service.dart';
 
 class MascotasService {
   static const String baseUrl = 'http://10.0.2.2:3000/api/pets';
+  static const String originUrl = 'http://10.0.2.2:3000';
+
+  static http.MediaType _imageContentType(String path) {
+    final normalizedPath = path.toLowerCase();
+
+    if (normalizedPath.endsWith('.jpg') ||
+        normalizedPath.endsWith('.jpeg')) {
+      return http.MediaType('image', 'jpeg');
+    }
+    if (normalizedPath.endsWith('.png')) {
+      return http.MediaType('image', 'png');
+    }
+    if (normalizedPath.endsWith('.webp')) {
+      return http.MediaType('image', 'webp');
+    }
+
+    throw ArgumentError('Formato de imagen no soportado');
+  }
+
+  static Map<String, String> get authHeaders {
+    final token = AuthService.accessToken;
+    if (token == null || token.isEmpty) {
+      throw StateError('No hay una sesión autenticada');
+    }
+    return {'Authorization': 'Bearer $token'};
+  }
 
   static Future<Map<String, dynamic>> registrarMascota({
-    required int fkUsuario,
     required int fkEspecie,
     int? fkRaza,
     required String nombre,
@@ -18,14 +44,9 @@ class MascotasService {
     required List<XFile> imagenes,
     required int fotoPrincipalIndex,
   }) async {
-    final request = http.MultipartRequest(
-      'POST',
-      Uri.parse(baseUrl),
-    );
+    final request = http.MultipartRequest('POST', Uri.parse(baseUrl));
 
-
-
-    request.fields['fk_usuario'] = fkUsuario.toString();
+    request.headers.addAll(authHeaders);
     request.fields['fk_especie'] = fkEspecie.toString();
     request.fields['nombre'] = nombre;
     request.fields['color'] = color;
@@ -53,6 +74,7 @@ class MascotasService {
         await http.MultipartFile.fromPath(
           'imagenes',
           imagen.path,
+          contentType: _imageContentType(imagen.path),
         ),
       );
     }
@@ -71,23 +93,13 @@ class MascotasService {
 
   static Future<List<Map<String, dynamic>>> obtenerImagenesMascota({
     required int mascotaId,
-    required int usuarioId,
   }) async {
-    final url = Uri.parse(
-      '$baseUrl/$mascotaId/images?usuarioId=$usuarioId',
-    );
+    final url = Uri.parse('$baseUrl/$mascotaId/images');
 
-    print('URL imágenes mascota: $url');
-
-    final response = await http.get(url);
-
-    print('Status imágenes mascota: ${response.statusCode}');
-    print('Body imágenes mascota: ${response.body}');
+    final response = await http.get(url, headers: authHeaders);
 
     if (response.statusCode != 200) {
-      throw Exception(
-        'Status: ${response.statusCode} - Body: ${response.body}',
-      );
+      throw Exception('No se pudieron cargar las imágenes');
     }
 
     final data = jsonDecode(response.body);
@@ -108,17 +120,10 @@ class MascotasService {
   }) async {
     final url = Uri.parse('$baseUrl/$mascotaId');
 
-    print('URL perfil mascota: $url');
-
-    final response = await http.get(url);
-
-    print('Status perfil mascota: ${response.statusCode}');
-    print('Body perfil mascota: ${response.body}');
+    final response = await http.get(url, headers: authHeaders);
 
     if (response.statusCode != 200) {
-      throw Exception(
-        'Status: ${response.statusCode} - Body: ${response.body}',
-      );
+      throw Exception('No se pudo cargar la mascota');
     }
 
     if (response.body.trim().startsWith('<!DOCTYPE html>') ||
@@ -131,9 +136,7 @@ class MascotasService {
     final data = jsonDecode(response.body);
 
     if (data['ok'] != true) {
-      throw Exception(
-        data['message'] ?? 'No se pudo cargar la mascota',
-      );
+      throw Exception(data['message'] ?? 'No se pudo cargar la mascota');
     }
 
     if (data['mascota'] != null) {
@@ -151,27 +154,10 @@ class MascotasService {
     return Map<String, dynamic>.from(data);
   }
 
-
-  static Future<void> eliminarMascota({
-    required int mascotaId,
-    required int fkUsuario,
-  }) async {
+  static Future<void> eliminarMascota({required int mascotaId}) async {
     final url = Uri.parse('$baseUrl/$mascotaId');
 
-    print('URL inactivar mascota: $url');
-
-    final response = await http.delete(
-      url,
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: jsonEncode({
-        'fk_usuario': fkUsuario,
-      }),
-    );
-
-    print('Status inactivar mascota: ${response.statusCode}');
-    print('Body inactivar mascota: ${response.body}');
+    final response = await http.delete(url, headers: authHeaders);
 
     if (response.body.trim().startsWith('<!DOCTYPE html>') ||
         response.body.trim().startsWith('<html')) {
@@ -183,16 +169,12 @@ class MascotasService {
     final data = jsonDecode(response.body);
 
     if (response.statusCode != 200 || data['ok'] != true) {
-      throw Exception(
-        data['message'] ?? 'No se pudo inactivar la mascota',
-      );
+      throw Exception(data['message'] ?? 'No se pudo inactivar la mascota');
     }
   }
 
-
   static Future<void> actualizarMascota({
     required int mascotaId,
-    required int fkUsuario,
     required int fkEspecie,
     int? fkRaza,
     required String nombre,
@@ -205,7 +187,6 @@ class MascotasService {
     final url = Uri.parse('$baseUrl/$mascotaId');
 
     final body = {
-      'fk_usuario': fkUsuario,
       'fk_especie': fkEspecie,
       'fk_raza': fkRaza,
       'nombre': nombre,
@@ -216,19 +197,11 @@ class MascotasService {
       'observaciones': observaciones,
     };
 
-    print('URL actualizar mascota: $url');
-    print('Body actualizar mascota: ${jsonEncode(body)}');
-
     final response = await http.put(
       url,
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers: {'Content-Type': 'application/json', ...authHeaders},
       body: jsonEncode(body),
     );
-
-    print('Status actualizar mascota: ${response.statusCode}');
-    print('Body respuesta actualizar mascota: ${response.body}');
 
     if (response.body.trim().startsWith('<!DOCTYPE html>') ||
         response.body.trim().startsWith('<html')) {
@@ -240,15 +213,12 @@ class MascotasService {
     final data = jsonDecode(response.body);
 
     if (response.statusCode != 200 || data['ok'] != true) {
-      throw Exception(
-        data['message'] ?? 'No se pudo actualizar la mascota',
-      );
+      throw Exception(data['message'] ?? 'No se pudo actualizar la mascota');
     }
   }
 
   static Future<void> agregarFotosMascota({
     required int mascotaId,
-    required int fkUsuario,
     required List<XFile> imagenes,
     int fotoPrincipalIndex = 0,
     bool marcarComoPrincipal = false,
@@ -257,7 +227,7 @@ class MascotasService {
 
     final request = http.MultipartRequest('POST', url);
 
-    request.fields['fk_usuario'] = fkUsuario.toString();
+    request.headers.addAll(authHeaders);
     request.fields['foto_principal_index'] = fotoPrincipalIndex.toString();
     request.fields['marcar_como_principal'] = marcarComoPrincipal.toString();
 
@@ -266,6 +236,7 @@ class MascotasService {
         await http.MultipartFile.fromPath(
           'imagenes',
           imagen.path,
+          contentType: _imageContentType(imagen.path),
         ),
       );
     }
@@ -273,15 +244,40 @@ class MascotasService {
     final streamedResponse = await request.send();
     final response = await http.Response.fromStream(streamedResponse);
 
-    print('Status agregar fotos: ${response.statusCode}');
-    print('Body agregar fotos: ${response.body}');
-
     final data = jsonDecode(response.body);
 
     if (response.statusCode != 201 || data['ok'] != true) {
+      throw Exception(data['message'] ?? 'No se pudieron agregar las fotos');
+    }
+  }
+
+  static Future<void> establecerFotoPrincipal({
+    required int mascotaId,
+    required String imageId,
+  }) async {
+    final response = await http.put(
+      Uri.parse('$baseUrl/$mascotaId/images/$imageId/principal'),
+      headers: authHeaders,
+    );
+    final data = jsonDecode(response.body);
+    if (response.statusCode != 200 || data['ok'] != true) {
       throw Exception(
-        data['message'] ?? 'No se pudieron agregar las fotos',
+        data['message'] ?? 'No se pudo cambiar la foto principal',
       );
+    }
+  }
+
+  static Future<void> eliminarFoto({
+    required int mascotaId,
+    required String imageId,
+  }) async {
+    final response = await http.delete(
+      Uri.parse('$baseUrl/$mascotaId/images/$imageId'),
+      headers: authHeaders,
+    );
+    final data = jsonDecode(response.body);
+    if (response.statusCode != 200 || data['ok'] != true) {
+      throw Exception(data['message'] ?? 'No se pudo eliminar la foto');
     }
   }
 }

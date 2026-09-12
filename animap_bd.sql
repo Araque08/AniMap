@@ -433,3 +433,43 @@ INSERT INTO rol (nombre) VALUES
 INSERT INTO especie (nombre) VALUES
 ('Perro'),
 ('Gato');
+
+INSERT INTO raza (fk_especie, nombre)
+SELECT id, 'Mestizo' FROM especie WHERE nombre = 'Perro'
+ON CONFLICT DO NOTHING;
+
+INSERT INTO raza (fk_especie, nombre)
+SELECT id, 'Labrador Retriever' FROM especie WHERE nombre = 'Perro'
+ON CONFLICT DO NOTHING;
+
+INSERT INTO raza (fk_especie, nombre)
+SELECT id, 'Golden Retriever' FROM especie WHERE nombre = 'Perro'
+ON CONFLICT DO NOTHING;
+
+INSERT INTO raza (fk_especie, nombre)
+SELECT id, 'Pomerania' FROM especie WHERE nombre = 'Perro'
+ON CONFLICT DO NOTHING;
+
+INSERT INTO raza (fk_especie, nombre)
+SELECT id, 'Otra' FROM especie WHERE nombre = 'Perro'
+ON CONFLICT DO NOTHING;
+
+INSERT INTO raza (fk_especie, nombre)
+SELECT id, 'Mestizo' FROM especie WHERE nombre = 'Gato'
+ON CONFLICT DO NOTHING;
+
+INSERT INTO raza (fk_especie, nombre)
+SELECT id, 'Siamés' FROM especie WHERE nombre = 'Gato'
+ON CONFLICT DO NOTHING;
+
+INSERT INTO raza (fk_especie, nombre)
+SELECT id, 'Persa' FROM especie WHERE nombre = 'Gato'
+ON CONFLICT DO NOTHING;
+
+INSERT INTO raza (fk_especie, nombre)
+SELECT id, 'Maine Coon' FROM especie WHERE nombre = 'Gato'
+ON CONFLICT DO NOTHING;
+
+INSERT INTO raza (fk_especie, nombre)
+SELECT id, 'Otra' FROM especie WHERE nombre = 'Gato'
+ON CONFLICT DO NOTHING;

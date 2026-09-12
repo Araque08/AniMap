@@ -4,7 +4,6 @@ import '../../data/pets_service.dart';
 import 'register_pet_page.dart';
 import 'pet_profile_page.dart';
 
-
 class MyPetsPage extends StatefulWidget {
   const MyPetsPage({super.key});
 
@@ -15,20 +14,17 @@ class MyPetsPage extends StatefulWidget {
 class _MyPetsPageState extends State<MyPetsPage> {
   late Future<List<Map<String, dynamic>>> _futureMascotas;
 
-  // Por ahora dejamos el usuario quemado.
-  // Después lo cambiamos por el id del usuario logueado.
-  final int usuarioId = 1;
   bool _hayMascotasActivas = false;
 
   @override
   void initState() {
     super.initState();
-    _futureMascotas = PetsService.getMyPets(usuarioId: usuarioId);
+    _futureMascotas = PetsService.getMyPets();
   }
 
   Future<void> _refreshPets() async {
     setState(() {
-      _futureMascotas = PetsService.getMyPets(usuarioId: usuarioId);
+      _futureMascotas = PetsService.getMyPets();
     });
   }
 
@@ -65,18 +61,14 @@ class _MyPetsPageState extends State<MyPetsPage> {
             fontSize: 20,
           ),
         ),
-        iconTheme: const IconThemeData(
-          color: Color(0xFF1F2937),
-        ),
+        iconTheme: const IconThemeData(color: Color(0xFF1F2937)),
       ),
 
       body: FutureBuilder<List<Map<String, dynamic>>>(
         future: _futureMascotas,
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(
-              child: CircularProgressIndicator(),
-            );
+            return const Center(child: CircularProgressIndicator());
           }
 
           if (snapshot.hasError) {
@@ -90,7 +82,7 @@ class _MyPetsPageState extends State<MyPetsPage> {
 
           final mascotasActivas = pets.where((mascota) {
             final estado = mascota['estado']?.toString().toUpperCase() ?? '';
-            return estado == 'ACTIVA';
+            return estado != 'INACTIVA';
           }).toList();
 
           WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -148,9 +140,7 @@ class _MyPetsPageState extends State<MyPetsPage> {
 
                     if (result == true) {
                       setState(() {
-                        _futureMascotas = PetsService.getMyPets(
-                          usuarioId: usuarioId,
-                        );
+                        _futureMascotas = PetsService.getMyPets();
                       });
                     }
                   },
@@ -159,9 +149,8 @@ class _MyPetsPageState extends State<MyPetsPage> {
                     final updated = await Navigator.push(
                       context,
                       MaterialPageRoute(
-                        builder: (context) => RegisterPetPage(
-                          mascotaEditar: pet,
-                        ),
+                        builder: (context) =>
+                            RegisterPetPage(mascotaEditar: pet),
                       ),
                     );
 
@@ -193,23 +182,16 @@ class _MyPetsPageState extends State<MyPetsPage> {
               _refreshPets();
             }
           },
-          icon: const Icon(
-            Icons.add,
-            color: Colors.white,
-          ),
+                icon: const Icon(Icons.add, color: Colors.white),
           label: const Text(
             'Agregar',
-            style: TextStyle(
-              color: Colors.white,
-            ),
+                  style: TextStyle(color: Colors.white),
           ),
         ),
       )
           : null,
 
-      bottomNavigationBar: const BottomMenuAnimap(
-        currentIndex: 1,
-      ),
+      bottomNavigationBar: const BottomMenuAnimap(currentIndex: 1),
     );
   }
 }
@@ -291,6 +273,7 @@ class _PetCard extends StatelessWidget {
                     ? _GenericPetImage()
                     : Image.network(
                   imageUrl,
+                        headers: PetsService.authHeaders,
                   width: 82,
                   height: 82,
                   fit: BoxFit.cover,
@@ -348,19 +331,13 @@ class _PetCard extends StatelessWidget {
               ),
               IconButton(
                 onPressed: onEdit,
-                icon: const Icon(
-                  Icons.edit_outlined,
-                  color: Color(0xFF374151),
-                ),
+                icon: const Icon(Icons.edit_outlined, color: Color(0xFF374151)),
               ),
             ],
           ),
         ),
-
       ),
-
     );
-
   }
 }
 
@@ -373,20 +350,15 @@ class _GenericPetImage extends StatelessWidget {
       width: 82,
       height: 82,
       color: const Color(0xFFE5E7EB),
-      child: const Icon(
-        Icons.pets,
-        color: Color(0xFF6B7280),
-        size: 36,
-      ),
+      child: const Icon(Icons.pets, color: Color(0xFF6B7280), size: 36),
     );
   }
 }
+
 class _EmptyPetsView extends StatelessWidget {
   final VoidCallback onAddPet;
 
-  const _EmptyPetsView({
-    required this.onAddPet,
-  });
+  const _EmptyPetsView({required this.onAddPet});
 
   @override
   Widget build(BuildContext context) {
@@ -398,17 +370,11 @@ class _EmptyPetsView extends StatelessWidget {
         children: [
           Container(
             width: double.infinity,
-            padding: const EdgeInsets.symmetric(
-              horizontal: 22,
-              vertical: 34,
-            ),
+            padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 34),
             decoration: BoxDecoration(
               color: Colors.white,
               borderRadius: BorderRadius.circular(26),
-              border: Border.all(
-                color: const Color(0xFFA7F3D0),
-                width: 1.4,
-              ),
+              border: Border.all(color: const Color(0xFFA7F3D0), width: 1.4),
               boxShadow: [
                 BoxShadow(
                   color: Colors.black.withOpacity(0.06),
@@ -464,10 +430,7 @@ class _EmptyPetsView extends StatelessWidget {
                   height: 52,
                   child: ElevatedButton.icon(
                     onPressed: onAddPet,
-                    icon: const Icon(
-                      Icons.add,
-                      color: Colors.white,
-                    ),
+                    icon: const Icon(Icons.add, color: Colors.white),
                     label: const Text(
                       'Registrar mascota',
                       style: TextStyle(
@@ -489,10 +452,8 @@ class _EmptyPetsView extends StatelessWidget {
             ),
           ),
         ],
-
       ),
     );
-
   }
 }
 
@@ -500,10 +461,7 @@ class _ErrorView extends StatelessWidget {
   final String message;
   final VoidCallback onRetry;
 
-  const _ErrorView({
-    required this.message,
-    required this.onRetry,
-  });
+  const _ErrorView({required this.message, required this.onRetry});
 
   @override
   Widget build(BuildContext context) {
@@ -513,11 +471,7 @@ class _ErrorView extends StatelessWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Icon(
-              Icons.error_outline,
-              size: 70,
-              color: Color(0xFFDC2626),
-            ),
+            const Icon(Icons.error_outline, size: 70, color: Color(0xFFDC2626)),
             const SizedBox(height: 16),
             Text(
               message,

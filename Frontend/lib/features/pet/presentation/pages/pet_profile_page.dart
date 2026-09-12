@@ -30,29 +30,17 @@ class _PetProfilePageState extends State<PetProfilePage> {
 
   Future<PetProfile> _getPetProfile(int mascotaId) async {
     final Map<String, dynamic> mascota =
-    await MascotasService.obtenerMascotaPorId(
-      mascotaId: mascotaId,
-    );
-
-    final int fkUsuario = PetProfile.toInt(
-      mascota['fk_usuario'] ??
-          mascota['usuario_id'] ??
-          mascota['id_usuario'] ??
-          mascota['fkUsuario'],
-    );
+        await MascotasService.obtenerMascotaPorId(mascotaId: mascotaId);
 
     List<Map<String, dynamic>> imagenes = [];
 
-    if (fkUsuario > 0) {
       try {
         imagenes = await MascotasService.obtenerImagenesMascota(
           mascotaId: mascotaId,
-          usuarioId: fkUsuario,
         );
       } catch (error) {
         debugPrint('No se pudieron cargar imágenes de la mascota: $error');
       }
-    }
 
     mascota['fotos'] = imagenes;
 
@@ -65,9 +53,7 @@ class _PetProfilePageState extends State<PetProfilePage> {
     final result = await Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) => RegisterPetPage(
-          mascotaEditar: mascotaEditar,
-        ),
+        builder: (_) => RegisterPetPage(mascotaEditar: mascotaEditar),
       ),
     );
 
@@ -93,9 +79,7 @@ class _PetProfilePageState extends State<PetProfilePage> {
           ),
           title: const Text(
             'Eliminar mascota',
-            style: TextStyle(
-              fontWeight: FontWeight.w900,
-            ),
+            style: TextStyle(fontWeight: FontWeight.w900),
           ),
           content: Column(
             mainAxisSize: MainAxisSize.min,
@@ -103,10 +87,7 @@ class _PetProfilePageState extends State<PetProfilePage> {
             children: [
               Text(
                 'Para eliminar a ${pet.nombre}, escribe exactamente su nombre.',
-                style: const TextStyle(
-                  fontSize: 14,
-                  height: 1.25,
-                ),
+                style: const TextStyle(fontSize: 14, height: 1.25),
               ),
               const SizedBox(height: 12),
               TextField(
@@ -164,17 +145,12 @@ class _PetProfilePageState extends State<PetProfilePage> {
     if (confirm != true) return;
 
     try {
-      await MascotasService.eliminarMascota(
-        mascotaId: pet.id,
-        fkUsuario: pet.fkUsuario,
-      );
+      await MascotasService.eliminarMascota(mascotaId: pet.id);
 
       if (!mounted) return;
 
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Mascota inactivada correctamente'),
-        ),
+        const SnackBar(content: Text('Mascota inactivada correctamente')),
       );
 
       Navigator.pop(context, true);
@@ -182,9 +158,7 @@ class _PetProfilePageState extends State<PetProfilePage> {
       if (!mounted) return;
 
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error inactivando mascota: $error'),
-        ),
+        SnackBar(content: Text('Error inactivando mascota: $error')),
       );
     }
   }
@@ -194,16 +168,15 @@ class _PetProfilePageState extends State<PetProfilePage> {
 
     final cleanValue = value.trim();
 
-    if (cleanValue.startsWith('http://') ||
-        cleanValue.startsWith('https://')) {
+    if (cleanValue.startsWith('http://') || cleanValue.startsWith('https://')) {
       return cleanValue;
     }
 
     if (cleanValue.startsWith('/')) {
-      return 'http://10.0.2.2:3000/$cleanValue';
+      return '${MascotasService.originUrl}$cleanValue';
     }
 
-    return 'http://10.0.2.2:3000/$cleanValue';
+    return '${MascotasService.originUrl}/$cleanValue';
   }
 
   Color _statusColor(String estado) {
@@ -269,9 +242,7 @@ class _PetProfilePageState extends State<PetProfilePage> {
           future: _futurePet,
           builder: (context, snapshot) {
             if (snapshot.connectionState == ConnectionState.waiting) {
-              return const Center(
-                child: CircularProgressIndicator(),
-              );
+              return const Center(child: CircularProgressIndicator());
             }
 
             if (snapshot.hasError) {
@@ -320,9 +291,7 @@ class _PetProfilePageState extends State<PetProfilePage> {
                       children: [
                         Row(
                           children: [
-                            const Expanded(
-                              child: SizedBox(),
-                            ),
+                            const Expanded(child: SizedBox()),
 
                             const Expanded(
                               flex: 3,
@@ -376,6 +345,7 @@ class _PetProfilePageState extends State<PetProfilePage> {
                                 )
                                     : Image.network(
                                   mainImage,
+                                        headers: MascotasService.authHeaders,
                                   width: 132,
                                   height: 132,
                                   fit: BoxFit.cover,
@@ -434,10 +404,7 @@ class _PetProfilePageState extends State<PetProfilePage> {
                             PetInfoItemData(
                               icon: Icons.cake,
                               title: 'Edad',
-                              value: _formatAge(
-                                pet.edadAprox,
-                                pet.unidadEdad,
-                              ),
+                              value: _formatAge(pet.edadAprox, pet.unidadEdad),
                             ),
                           ],
                         ),
@@ -458,9 +425,7 @@ class _PetProfilePageState extends State<PetProfilePage> {
 
                         const SizedBox(height: 8),
 
-                        _GalleryRow(
-                          gallery: gallery,
-                        ),
+                        _GalleryRow(gallery: gallery),
 
                         if (widget.mostrarAccionesDueno) ...[
                           const SizedBox(height: 20),
@@ -490,9 +455,7 @@ class _PetProfilePageState extends State<PetProfilePage> {
         ),
       ),
 
-      bottomNavigationBar: const BottomMenuAnimap(
-        currentIndex: 1,
-      ),
+      bottomNavigationBar: const BottomMenuAnimap(currentIndex: 1),
     );
   }
 }
@@ -580,21 +543,14 @@ class PetProfile {
             json['especie_id'],
       ),
       fkRaza: toNullableInt(
-        json['fk_raza'] ??
-            json['fkRaza'] ??
-            json['id_raza'] ??
-            json['raza_id'],
+        json['fk_raza'] ?? json['fkRaza'] ?? json['id_raza'] ?? json['raza_id'],
       ),
       nombre: toStringValue(json['nombre']),
       especie: toStringValue(
-        json['especie'] ??
-            json['nombre_especie'] ??
-            json['especie_nombre'],
+        json['especie'] ?? json['nombre_especie'] ?? json['especie_nombre'],
       ),
       raza: toStringValue(
-        json['raza'] ??
-            json['nombre_raza'] ??
-            json['raza_nombre'],
+        json['raza'] ?? json['nombre_raza'] ?? json['raza_nombre'],
       ),
       color: toStringValue(json['color']),
       sexo: toStringValue(json['sexo']).isEmpty
@@ -604,19 +560,12 @@ class PetProfile {
           ? 'ACTIVA'
           : toStringValue(json['estado']),
       observaciones: toStringValue(
-        json['observaciones'] ??
-            json['senas'] ??
-            json['senas_particulares'],
+        json['observaciones'] ?? json['senas'] ?? json['senas_particulares'],
       ),
       edadAprox: toNullableInt(
-        json['edad_aprox'] ??
-            json['edadAprox'] ??
-            json['edad'],
+        json['edad_aprox'] ?? json['edadAprox'] ?? json['edad'],
       ),
-      unidadEdad: toNullableString(
-        json['unidad_edad'] ??
-            json['unidadEdad'],
-      ),
+      unidadEdad: toNullableString(json['unidad_edad'] ?? json['unidadEdad']),
       photos: parsePhotos(rawPhotos),
     );
   }
@@ -626,7 +575,9 @@ class PetProfile {
 
     return rawPhotos
         .where((item) => item is Map)
-        .map((item) => PetPhoto.fromJson(Map<String, dynamic>.from(item as Map)))
+        .map(
+          (item) => PetPhoto.fromJson(Map<String, dynamic>.from(item as Map)),
+        )
         .toList();
   }
 
@@ -720,7 +671,8 @@ class PetPhoto {
             json['image_url'] ??
             json['imagen_url'],
       ),
-      esPrincipal: json['es_principal'] == true ||
+      esPrincipal:
+          json['es_principal'] == true ||
           json['esPrincipal'] == true ||
           json['principal'] == true,
     );
@@ -731,10 +683,7 @@ class _StatusBadge extends StatelessWidget {
   final String text;
   final Color color;
 
-  const _StatusBadge({
-    required this.text,
-    required this.color,
-  });
+  const _StatusBadge({required this.text, required this.color});
 
   @override
   Widget build(BuildContext context) {
@@ -746,11 +695,7 @@ class _StatusBadge extends StatelessWidget {
       ),
       child: Row(
         children: [
-          Icon(
-            Icons.flag,
-            color: color,
-            size: 22,
-          ),
+          Icon(Icons.flag, color: color, size: 22),
           const SizedBox(width: 6),
           Text(
             text,
@@ -782,10 +727,7 @@ class _PetInfoCard extends StatelessWidget {
   final List<PetInfoItemData> items;
   final String observaciones;
 
-  const _PetInfoCard({
-    required this.items,
-    required this.observaciones,
-  });
+  const _PetInfoCard({required this.items, required this.observaciones});
 
   @override
   Widget build(BuildContext context) {
@@ -799,9 +741,7 @@ class _PetInfoCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: Colors.white.withOpacity(0.82),
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(
-          color: const Color(0xFFBFE7D3),
-        ),
+        border: Border.all(color: const Color(0xFFBFE7D3)),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withOpacity(0.04),
@@ -828,11 +768,7 @@ class _PetInfoCard extends StatelessWidget {
               return Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(
-                    item.icon,
-                    size: 28,
-                    color: const Color(0xFF4D9B6A),
-                  ),
+                  Icon(item.icon, size: 28, color: const Color(0xFF4D9B6A)),
                   const SizedBox(height: 4),
                   Text(
                     item.title,
@@ -866,9 +802,7 @@ class _PetInfoCard extends StatelessWidget {
             decoration: BoxDecoration(
               color: const Color(0xFFEAF7F0),
               borderRadius: BorderRadius.circular(14),
-              border: Border.all(
-                color: const Color(0xFFBFE7D3),
-              ),
+              border: Border.all(color: const Color(0xFFBFE7D3)),
             ),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -883,10 +817,7 @@ class _PetInfoCard extends StatelessWidget {
                   child: RichText(
                     textAlign: TextAlign.left,
                     text: TextSpan(
-                      style: const TextStyle(
-                        color: Colors.black,
-                        height: 1.2,
-                      ),
+                      style: const TextStyle(color: Colors.black, height: 1.2),
                       children: [
                         const TextSpan(
                           text: 'Observaciones o señas particulares:\n',
@@ -918,9 +849,7 @@ class _PetInfoCard extends StatelessWidget {
 class _GalleryRow extends StatelessWidget {
   final List<String> gallery;
 
-  const _GalleryRow({
-    required this.gallery,
-  });
+  const _GalleryRow({required this.gallery});
 
   @override
   Widget build(BuildContext context) {
@@ -934,10 +863,7 @@ class _GalleryRow extends StatelessWidget {
         ),
         child: const Text(
           'No hay fotos registradas',
-          style: TextStyle(
-            fontSize: 13,
-            color: Colors.black54,
-          ),
+          style: TextStyle(fontSize: 13, color: Colors.black54),
         ),
       );
     }
@@ -962,6 +888,7 @@ class _GalleryRow extends StatelessWidget {
                     children: [
                       Image.network(
                         visibleImages[i],
+                        headers: MascotasService.authHeaders,
                         fit: BoxFit.cover,
                         errorBuilder: (_, __, ___) {
                           return Container(
@@ -1022,32 +949,20 @@ class _ActionButton extends StatelessWidget {
         backgroundColor: backgroundColor,
         foregroundColor: foregroundColor,
         elevation: 0,
-        side: BorderSide(
-          color: const Color(0xFF4D9B6A).withOpacity(0.45),
-        ),
+        side: BorderSide(color: const Color(0xFF4D9B6A).withOpacity(0.45)),
         padding: const EdgeInsets.symmetric(vertical: 13),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(14),
-        ),
-        textStyle: const TextStyle(
-          fontWeight: FontWeight.w800,
-          fontSize: 13,
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        textStyle: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13),
       ),
     );
   }
 }
 
-
-
 class _ErrorView extends StatelessWidget {
   final String message;
   final VoidCallback onRetry;
 
-  const _ErrorView({
-    required this.message,
-    required this.onRetry,
-  });
+  const _ErrorView({required this.message, required this.onRetry});
 
   @override
   Widget build(BuildContext context) {
@@ -1057,25 +972,15 @@ class _ErrorView extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(
-              Icons.error_outline,
-              size: 54,
-              color: Colors.red,
-            ),
+            const Icon(Icons.error_outline, size: 54, color: Colors.red),
             const SizedBox(height: 12),
             Text(
               message,
               textAlign: TextAlign.center,
-              style: const TextStyle(
-                fontSize: 15,
-                fontWeight: FontWeight.w700,
-              ),
+              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
             ),
             const SizedBox(height: 14),
-            ElevatedButton(
-              onPressed: onRetry,
-              child: const Text('Reintentar'),
-            ),
+            ElevatedButton(onPressed: onRetry, child: const Text('Reintentar')),
           ],
         ),
       ),
