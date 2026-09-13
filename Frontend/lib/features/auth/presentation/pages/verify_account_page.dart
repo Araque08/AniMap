@@ -11,15 +11,16 @@ import 'login_page.dart';
 */
 class VerifyAccountPage extends StatefulWidget {
   final String email;
+  final AuthService? authService;
 
-  const VerifyAccountPage({super.key, required this.email});
+  const VerifyAccountPage({super.key, required this.email, this.authService});
 
   @override
   State<VerifyAccountPage> createState() => _VerifyAccountPageState();
 }
 
 class _VerifyAccountPageState extends State<VerifyAccountPage> {
-  final AuthService _authService = AuthService();
+  late final AuthService _authService;
   final TextEditingController _codeController = TextEditingController();
 
   bool _isLoading = false;
@@ -29,6 +30,12 @@ class _VerifyAccountPageState extends State<VerifyAccountPage> {
   static const Color backgroundColor = Color(0xFFEAF5E6);
   static const Color primaryGreen = Color(0xFF6EC656);
   static const Color darkText = Color(0xFF415466);
+
+  @override
+  void initState() {
+    super.initState();
+    _authService = widget.authService ?? AuthService();
+  }
 
   @override
   void dispose() {
@@ -73,7 +80,7 @@ class _VerifyAccountPageState extends State<VerifyAccountPage> {
 
       Navigator.pushReplacement(
         context,
-        MaterialPageRoute(builder: (_) => const LoginPage()),
+        MaterialPageRoute(builder: (_) => LoginPage(authService: _authService)),
       );
     } on AuthException catch (error) {
       if (!mounted) return;
