@@ -4,8 +4,8 @@ import 'package:image_picker/image_picker.dart';
 import '../../auth/data/auth_service.dart';
 
 class MascotasService {
-  static const String baseUrl = 'http://10.0.2.2:3000/api/pets';
-  static const String originUrl = 'http://10.0.2.2:3000';
+  static const String baseUrl = 'http://192.168.0.8:3000/api/pets';
+  static const String originUrl = 'http://192.168.0.8:3000';
 
   static http.MediaType _imageContentType(String path) {
     final normalizedPath = path.toLowerCase();

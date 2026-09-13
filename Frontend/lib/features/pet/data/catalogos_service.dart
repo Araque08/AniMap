@@ -3,7 +3,7 @@ import 'package:http/http.dart' as http;
 import '../../auth/data/auth_service.dart';
 
 class CatalogosService {
-  static const String baseUrl = 'http://10.0.2.2:3000/api/pets';
+  static const String baseUrl = 'http://192.168.0.8:3000/api/pets';
 
   static Map<String, String> get _authHeaders {
     final token = AuthService.accessToken;

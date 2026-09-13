@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
+
 import '../../../../widgets/bottom_menu_animap.dart';
+import '../../../../widgets/top_menu_animap.dart';
+
 import '../../data/pets_service.dart';
 import 'register_pet_page.dart';
 import 'pet_profile_page.dart';
@@ -37,7 +40,9 @@ class _MyPetsPageState extends State<MyPetsPage> {
 
     final imagePath = fotoPrincipal['url'];
 
-    if (imagePath == null || imagePath.toString().isEmpty) {
+    if (imagePath == null || imagePath
+        .toString()
+        .isEmpty) {
       return '';
     }
 
@@ -45,153 +50,201 @@ class _MyPetsPageState extends State<MyPetsPage> {
   }
 
   @override
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFF7F8FA),
 
-      appBar: AppBar(
-        backgroundColor: const Color(0xFFF7F8FA),
-        elevation: 0,
-        centerTitle: true,
-        title: const Text(
-          'Mis Mascotas',
-          style: TextStyle(
-            color: Color(0xFF1F2937),
-            fontWeight: FontWeight.w700,
-            fontSize: 20,
-          ),
-        ),
-        iconTheme: const IconThemeData(color: Color(0xFF1F2937)),
-      ),
+      // MENÚ LATERAL
+      drawer: const AniMapSideMenu(),
 
-      body: FutureBuilder<List<Map<String, dynamic>>>(
-        future: _futureMascotas,
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
+      // CONTENIDO DE LA PÁGINA
+      body: Column(
+        children: [
+          // MENÚ SUPERIOR ANIMAP
+          const TopMenuAnimap(),
 
-          if (snapshot.hasError) {
-            return _ErrorView(
-              message: 'No se pudieron cargar tus mascotas.',
-              onRetry: _refreshPets,
-            );
-          }
-
-          final pets = snapshot.data ?? [];
-
-          final mascotasActivas = pets.where((mascota) {
-            final estado = mascota['estado']?.toString().toUpperCase() ?? '';
-            return estado != 'INACTIVA';
-          }).toList();
-
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (mounted && _hayMascotasActivas != mascotasActivas.isNotEmpty) {
-              setState(() {
-                _hayMascotasActivas = mascotasActivas.isNotEmpty;
-              });
-            }
-          });
-
-          if (mascotasActivas.isEmpty) {
-            return _EmptyPetsView(
-              onAddPet: () async {
-                final created = await Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => const RegisterPetPage(),
-                  ),
-                );
-
-                if (created == true) {
-                  _refreshPets();
+          // CONTENIDO PRINCIPAL
+          Expanded(
+            child: FutureBuilder<List<Map<String, dynamic>>>(
+              future: _futureMascotas,
+              builder: (context, snapshot) {
+                // CARGANDO
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Center(
+                    child: CircularProgressIndicator(
+                      color: Color(0xFF2F8F5B),
+                    ),
+                  );
                 }
-              },
-            );
-          }
 
-          return RefreshIndicator(
-            onRefresh: _refreshPets,
-            child: ListView.builder(
-              padding: const EdgeInsets.fromLTRB(18, 12, 18, 120),
-              itemCount: mascotasActivas.length,
-              itemBuilder: (context, index) {
-                final pet = mascotasActivas[index];
+                // ERROR
+                if (snapshot.hasError) {
+                  return _ErrorView(
+                    message: 'No se pudieron cargar tus mascotas.',
+                    onRetry: _refreshPets,
+                  );
+                }
 
-                final imageUrl = _buildImageUrl(pet);
+                final pets = snapshot.data ?? [];
 
-                return _PetCard(
-                  name: pet['nombre']?.toString() ?? 'Sin nombre',
-                  species: pet['especie']?.toString() ?? 'Sin especie',
-                  breed: pet['raza']?.toString() ?? 'Sin raza',
-                  status: pet['estado']?.toString() ?? 'ACTIVA',
-                  imageUrl: imageUrl,
+                // FILTRAR MASCOTAS INACTIVAS
+                final mascotasActivas = pets.where((mascota) {
+                  final estado =
+                      mascota['estado']?.toString().toUpperCase() ?? '';
 
-                  onTap: () async {
-                    final result = await Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => PetProfilePage(
-                          mascotaId: int.parse(pet['id']!.toString()),
-                          mostrarAccionesDueno: true,
+                  return estado != 'INACTIVA';
+                }).toList();
+
+                // ACTUALIZA SI HAY MASCOTAS ACTIVAS
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  if (mounted &&
+                      _hayMascotasActivas != mascotasActivas.isNotEmpty) {
+                    setState(() {
+                      _hayMascotasActivas = mascotasActivas.isNotEmpty;
+                    });
+                  }
+                });
+
+                // SI NO HAY MASCOTAS
+                if (mascotasActivas.isEmpty) {
+                  return _EmptyPetsView(
+                    onAddPet: () async {
+                      final created = await Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const RegisterPetPage(),
                         ),
-                      ),
-                    );
+                      );
 
-                    if (result == true) {
-                      setState(() {
-                        _futureMascotas = PetsService.getMyPets();
-                      });
-                    }
-                  },
+                      if (created == true) {
+                        _refreshPets();
+                      }
+                    },
+                  );
+                }
 
-                  onEdit: () async {
-                    final updated = await Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) =>
-                            RegisterPetPage(mascotaEditar: pet),
-                      ),
-                    );
+                // LISTA DE MASCOTAS
+                return RefreshIndicator(
+                  color: const Color(0xFF2F8F5B),
+                  onRefresh: _refreshPets,
+                  child: ListView.builder(
+                    padding: const EdgeInsets.fromLTRB(
+                      18,
+                      18,
+                      18,
+                      120,
+                    ),
+                    itemCount: mascotasActivas.length,
+                    itemBuilder: (context, index) {
+                      final pet = mascotasActivas[index];
 
-                    if (updated == true) {
-                      _refreshPets();
-                    }
-                  },
+                      final imageUrl = _buildImageUrl(pet);
+
+                      return _PetCard(
+                        name: pet['nombre']?.toString() ?? 'Sin nombre',
+                        species:
+                        pet['especie']?.toString() ?? 'Sin especie',
+                        breed:
+                        pet['raza']?.toString() ?? 'Sin raza',
+                        status:
+                        pet['estado']?.toString() ?? 'ACTIVA',
+                        imageUrl: imageUrl,
+
+                        // ABRIR PERFIL DE LA MASCOTA
+                        onTap: () async {
+                          final result = await Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) =>
+                                  PetProfilePage(
+                                    mascotaId: int.parse(
+                                      pet['id']!.toString(),
+                                    ),
+                                    mostrarAccionesDueno: true,
+                                  ),
+                            ),
+                          );
+
+                          if (result == true) {
+                            setState(() {
+                              _futureMascotas =
+                                  PetsService.getMyPets();
+                            });
+                          }
+                        },
+
+                        // EDITAR MASCOTA
+                        onEdit: () async {
+                          final updated = await Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) =>
+                                  RegisterPetPage(
+                                    mascotaEditar: pet,
+                                  ),
+                            ),
+                          );
+
+                          if (updated == true) {
+                            _refreshPets();
+                          }
+                        },
+                      );
+                    },
+                  ),
                 );
               },
             ),
-          );
-        },
+          ),
+        ],
       ),
 
+      // BOTÓN FLOTANTE PARA AGREGAR MASCOTA
       floatingActionButton: _hayMascotasActivas
           ? Padding(
-              padding: const EdgeInsets.only(bottom: 90),
-              child: FloatingActionButton.extended(
-                backgroundColor: const Color(0xFF2563EB),
-                onPressed: () async {
-                  final created = await Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => const RegisterPetPage(),
-                    ),
-                  );
-
-                  if (created == true) {
-                    _refreshPets();
-                  }
-                },
-                icon: const Icon(Icons.add, color: Colors.white),
-                label: const Text(
-                  'Agregar',
-                  style: TextStyle(color: Colors.white),
-                ),
+        padding: const EdgeInsets.only(
+          bottom: 90,
+        ),
+        child: FloatingActionButton.extended(
+          backgroundColor: const Color(0xFF2F8F5B),
+          foregroundColor: Colors.white,
+          elevation: 4,
+          onPressed: () async {
+            final created = await Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) =>
+                const RegisterPetPage(),
               ),
-            )
+            );
+
+            if (created == true) {
+              _refreshPets();
+            }
+          },
+          icon: const Icon(
+            Icons.add_rounded,
+            color: Colors.white,
+          ),
+          label: const Text(
+            'Agregar',
+            style: TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(18),
+          ),
+        ),
+      )
           : null,
 
-      bottomNavigationBar: const BottomMenuAnimap(currentIndex: -1),
+      // MENÚ INFERIOR
+      bottomNavigationBar: const BottomMenuAnimap(
+        currentIndex: -1,
+      ),
     );
   }
 }

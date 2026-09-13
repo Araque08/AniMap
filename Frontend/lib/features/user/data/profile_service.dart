@@ -12,7 +12,7 @@ class ProfileException implements Exception {
 }
 
 class ProfileService {
-  static const String baseUrl = 'http://10.0.2.2:3000';
+  static const String baseUrl = 'http://192.168.0.8:3000';
 
   static Future<Map<String, dynamic>> obtenerPerfil() async {
     final token = _requireAccessToken();

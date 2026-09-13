@@ -14,7 +14,7 @@ class ReportsException implements Exception {
 }
 
 class ReportsService {
-  static const String originUrl = 'http://10.0.2.2:3000';
+  static const String originUrl = 'http://192.168.0.8:3000';
   static const String baseUrl = '$originUrl/api/reports';
 
   static Map<String, String> get _headers {
