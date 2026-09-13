@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 
 import '../../../../widgets/bottom_menu_animap.dart';
+import '../../../../widgets/location_picker_page.dart';
 import '../../../../widgets/top_menu_animap.dart';
 import '../../data/device_location_service.dart';
 import '../../data/reports_service.dart';
@@ -28,13 +29,12 @@ class _CreateLostReportPageState extends State<CreateLostReportPage> {
   int? _editingReportId;
   LatLng? _selectedLocation;
   double? _accuracy;
-  String _locationMethod = 'MAPA';
+  String? _locationMethod;
   bool _showContact = false;
   bool _showMyReports = false;
   bool _loading = true;
   bool _saving = false;
   bool _gettingGps = false;
-  GoogleMapController? _mapController;
 
   @override
   void initState() {
@@ -46,7 +46,6 @@ class _CreateLostReportPageState extends State<CreateLostReportPage> {
   void dispose() {
     _descriptionController.dispose();
     _addressController.dispose();
-    _mapController?.dispose();
     super.dispose();
   }
 
@@ -94,7 +93,7 @@ class _CreateLostReportPageState extends State<CreateLostReportPage> {
   Map<String, dynamic> _locationPayload() {
     final location = _selectedLocation!;
     return {
-      'metodo': _locationMethod,
+      'metodo': _locationMethod!,
       'lat': location.latitude,
       'lng': location.longitude,
       'precisionM': _locationMethod == 'GPS' ? _accuracy : null,
@@ -116,9 +115,6 @@ class _CreateLostReportPageState extends State<CreateLostReportPage> {
         _accuracy = location.accuracy;
         _locationMethod = 'GPS';
       });
-      await _mapController?.animateCamera(
-        CameraUpdate.newLatLngZoom(position, 16),
-      );
     } catch (error) {
       if (mounted) _showError(error);
     } finally {
@@ -126,7 +122,18 @@ class _CreateLostReportPageState extends State<CreateLostReportPage> {
     }
   }
 
-  void _selectMapLocation(LatLng position) {
+  Future<void> _chooseMapLocation() async {
+    final position = await Navigator.push<LatLng>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => LocationPickerPage(
+          initialPosition: _selectedLocation ?? _initialPosition,
+          selectedPosition: _selectedLocation,
+          title: 'Ubicación de la pérdida',
+        ),
+      ),
+    );
+    if (!mounted || position == null) return;
     setState(() {
       _selectedLocation = position;
       _accuracy = null;
@@ -191,9 +198,6 @@ class _CreateLostReportPageState extends State<CreateLostReportPage> {
       _selectedLocation = LatLng(lat, lng);
       _showMyReports = false;
     });
-    _mapController?.animateCamera(
-      CameraUpdate.newLatLngZoom(LatLng(lat, lng), 16),
-    );
   }
 
   void _resetForm() {
@@ -203,7 +207,7 @@ class _CreateLostReportPageState extends State<CreateLostReportPage> {
     _selectedPetId = _firstAvailablePetId(_pets);
     _selectedLocation = null;
     _accuracy = null;
-    _locationMethod = 'MAPA';
+    _locationMethod = null;
     _showContact = false;
   }
 
@@ -387,8 +391,18 @@ class _CreateLostReportPageState extends State<CreateLostReportPage> {
               Row(
                 children: [
                   Expanded(
-                    child: FilledButton.icon(
+                    child: OutlinedButton.icon(
                       onPressed: _gettingGps ? null : _useCurrentLocation,
+                      style: OutlinedButton.styleFrom(
+                        backgroundColor: _locationMethod == 'GPS'
+                            ? _green
+                            : Colors.white,
+                        foregroundColor: _locationMethod == 'GPS'
+                            ? Colors.white
+                            : _green,
+                        side: const BorderSide(color: _green, width: 1.5),
+                        padding: const EdgeInsets.symmetric(vertical: 13),
+                      ),
                       icon: _gettingGps
                           ? const SizedBox.square(
                               dimension: 18,
@@ -401,7 +415,17 @@ class _CreateLostReportPageState extends State<CreateLostReportPage> {
                   const SizedBox(width: 10),
                   Expanded(
                     child: OutlinedButton.icon(
-                      onPressed: () => setState(() => _locationMethod = 'MAPA'),
+                      onPressed: _chooseMapLocation,
+                      style: OutlinedButton.styleFrom(
+                        backgroundColor: _locationMethod == 'MAPA'
+                            ? _green
+                            : Colors.white,
+                        foregroundColor: _locationMethod == 'MAPA'
+                            ? Colors.white
+                            : _green,
+                        side: const BorderSide(color: _green, width: 1.5),
+                        padding: const EdgeInsets.symmetric(vertical: 13),
+                      ),
                       icon: const Icon(Icons.location_on_outlined),
                       label: const Text('Elegir en mapa'),
                     ),
@@ -410,35 +434,39 @@ class _CreateLostReportPageState extends State<CreateLostReportPage> {
               ),
               const SizedBox(height: 10),
               Container(
-                height: 300,
-                clipBehavior: Clip.antiAlias,
+                width: double.infinity,
+                padding: const EdgeInsets.all(14),
                 decoration: BoxDecoration(
+                  color: const Color(0xFFF2F7F3),
                   borderRadius: BorderRadius.circular(14),
                   border: Border.all(color: const Color(0xFFB7CDBD)),
                 ),
-                child: GoogleMap(
-                  initialCameraPosition: CameraPosition(
-                    target: _selectedLocation ?? _initialPosition,
-                    zoom: _selectedLocation == null ? 11 : 16,
-                  ),
-                  onMapCreated: (controller) => _mapController = controller,
-                  onTap: _selectMapLocation,
-                  markers: _selectedLocation == null
-                      ? const {}
-                      : {
-                          Marker(
-                            markerId: const MarkerId('report-location'),
-                            position: _selectedLocation!,
-                          ),
-                        },
-                  myLocationButtonEnabled: false,
-                  zoomControlsEnabled: false,
+                child: Row(
+                  children: [
+                    Icon(
+                      _selectedLocation == null
+                          ? Icons.location_off_outlined
+                          : Icons.location_on,
+                      color: _green,
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        _selectedLocation == null
+                            ? 'Aún no has seleccionado una ubicación.'
+                            : '$_locationMethod · '
+                                  '${_selectedLocation!.latitude.toStringAsFixed(6)}, '
+                                  '${_selectedLocation!.longitude.toStringAsFixed(6)}',
+                        style: const TextStyle(color: Color(0xFF64756B)),
+                      ),
+                    ),
+                  ],
                 ),
               ),
               const SizedBox(height: 8),
               Text(
                 _selectedLocation == null
-                    ? 'Toca el mapa para indicar el punto exacto.'
+                    ? 'Usa el GPS o abre el mapa para indicar el punto exacto.'
                     : 'Ubicación seleccionada por $_locationMethod: '
                           '${_selectedLocation!.latitude.toStringAsFixed(6)}, '
                           '${_selectedLocation!.longitude.toStringAsFixed(6)}',

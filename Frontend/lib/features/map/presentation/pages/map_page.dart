@@ -9,14 +9,13 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../../../widgets/bottom_menu_animap.dart';
 import '../../../../widgets/top_menu_animap.dart';
+import '../../../auth/data/auth_service.dart';
+import '../../../report/data/report_datetime.dart';
 
 class MapPage extends StatefulWidget {
   final String userName;
 
-  const MapPage({
-    super.key,
-    required this.userName,
-  });
+  const MapPage({super.key, this.userName = ''});
 
   @override
   State<MapPage> createState() => _MapPageState();
@@ -26,22 +25,11 @@ class MapPage extends StatefulWidget {
    ENUMS DEL MAPA
    ============================================================================ */
 
-enum MapFilter {
-  active,
-  found,
-}
+enum MapFilter { active, found }
 
-enum MapStatus {
-  loaded,
-  empty,
-  error,
-}
+enum MapStatus { loaded, empty, error }
 
-enum ReportType {
-  lost,
-  sighting,
-  found,
-}
+enum ReportType { lost, sighting, found }
 
 /* ============================================================================
    MODELO PARA LOS REPORTES DEL MAPA
@@ -70,6 +58,7 @@ class MapReport {
     mostrar contacto mediante showContact.
   */
   final bool showContact;
+  final bool isOwner;
   final String ownerName;
   final String ownerPhone;
   final String ownerEmail;
@@ -86,6 +75,7 @@ class MapReport {
     required this.position,
     required this.type,
     required this.showContact,
+    required this.isOwner,
     required this.ownerName,
     required this.ownerPhone,
     required this.ownerEmail,
@@ -106,12 +96,10 @@ class MapReport {
       description: json['description']?.toString() ?? 'Sin descripción',
       dateText: _formatDateText(json['dateText']),
       imageUrl: _imageUrl(json['imageUrl']),
-      position: LatLng(
-        _toDouble(json['lat']),
-        _toDouble(json['lng']),
-      ),
+      position: LatLng(_toDouble(json['lat']), _toDouble(json['lng'])),
       type: _parseReportType(json['type']),
       showContact: json['showContact'] == true,
+      isOwner: json['isOwner'] == true,
       ownerName: json['ownerName']?.toString() ?? '',
       ownerPhone: json['ownerPhone']?.toString() ?? '',
       ownerEmail: json['ownerEmail']?.toString() ?? '',
@@ -157,25 +145,7 @@ class MapReport {
     No agrego paquetes adicionales para no tocar dependencias del proyecto.
   */
   static String _formatDateText(dynamic value) {
-    final String rawDate = value?.toString() ?? '';
-
-    if (rawDate.isEmpty) {
-      return 'Fecha no disponible';
-    }
-
-    final DateTime? parsedDate = DateTime.tryParse(rawDate);
-
-    if (parsedDate == null) {
-      return rawDate;
-    }
-
-    final String day = parsedDate.day.toString().padLeft(2, '0');
-    final String month = parsedDate.month.toString().padLeft(2, '0');
-    final String year = parsedDate.year.toString();
-    final String hour = parsedDate.hour.toString().padLeft(2, '0');
-    final String minute = parsedDate.minute.toString().padLeft(2, '0');
-
-    return '$day/$month/$year, $hour:$minute';
+    return formatReportDateTimeInBogota(value);
   }
 }
 
@@ -219,8 +189,7 @@ class _MapPageState extends State<MapPage> {
     Si luego probamos en un celular físico, esta URL debe cambiarse por la IP
     local del computador, por ejemplo: http://192.168.x.x:3000/api/map/reports.
   */
-  static const String _mapReportsUrl =
-      'http://10.0.2.2:3000/api/map/reports';
+  static const String _mapReportsUrl = 'http://10.0.2.2:3000/api/map/reports';
 
   /* --------------------------------------------------------------------------
      DATOS DEL MAPA CONSULTADOS DESDE EL BACKEND
@@ -264,13 +233,16 @@ class _MapPageState extends State<MapPage> {
       BitmapDescriptor markerIcon;
 
       if (report.type == ReportType.lost) {
-        markerIcon = _lostMarkerIcon ??
+        markerIcon =
+            _lostMarkerIcon ??
             BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed);
       } else if (report.type == ReportType.found) {
-        markerIcon = _foundMarkerIcon ??
+        markerIcon =
+            _foundMarkerIcon ??
             BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen);
       } else {
-        markerIcon = _sightingMarkerIcon ??
+        markerIcon =
+            _sightingMarkerIcon ??
             BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen);
       }
 
@@ -293,7 +265,6 @@ class _MapPageState extends State<MapPage> {
     }).toSet();
   }
 
-
   /* --------------------------------------------------------------------------
      MARCADORES PERSONALIZADOS DEL MAPA
      -------------------------------------------------------------------------- */
@@ -304,9 +275,7 @@ class _MapPageState extends State<MapPage> {
     se usa para avistamientos y mascotas encontradas.
   */
   Future<void> _loadCustomMarkers() async {
-    _lostMarkerIcon = await _createPawMarker(
-      pinColor: const Color(0xFFE96F67),
-    );
+    _lostMarkerIcon = await _createPawMarker(pinColor: const Color(0xFFE96F67));
 
     _sightingMarkerIcon = await _createPawMarker(
       pinColor: const Color(0xFF4E967B),
@@ -331,9 +300,7 @@ class _MapPageState extends State<MapPage> {
     Esto permite tener un pin con huellita blanca sin agregar archivos PNG
     adicionales al proyecto.
   */
-  Future<BitmapDescriptor> _createPawMarker({
-    required Color pinColor,
-  }) async {
+  Future<BitmapDescriptor> _createPawMarker({required Color pinColor}) async {
     const int width = 120;
     const int height = 150;
 
@@ -356,10 +323,7 @@ class _MapPageState extends State<MapPage> {
       Aquí dibujo una sombra inferior para que el pin se vea con más profundidad
       sobre el mapa.
     */
-    canvas.drawOval(
-      const Rect.fromLTWH(38, 128, 44, 12),
-      shadowPaint,
-    );
+    canvas.drawOval(const Rect.fromLTWH(38, 128, 44, 12), shadowPaint);
 
     /*
       Aquí dibujo la forma principal del pin. La punta queda hacia abajo para
@@ -390,10 +354,7 @@ class _MapPageState extends State<MapPage> {
       Ajustamos la separación entre los dedos para que la huella se entienda mejor
       visualmente y no se vea tan compacta sobre el pin.
     */
-    canvas.drawOval(
-      const Rect.fromLTWH(44, 57, 32, 26),
-      pawPaint,
-    );
+    canvas.drawOval(const Rect.fromLTWH(44, 57, 32, 26), pawPaint);
 
     /*
       Aquí separé un poco más las cuatro patitas de la huella.
@@ -415,7 +376,6 @@ class _MapPageState extends State<MapPage> {
     return BitmapDescriptor.fromBytes(bytes);
   }
 
-
   /* --------------------------------------------------------------------------
      CONSULTA DE REPORTES DEL MAPA DESDE EL BACKEND
      -------------------------------------------------------------------------- */
@@ -430,7 +390,13 @@ class _MapPageState extends State<MapPage> {
   Future<void> _loadMapReports() async {
     try {
       final Uri url = Uri.parse(_mapReportsUrl);
-      final http.Response response = await http.get(url);
+      final token = AuthService.accessToken;
+      final http.Response response = await http.get(
+        url,
+        headers: token == null || token.isEmpty
+            ? const {}
+            : {'Authorization': 'Bearer $token'},
+      );
 
       if (response.statusCode != 200) {
         if (!mounted) return;
@@ -444,44 +410,39 @@ class _MapPageState extends State<MapPage> {
       }
 
       final Map<String, dynamic> decodedBody =
-      jsonDecode(response.body) as Map<String, dynamic>;
+          jsonDecode(response.body) as Map<String, dynamic>;
 
       final List<dynamic> data = decodedBody['data'] as List<dynamic>? ?? [];
 
       final List<MapReport> reports = data
-          .map(
-            (item) => MapReport.fromJson(
-          item as Map<String, dynamic>,
-        ),
-      )
+          .map((item) => MapReport.fromJson(item as Map<String, dynamic>))
           .where(
-        /*
+            /*
               Aquí evito pintar marcadores sin coordenadas válidas.
               Esto protege el mapa si llega algún registro incompleto desde
               la base de datos.
             */
             (report) =>
-        report.position.latitude != 0.0 &&
-            report.position.longitude != 0.0,
-      )
+                report.position.latitude != 0.0 &&
+                report.position.longitude != 0.0,
+          )
           .toList();
 
       final List<MapReport> activeReports = reports
           .where(
             (report) =>
-        report.type == ReportType.lost ||
-            report.type == ReportType.sighting,
-      )
+                report.type == ReportType.lost ||
+                report.type == ReportType.sighting,
+          )
           .toList();
 
       final List<MapReport> foundReports = reports
-          .where(
-            (report) => report.type == ReportType.found,
-      )
+          .where((report) => report.type == ReportType.found)
           .toList();
 
-      final List<MapReport> visibleReports =
-      _selectedFilter == MapFilter.active ? activeReports : foundReports;
+      final List<MapReport> visibleReports = _selectedFilter == MapFilter.active
+          ? activeReports
+          : foundReports;
 
       if (!mounted) return;
 
@@ -489,8 +450,9 @@ class _MapPageState extends State<MapPage> {
         _activeReports = activeReports;
         _foundReports = foundReports;
         _status = visibleReports.isEmpty ? MapStatus.empty : MapStatus.loaded;
-        _selectedReport =
-        visibleReports.isNotEmpty ? visibleReports.first : null;
+        _selectedReport = visibleReports.isNotEmpty
+            ? visibleReports.first
+            : null;
       });
 
       if (visibleReports.isNotEmpty) {
@@ -516,8 +478,9 @@ class _MapPageState extends State<MapPage> {
     inferior de ejemplo.
   */
   void _toggleFilter(MapFilter filter) {
-    final List<MapReport> nextReports =
-    filter == MapFilter.active ? _activeReports : _foundReports;
+    final List<MapReport> nextReports = filter == MapFilter.active
+        ? _activeReports
+        : _foundReports;
 
     setState(() {
       _selectedFilter = filter;
@@ -549,10 +512,7 @@ class _MapPageState extends State<MapPage> {
 
     await controller.animateCamera(
       CameraUpdate.newCameraPosition(
-        CameraPosition(
-          target: target,
-          zoom: 15.5,
-        ),
+        CameraPosition(target: target, zoom: 15.5),
       ),
     );
   }
@@ -566,9 +526,7 @@ class _MapPageState extends State<MapPage> {
 
     if (controller == null) return;
 
-    await controller.animateCamera(
-      CameraUpdate.zoomIn(),
-    );
+    await controller.animateCamera(CameraUpdate.zoomIn());
   }
 
   /*
@@ -580,9 +538,7 @@ class _MapPageState extends State<MapPage> {
 
     if (controller == null) return;
 
-    await controller.animateCamera(
-      CameraUpdate.zoomOut(),
-    );
+    await controller.animateCamera(CameraUpdate.zoomOut());
   }
 
   /*
@@ -682,17 +638,13 @@ class _MapPageState extends State<MapPage> {
                 Positioned(
                   top: 16,
                   left: 14,
-                  child: _Legend(
-                    selectedFilter: _selectedFilter,
-                  ),
+                  child: _Legend(selectedFilter: _selectedFilter),
                 ),
 
                 if (_status == MapStatus.empty) const _EmptyStateCard(),
 
                 if (_status == MapStatus.error)
-                  _ErrorStateCard(
-                    onRetry: _retryLoad,
-                  ),
+                  _ErrorStateCard(onRetry: _retryLoad),
 
                 if (_status == MapStatus.loaded && _selectedReport != null)
                   Positioned(
@@ -727,9 +679,7 @@ class _MapPageState extends State<MapPage> {
         Aquí mantengo la barra inferior nueva del proyecto para no romper los
         cambios de navegación que agregaron tus compañeros.
       */
-      bottomNavigationBar: const BottomMenuAnimap(
-        currentIndex: 0,
-      ),
+      bottomNavigationBar: const BottomMenuAnimap(currentIndex: 0),
     );
   }
 }
@@ -761,7 +711,8 @@ class _GoogleMapArea extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final bool disabled = status == MapStatus.empty || status == MapStatus.error;
+    final bool disabled =
+        status == MapStatus.empty || status == MapStatus.error;
 
     return Stack(
       children: [
@@ -787,10 +738,7 @@ class _GoogleMapArea extends StatelessWidget {
         Positioned(
           top: 80,
           left: 14,
-          child: _ZoomControl(
-            onZoomIn: onZoomIn,
-            onZoomOut: onZoomOut,
-          ),
+          child: _ZoomControl(onZoomIn: onZoomIn, onZoomOut: onZoomOut),
         ),
         Positioned(
           right: 18,
@@ -800,10 +748,7 @@ class _GoogleMapArea extends StatelessWidget {
             child: CircleAvatar(
               backgroundColor: Colors.white,
               radius: 20,
-              child: Icon(
-                Icons.my_location,
-                color: Colors.grey.shade700,
-              ),
+              child: Icon(Icons.my_location, color: Colors.grey.shade700),
             ),
           ),
         ),
@@ -889,10 +834,7 @@ class _FilterButton extends StatelessWidget {
           text,
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
-          style: const TextStyle(
-            fontSize: 12,
-            fontWeight: FontWeight.w600,
-          ),
+          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
         ),
       ),
     );
@@ -906,9 +848,7 @@ class _FilterButton extends StatelessWidget {
 class _Legend extends StatelessWidget {
   final MapFilter selectedFilter;
 
-  const _Legend({
-    required this.selectedFilter,
-  });
+  const _Legend({required this.selectedFilter});
 
   @override
   Widget build(BuildContext context) {
@@ -921,55 +861,52 @@ class _Legend extends StatelessWidget {
         color: Colors.white.withOpacity(0.95),
         borderRadius: BorderRadius.circular(5),
         boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.12),
-            blurRadius: 5,
-          ),
+          BoxShadow(color: Colors.black.withOpacity(0.12), blurRadius: 5),
         ],
       ),
       child: found
           ? const Row(
-        children: [
-          Icon(Icons.location_on, size: 16, color: Color(0xFF4E967B)),
-          SizedBox(width: 5),
-          Expanded(
-            child: Text(
-              'Mascota encontrada',
-              style: TextStyle(fontSize: 11),
-            ),
-          ),
-        ],
-      )
+              children: [
+                Icon(Icons.location_on, size: 16, color: Color(0xFF4E967B)),
+                SizedBox(width: 5),
+                Expanded(
+                  child: Text(
+                    'Mascota encontrada',
+                    style: TextStyle(fontSize: 11),
+                  ),
+                ),
+              ],
+            )
           : const Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(Icons.location_on, size: 16, color: Color(0xFFE96F67)),
-              SizedBox(width: 5),
-              Expanded(
-                child: Text(
-                  'Mascota perdida',
-                  style: TextStyle(fontSize: 11),
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(Icons.location_on, size: 16, color: Color(0xFFE96F67)),
+                    SizedBox(width: 5),
+                    Expanded(
+                      child: Text(
+                        'Mascota perdida',
+                        style: TextStyle(fontSize: 11),
+                      ),
+                    ),
+                  ],
                 ),
-              ),
-            ],
-          ),
-          SizedBox(height: 5),
-          Row(
-            children: [
-              Icon(Icons.location_on, size: 16, color: Color(0xFF4E967B)),
-              SizedBox(width: 5),
-              Expanded(
-                child: Text(
-                  'Avistamiento',
-                  style: TextStyle(fontSize: 11),
+                SizedBox(height: 5),
+                Row(
+                  children: [
+                    Icon(Icons.location_on, size: 16, color: Color(0xFF4E967B)),
+                    SizedBox(width: 5),
+                    Expanded(
+                      child: Text(
+                        'Avistamiento',
+                        style: TextStyle(fontSize: 11),
+                      ),
+                    ),
+                  ],
                 ),
-              ),
-            ],
-          ),
-        ],
-      ),
+              ],
+            ),
     );
   }
 }
@@ -982,10 +919,7 @@ class _ZoomControl extends StatelessWidget {
   final VoidCallback onZoomIn;
   final VoidCallback onZoomOut;
 
-  const _ZoomControl({
-    required this.onZoomIn,
-    required this.onZoomOut,
-  });
+  const _ZoomControl({required this.onZoomIn, required this.onZoomOut});
 
   @override
   Widget build(BuildContext context) {
@@ -995,10 +929,7 @@ class _ZoomControl extends StatelessWidget {
         color: Colors.white,
         borderRadius: BorderRadius.circular(14),
         boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.14),
-            blurRadius: 4,
-          ),
+          BoxShadow(color: Colors.black.withOpacity(0.14), blurRadius: 4),
         ],
       ),
       child: Column(
@@ -1007,9 +938,7 @@ class _ZoomControl extends StatelessWidget {
             onTap: onZoomIn,
             child: const SizedBox(
               height: 36,
-              child: Center(
-                child: Text('+', style: TextStyle(fontSize: 25)),
-              ),
+              child: Center(child: Text('+', style: TextStyle(fontSize: 25))),
             ),
           ),
           const Divider(height: 1),
@@ -1017,9 +946,7 @@ class _ZoomControl extends StatelessWidget {
             onTap: onZoomOut,
             child: const SizedBox(
               height: 36,
-              child: Center(
-                child: Text('−', style: TextStyle(fontSize: 25)),
-              ),
+              child: Center(child: Text('−', style: TextStyle(fontSize: 25))),
             ),
           ),
         ],
@@ -1075,10 +1002,7 @@ class _ReportPreviewCard extends StatelessWidget {
   final MapReport report;
   final VoidCallback onClose;
 
-  const _ReportPreviewCard({
-    required this.report,
-    required this.onClose,
-  });
+  const _ReportPreviewCard({required this.report, required this.onClose});
 
   static const Color primaryGreen = Color(0xFF4E967B);
   static const Color darkText = Color(0xFF405466);
@@ -1165,9 +1089,8 @@ class _ReportPreviewCard extends StatelessWidget {
                             Navigator.push(
                               context,
                               MaterialPageRoute(
-                                builder: (context) => _ReportDetailPage(
-                                  report: report,
-                                ),
+                                builder: (context) =>
+                                    _ReportDetailPage(report: report),
                               ),
                             );
                           },
@@ -1232,11 +1155,7 @@ class _EmptyStateCard extends StatelessWidget {
         child: const Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              Icons.pets,
-              size: 42,
-              color: Color(0xFF8EB5A5),
-            ),
+            Icon(Icons.pets, size: 42, color: Color(0xFF8EB5A5)),
             SizedBox(height: 14),
             Text(
               'No hay reportes disponibles',
@@ -1251,10 +1170,7 @@ class _EmptyStateCard extends StatelessWidget {
             Text(
               'Actualmente no hay reportes de mascotas perdidas o avistadas en este mapa.',
               textAlign: TextAlign.center,
-              style: TextStyle(
-                color: Color(0xFF77877E),
-                fontSize: 12,
-              ),
+              style: TextStyle(color: Color(0xFF77877E), fontSize: 12),
             ),
           ],
         ),
@@ -1270,9 +1186,7 @@ class _EmptyStateCard extends StatelessWidget {
 class _ErrorStateCard extends StatelessWidget {
   final VoidCallback onRetry;
 
-  const _ErrorStateCard({
-    required this.onRetry,
-  });
+  const _ErrorStateCard({required this.onRetry});
 
   @override
   Widget build(BuildContext context) {
@@ -1326,10 +1240,7 @@ class _ErrorStateCard extends StatelessWidget {
                     borderRadius: BorderRadius.circular(18),
                   ),
                 ),
-                child: const Text(
-                  'Reintentar',
-                  style: TextStyle(fontSize: 12),
-                ),
+                child: const Text('Reintentar', style: TextStyle(fontSize: 12)),
               ),
             ),
           ],
@@ -1354,26 +1265,15 @@ class _LocationBar extends StatelessWidget {
       color: Colors.white.withOpacity(0.9),
       child: const Row(
         children: [
-          Icon(
-            Icons.home,
-            size: 16,
-            color: Color(0xFF4E967B),
-          ),
+          Icon(Icons.home, size: 16, color: Color(0xFF4E967B)),
           SizedBox(width: 9),
           Expanded(
             child: Text(
               'Ciudad Salitre Occidental, Bogotá',
-              style: TextStyle(
-                color: Color(0xFF52675C),
-                fontSize: 12,
-              ),
+              style: TextStyle(color: Color(0xFF52675C), fontSize: 12),
             ),
           ),
-          Icon(
-            Icons.keyboard_arrow_up,
-            size: 16,
-            color: Color(0xFF52675C),
-          ),
+          Icon(Icons.keyboard_arrow_up, size: 16, color: Color(0xFF52675C)),
         ],
       ),
     );
@@ -1395,9 +1295,7 @@ class _LocationBar extends StatelessWidget {
 class _ReportDetailPage extends StatelessWidget {
   final MapReport report;
 
-  const _ReportDetailPage({
-    required this.report,
-  });
+  const _ReportDetailPage({required this.report});
 
   @override
   Widget build(BuildContext context) {
@@ -1417,8 +1315,9 @@ class _ReportDetailPage extends StatelessWidget {
         ? 'Avistamiento'
         : 'Activo';
 
-    final Color statusColor =
-    isLost ? const Color(0xFFE96F67) : const Color(0xFF4E967B);
+    final Color statusColor = isLost
+        ? const Color(0xFFE96F67)
+        : const Color(0xFF4E967B);
 
     return Scaffold(
       backgroundColor: const Color(0xFFDDEFE2),
@@ -1486,10 +1385,7 @@ class _ReportDetailPage extends StatelessWidget {
                         ),
                       ),
                       const SizedBox(height: 18),
-                      _StatusChip(
-                        text: statusLabel,
-                        color: statusColor,
-                      ),
+                      _StatusChip(text: statusLabel, color: statusColor),
                       const SizedBox(height: 22),
 
                       /*
@@ -1497,18 +1393,9 @@ class _ReportDetailPage extends StatelessWidget {
                         La etiqueta de fecha cambia según el tipo de caso:
                         perdido, avistamiento o encontrado.
                       */
-                      _DetailRow(
-                        label: 'Tipo',
-                        value: report.title,
-                      ),
-                      _DetailRow(
-                        label: dateLabel,
-                        value: report.dateText,
-                      ),
-                      _DetailRow(
-                        label: 'Ubicación',
-                        value: report.location,
-                      ),
+                      _DetailRow(label: 'Tipo', value: report.title),
+                      _DetailRow(label: dateLabel, value: report.dateText),
+                      _DetailRow(label: 'Ubicación', value: report.location),
                       const SizedBox(height: 20),
                       const Text(
                         'Descripción',
@@ -1536,7 +1423,30 @@ class _ReportDetailPage extends StatelessWidget {
                       if (report.type != ReportType.lost)
                         const SizedBox(height: 32),
 
-                      if (report.type == ReportType.lost) ...[
+                      if (report.type == ReportType.lost && report.isOwner) ...[
+                        const SizedBox(height: 24),
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(14),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFEAF6EF),
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(color: const Color(0xFFC7E1D1)),
+                          ),
+                          child: const Row(
+                            children: [
+                              Icon(Icons.verified_user_outlined),
+                              SizedBox(width: 10),
+                              Expanded(
+                                child: Text(
+                                  'Este reporte es tuyo',
+                                  style: TextStyle(fontWeight: FontWeight.bold),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ] else if (report.type == ReportType.lost) ...[
                         const SizedBox(height: 24),
                         const Text(
                           'Contacto del dueño',
@@ -1574,9 +1484,7 @@ class _ReportDetailPage extends StatelessWidget {
 class _OwnerContactCard extends StatelessWidget {
   final MapReport report;
 
-  const _OwnerContactCard({
-    required this.report,
-  });
+  const _OwnerContactCard({required this.report});
 
   /*
     Aquí abro la aplicación de teléfono del dispositivo con el número del dueño.
@@ -1586,10 +1494,7 @@ class _OwnerContactCard extends StatelessWidget {
   Future<void> _openPhoneDialer(BuildContext context) async {
     final String cleanPhone = report.ownerPhone.replaceAll(' ', '');
 
-    final Uri phoneUri = Uri(
-      scheme: 'tel',
-      path: cleanPhone,
-    );
+    final Uri phoneUri = Uri(scheme: 'tel', path: cleanPhone);
 
     final bool opened = await launchUrl(
       phoneUri,
@@ -1613,17 +1518,12 @@ class _OwnerContactCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: const Color(0xFFEAF6EF),
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(
-          color: const Color(0xFFC7E1D1),
-        ),
+        border: Border.all(color: const Color(0xFFC7E1D1)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _DetailRow(
-            label: 'Teléfono',
-            value: report.ownerPhone,
-          ),
+          _DetailRow(label: 'Teléfono', value: report.ownerPhone),
           const SizedBox(height: 10),
           SizedBox(
             width: double.infinity,
@@ -1652,18 +1552,12 @@ class _StatusChip extends StatelessWidget {
   final String text;
   final Color color;
 
-  const _StatusChip({
-    required this.text,
-    required this.color,
-  });
+  const _StatusChip({required this.text, required this.color});
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(
-        horizontal: 12,
-        vertical: 6,
-      ),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
         color: color.withOpacity(0.14),
         borderRadius: BorderRadius.circular(18),
@@ -1685,10 +1579,7 @@ class _DetailRow extends StatelessWidget {
   final String label;
   final String value;
 
-  const _DetailRow({
-    required this.label,
-    required this.value,
-  });
+  const _DetailRow({required this.label, required this.value});
 
   @override
   Widget build(BuildContext context) {
@@ -1710,9 +1601,7 @@ class _DetailRow extends StatelessWidget {
           Expanded(
             child: Text(
               value,
-              style: const TextStyle(
-                color: Color(0xFF65756C),
-              ),
+              style: const TextStyle(color: Color(0xFF65756C)),
             ),
           ),
         ],

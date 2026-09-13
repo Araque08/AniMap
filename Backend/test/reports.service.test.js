@@ -227,7 +227,7 @@ test('edita un reporte activo y su ubicación en una transacción', async () => 
   assert.ok(pool.calls.some(
     (call) =>
       call.sql.startsWith('UPDATE reporte') &&
-      call.sql.includes('actualizado_en = NOW()')
+      call.sql.includes("AT TIME ZONE 'America/Bogota'")
   ));
   assert.ok(pool.calls.some((call) => call.sql.startsWith('UPDATE ubicacion')));
   assert.equal(pool.calls.at(-1).sql, 'COMMIT');

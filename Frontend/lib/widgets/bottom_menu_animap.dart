@@ -3,10 +3,7 @@ import 'package:flutter/material.dart';
 class BottomMenuAnimap extends StatelessWidget {
   final int currentIndex;
 
-  const BottomMenuAnimap({
-    super.key,
-    required this.currentIndex,
-  });
+  const BottomMenuAnimap({super.key, required this.currentIndex});
 
   void _navigate(BuildContext context, int index) {
     if (index == currentIndex) return;
@@ -27,7 +24,7 @@ class BottomMenuAnimap extends StatelessWidget {
         routeName = '/home';
     }
 
-    Navigator.pushReplacementNamed(context, routeName);
+    Navigator.pushNamedAndRemoveUntil(context, routeName, (route) => false);
   }
 
   @override
@@ -41,10 +38,7 @@ class BottomMenuAnimap extends StatelessWidget {
         decoration: BoxDecoration(
           color: const Color(0xFFF8FAF6),
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: const Color(0xFF7CC484),
-            width: 1.3,
-          ),
+          border: Border.all(color: const Color(0xFF7CC484), width: 1.3),
           boxShadow: [
             BoxShadow(
               color: Colors.black.withOpacity(0.12),

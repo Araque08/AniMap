@@ -31,6 +31,7 @@ function normalizeReport(row) {
     mostrarContacto: row.mostrar_contacto,
     estado: row.estado,
     creadoEn: row.creado_en,
+    actualizadoEn: row.actualizado_en,
     cerradoEn: row.cerrado_en,
     mascota: {
       id: row.fk_mascota,
@@ -62,7 +63,11 @@ function normalizeReport(row) {
 const REPORT_SELECT = `
   SELECT
     r.id, r.fk_mascota, r.descripcion, r.mostrar_contacto, r.estado,
-    r.creado_en, r.cerrado_en,
+    to_char(r.creado_en, 'YYYY-MM-DD"T"HH24:MI:SS.MS') || '-05:00' AS creado_en,
+    to_char(r.actualizado_en, 'YYYY-MM-DD"T"HH24:MI:SS.MS') || '-05:00' AS actualizado_en,
+    CASE WHEN r.cerrado_en IS NULL THEN NULL
+      ELSE to_char(r.cerrado_en, 'YYYY-MM-DD"T"HH24:MI:SS.MS') || '-05:00'
+    END AS cerrado_en,
     m.nombre AS mascota_nombre, m.estado AS mascota_estado,
     e.nombre AS especie_nombre, raza.nombre AS raza_nombre,
     ub.metodo AS ubicacion_metodo, ub.lat, ub.lng, ub.precision_m,
@@ -157,9 +162,10 @@ function createReportsService(pool = postgres.pool) {
 
       const reportResult = await client.query(
         `INSERT INTO reporte (
-          fk_usuario, fk_mascota, mostrar_contacto, descripcion, estado
-        ) VALUES ($1, $2, $3, $4, 'ACTIVO')
-        RETURNING id, estado, creado_en`,
+          fk_usuario, fk_mascota, mostrar_contacto, descripcion, estado, creado_en
+        ) VALUES ($1, $2, $3, $4, 'ACTIVO', CURRENT_TIMESTAMP AT TIME ZONE 'America/Bogota')
+        RETURNING id, estado,
+          to_char(creado_en, 'YYYY-MM-DD"T"HH24:MI:SS.MS') || '-05:00' AS creado_en`,
         [
           userId,
           data.mascotaId,
@@ -171,8 +177,9 @@ function createReportsService(pool = postgres.pool) {
 
       await client.query(
         `INSERT INTO ubicacion (
-          fk_reporte, metodo, lat, lng, precision_m, direccion, place_id
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+          fk_reporte, metodo, lat, lng, precision_m, direccion, place_id, "timestamp"
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7,
+          CURRENT_TIMESTAMP AT TIME ZONE 'America/Bogota')`,
         [
           report.id,
           data.ubicacion.metodo,
@@ -186,7 +193,7 @@ function createReportsService(pool = postgres.pool) {
 
       await client.query(
         `UPDATE mascota
-         SET estado = 'PERDIDA', actualizado_en = NOW()
+         SET estado = 'PERDIDA', actualizado_en = CURRENT_TIMESTAMP AT TIME ZONE 'America/Bogota'
          WHERE id = $1 AND fk_usuario = $2`,
         [data.mascotaId, userId]
       );
@@ -230,10 +237,12 @@ function createReportsService(pool = postgres.pool) {
         ? data.mostrarContacto
         : current.mostrar_contacto;
 
-      await client.query(
+      const updateResult = await client.query(
         `UPDATE reporte
-         SET descripcion = $1, mostrar_contacto = $2, actualizado_en = NOW()
-         WHERE id = $3 AND fk_usuario = $4`,
+         SET descripcion = $1, mostrar_contacto = $2,
+             actualizado_en = CURRENT_TIMESTAMP AT TIME ZONE 'America/Bogota'
+         WHERE id = $3 AND fk_usuario = $4
+         RETURNING to_char(actualizado_en, 'YYYY-MM-DD"T"HH24:MI:SS.MS') || '-05:00' AS actualizado_en`,
         [descripcion, mostrarContacto, reportId, userId]
       );
 
@@ -241,7 +250,8 @@ function createReportsService(pool = postgres.pool) {
         const locationResult = await client.query(
           `UPDATE ubicacion
            SET metodo = $1, lat = $2, lng = $3, precision_m = $4,
-               direccion = $5, place_id = $6, "timestamp" = NOW()
+               direccion = $5, place_id = $6,
+               "timestamp" = CURRENT_TIMESTAMP AT TIME ZONE 'America/Bogota'
            WHERE fk_reporte = $7`,
           [
             data.ubicacion.metodo,
@@ -259,7 +269,11 @@ function createReportsService(pool = postgres.pool) {
       }
 
       await client.query('COMMIT');
-      return { id: reportId, estado: 'ACTIVO' };
+      return {
+        id: reportId,
+        estado: 'ACTIVO',
+        actualizadoEn: updateResult.rows[0]?.actualizado_en,
+      };
     } catch (error) {
       await client.query('ROLLBACK').catch(() => undefined);
       throw error;
@@ -287,15 +301,17 @@ function createReportsService(pool = postgres.pool) {
         throw createHttpError('El reporte ya está finalizado', 409);
       }
 
-      await client.query(
+      const closeResult = await client.query(
         `UPDATE reporte
-         SET estado = 'FINALIZADO', cerrado_en = NOW()
-         WHERE id = $1 AND fk_usuario = $2`,
+         SET estado = 'FINALIZADO',
+             cerrado_en = CURRENT_TIMESTAMP AT TIME ZONE 'America/Bogota'
+         WHERE id = $1 AND fk_usuario = $2
+         RETURNING to_char(cerrado_en, 'YYYY-MM-DD"T"HH24:MI:SS.MS') || '-05:00' AS cerrado_en`,
         [reportId, userId]
       );
       const petResult = await client.query(
         `UPDATE mascota
-         SET estado = 'ENCONTRADA', actualizado_en = NOW()
+         SET estado = 'ENCONTRADA', actualizado_en = CURRENT_TIMESTAMP AT TIME ZONE 'America/Bogota'
          WHERE id = $1 AND fk_usuario = $2
          RETURNING id`,
         [report.fk_mascota, userId]
@@ -305,7 +321,11 @@ function createReportsService(pool = postgres.pool) {
       }
 
       await client.query('COMMIT');
-      return { id: reportId, estado: 'FINALIZADO' };
+      return {
+        id: reportId,
+        estado: 'FINALIZADO',
+        cerradoEn: closeResult.rows[0]?.cerrado_en,
+      };
     } catch (error) {
       await client.query('ROLLBACK').catch(() => undefined);
       throw error;

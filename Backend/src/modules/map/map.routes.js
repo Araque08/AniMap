@@ -2,6 +2,7 @@ const express = require('express');
 const { ObjectId } = require('mongodb');
 const pool = require('../../config/postgres_db');
 const { getMongoDb } = require('../../config/mongo_db');
+const optionalAuthMiddleware = require('../../middleware/optional-auth.middleware');
 
 const router = express.Router();
 
@@ -62,7 +63,7 @@ router.get('/images/:imageId', async (req, res) => {
 
   Más adelante se puede ampliar para filtros por radio, especie, raza o fecha.
 */
-router.get('/reports', async (req, res) => {
+router.get('/reports', optionalAuthMiddleware, async (req, res) => {
   try {
     /*
       Reportes activos de mascotas perdidas.
@@ -72,9 +73,12 @@ router.get('/reports', async (req, res) => {
         r.id AS reporte_id,
         r.descripcion AS reporte_descripcion,
         r.estado AS reporte_estado,
-        r.creado_en,
-        r.cerrado_en,
+        to_char(r.creado_en, 'YYYY-MM-DD"T"HH24:MI:SS.MS') || '-05:00' AS creado_en,
+        CASE WHEN r.cerrado_en IS NULL THEN NULL
+          ELSE to_char(r.cerrado_en, 'YYYY-MM-DD"T"HH24:MI:SS.MS') || '-05:00'
+        END AS cerrado_en,
         r.mostrar_contacto,
+        r.fk_usuario AS report_owner_id,
 
         m.id AS mascota_id,
         m.nombre AS mascota_nombre,
@@ -141,8 +145,11 @@ router.get('/reports', async (req, res) => {
     `);
 
     const reportes = reportesResult.rows.map((row) => {
+      const isOwner =
+        Number.isInteger(req.auth?.userId) &&
+        req.auth.userId === Number(row.report_owner_id);
       const showContact =
-        row.mostrar_contacto === true && Boolean(row.owner_phone);
+        !isOwner && row.mostrar_contacto === true && Boolean(row.owner_phone);
 
       return {
         id: `lost_${row.reporte_id}`,
@@ -165,6 +172,7 @@ router.get('/reports', async (req, res) => {
         lat: Number(row.lat),
         lng: Number(row.lng),
         type: 'lost',
+        isOwner,
         showContact,
         ownerName: '',
         ownerPhone: showContact ? row.owner_phone : '',

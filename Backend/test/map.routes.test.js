@@ -6,7 +6,7 @@ const express = require('express');
 const postgres = require('../src/config/postgres_db');
 const mapRoutes = require('../src/modules/map/map.routes');
 
-function reportRow({ id, mostrarContacto }) {
+function reportRow({ id, mostrarContacto, ownerId = id }) {
   return {
     reporte_id: id,
     reporte_descripcion: 'Reporte temporal',
@@ -14,6 +14,7 @@ function reportRow({ id, mostrarContacto }) {
     creado_en: new Date('2026-09-12T12:00:00.000Z'),
     cerrado_en: null,
     mostrar_contacto: mostrarContacto,
+    report_owner_id: ownerId,
     mascota_id: id,
     mascota_nombre: `Mascota ${id}`,
     mascota_color: 'Café',
@@ -89,4 +90,50 @@ test('el mapa público solo expone el teléfono cuando fue autorizado', async (t
 
   const sighting = body.data.find((item) => item.id === 'sighting_3');
   assert.equal(sighting.ownerName, 'Autor existente');
+});
+
+test('un reporte propio se identifica sin exponer su teléfono', async (t) => {
+  const originalQuery = postgres.query;
+  postgres.query = async (sql) => {
+    if (sql.includes('FROM reporte r')) {
+      return {
+        rows: [
+          reportRow({ id: 7, mostrarContacto: true, ownerId: 42 }),
+          reportRow({ id: 8, mostrarContacto: true, ownerId: 43 }),
+        ],
+      };
+    }
+    if (sql.includes('FROM avistamiento a')) return { rows: [] };
+    throw new Error('Consulta inesperada en la prueba');
+  };
+
+  const { signAccessToken } = require('../src/utils/jwt');
+  const app = express();
+  app.use('/api/map', mapRoutes);
+  const server = app.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+
+  t.after(async () => {
+    postgres.query = originalQuery;
+    await new Promise((resolve) => server.close(resolve));
+  });
+
+  const address = server.address();
+  const response = await fetch(
+    `http://127.0.0.1:${address.port}/api/map/reports`,
+    { headers: { Authorization: `Bearer ${signAccessToken({ sub: '42' })}` } }
+  );
+  const body = await response.json();
+  const report = body.data.find((item) => item.id === 'lost_7');
+
+  assert.equal(response.status, 200);
+  assert.equal(report.isOwner, true);
+  assert.equal(report.showContact, false);
+  assert.equal(report.ownerPhone, '');
+  assert.equal(Object.hasOwn(report, 'report_owner_id'), false);
+
+  const otherReport = body.data.find((item) => item.id === 'lost_8');
+  assert.equal(otherReport.isOwner, false);
+  assert.equal(otherReport.showContact, true);
+  assert.equal(otherReport.ownerPhone, '3000000000');
 });

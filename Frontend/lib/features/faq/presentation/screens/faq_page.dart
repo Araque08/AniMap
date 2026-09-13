@@ -18,37 +18,37 @@ class _FaqScreenState extends State<FaqScreen> {
       'category': 'General',
       'question': '¿Qué es AniMap?',
       'answer':
-      'AniMap es una aplicación móvil para reportar mascotas perdidas y avistamientos dentro de una comunidad, usando mapa interactivo, ubicación y notificaciones.',
+          'AniMap es una aplicación móvil para reportar mascotas perdidas y avistamientos dentro de una comunidad, usando mapa interactivo, ubicación y notificaciones.',
     },
     {
       'category': 'Mascotas',
       'question': '¿Cómo registro una mascota?',
       'answer':
-      'Debes ingresar a la sección Mis Mascotas, completar los datos de la mascota y guardar su información para poder gestionarla dentro de la aplicación.',
+          'Debes ingresar a la sección Mis Mascotas, completar los datos de la mascota y guardar su información para poder gestionarla dentro de la aplicación.',
     },
     {
       'category': 'Reportes',
       'question': '¿Cómo creo un reporte de mascota perdida?',
       'answer':
-      'Debes entrar en Crear reporte, seleccionar una mascota registrada, agregar una descripción del caso y marcar la última ubicación conocida.',
+          'Debes entrar en Crear reporte, seleccionar una mascota registrada, agregar una descripción del caso y marcar la última ubicación conocida.',
     },
     {
       'category': 'Avistamientos',
       'question': '¿Puedo reportar una mascota que vi en la calle?',
       'answer':
-      'Sí. Puedes registrar un avistamiento con una descripción, ubicación y una foto opcional para ayudar a la comunidad.',
+          'Sí. Puedes registrar un avistamiento con una descripción, ubicación y una foto opcional para ayudar a la comunidad.',
     },
     {
       'category': 'Notificaciones',
       'question': '¿Cómo funcionan las notificaciones?',
       'answer':
-      'La aplicación puede enviar alertas cuando se registre un avistamiento o una posible coincidencia relacionada con una mascota perdida.',
+          'La aplicación puede enviar alertas cuando se registre un avistamiento o una posible coincidencia relacionada con una mascota perdida.',
     },
     {
       'category': 'Mapa',
       'question': '¿Para qué sirve el mapa interactivo?',
       'answer':
-      'El mapa permite visualizar reportes de mascotas perdidas y avistamientos mediante marcadores de ubicación.',
+          'El mapa permite visualizar reportes de mascotas perdidas y avistamientos mediante marcadores de ubicación.',
     },
   ];
 
@@ -98,10 +98,7 @@ class _FaqScreenState extends State<FaqScreen> {
 
                 Text(
                   'Encuentra respuestas rápidas sobre el uso de AniMap.',
-                  style: TextStyle(
-                    color: Color(0xFF344955),
-                    fontSize: 14,
-                  ),
+                  style: TextStyle(color: Color(0xFF344955), fontSize: 14),
                 ),
               ],
             ),
@@ -110,10 +107,7 @@ class _FaqScreenState extends State<FaqScreen> {
           SizedBox(
             height: 62,
             child: ListView.separated(
-              padding: const EdgeInsets.symmetric(
-                horizontal: 16,
-                vertical: 12,
-              ),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               scrollDirection: Axis.horizontal,
               itemCount: categories.length,
               separatorBuilder: (_, __) => const SizedBox(width: 8),
@@ -126,13 +120,9 @@ class _FaqScreenState extends State<FaqScreen> {
                   selected: isSelected,
                   selectedColor: const Color(0xFF2E7D5B),
                   backgroundColor: Colors.white,
-                  side: const BorderSide(
-                    color: Color(0xFF2E7D5B),
-                  ),
+                  side: const BorderSide(color: Color(0xFF2E7D5B)),
                   labelStyle: TextStyle(
-                    color: isSelected
-                        ? Colors.white
-                        : const Color(0xFF2E7D5B),
+                    color: isSelected ? Colors.white : const Color(0xFF2E7D5B),
                     fontWeight: FontWeight.w600,
                   ),
                   onSelected: (_) {
@@ -148,83 +138,78 @@ class _FaqScreenState extends State<FaqScreen> {
           Expanded(
             child: filteredFaqs.isEmpty
                 ? const Center(
-              child: Text(
-                'No hay preguntas registradas.',
-                style: TextStyle(
-                  fontSize: 14,
-                  color: Colors.black54,
-                ),
-              ),
-            )
+                    child: Text(
+                      'No hay preguntas registradas.',
+                      style: TextStyle(fontSize: 14, color: Colors.black54),
+                    ),
+                  )
                 : ListView.builder(
-              padding: const EdgeInsets.fromLTRB(16, 4, 16, 120),
-              itemCount: filteredFaqs.length,
-              itemBuilder: (context, index) {
-                final faq = filteredFaqs[index];
+                    padding: const EdgeInsets.fromLTRB(16, 4, 16, 120),
+                    itemCount: filteredFaqs.length,
+                    itemBuilder: (context, index) {
+                      final faq = filteredFaqs[index];
 
-                return Card(
-                  margin: const EdgeInsets.only(bottom: 12),
-                  elevation: 2,
-                  color: Colors.white,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  child: ExpansionTile(
-                    iconColor: const Color(0xFF2E7D5B),
-                    collapsedIconColor: const Color(0xFF2E7D5B),
-                    tilePadding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 4,
-                    ),
-                    childrenPadding: const EdgeInsets.fromLTRB(
-                      16,
-                      0,
-                      16,
-                      16,
-                    ),
-                    title: Text(
-                      faq['question']!,
-                      style: const TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 15,
-                        color: Colors.black87,
-                      ),
-                    ),
-                    subtitle: Padding(
-                      padding: const EdgeInsets.only(top: 4),
-                      child: Text(
-                        faq['category']!,
-                        style: const TextStyle(
-                          color: Color(0xFF2E7D5B),
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
+                      return Card(
+                        margin: const EdgeInsets.only(bottom: 12),
+                        elevation: 2,
+                        color: Colors.white,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
                         ),
-                      ),
-                    ),
-                    children: [
-                      Align(
-                        alignment: Alignment.centerLeft,
-                        child: Text(
-                          faq['answer']!,
-                          style: const TextStyle(
-                            fontSize: 14,
-                            height: 1.4,
-                            color: Colors.black87,
+                        child: ExpansionTile(
+                          iconColor: const Color(0xFF2E7D5B),
+                          collapsedIconColor: const Color(0xFF2E7D5B),
+                          tilePadding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 4,
                           ),
+                          childrenPadding: const EdgeInsets.fromLTRB(
+                            16,
+                            0,
+                            16,
+                            16,
+                          ),
+                          title: Text(
+                            faq['question']!,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 15,
+                              color: Colors.black87,
+                            ),
+                          ),
+                          subtitle: Padding(
+                            padding: const EdgeInsets.only(top: 4),
+                            child: Text(
+                              faq['category']!,
+                              style: const TextStyle(
+                                color: Color(0xFF2E7D5B),
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                          children: [
+                            Align(
+                              alignment: Alignment.centerLeft,
+                              child: Text(
+                                faq['answer']!,
+                                style: const TextStyle(
+                                  fontSize: 14,
+                                  height: 1.4,
+                                  color: Colors.black87,
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
-                      ),
-                    ],
+                      );
+                    },
                   ),
-                );
-              },
-            ),
           ),
         ],
       ),
 
-      bottomNavigationBar: const BottomMenuAnimap(
-        currentIndex: 1,
-      ),
+      bottomNavigationBar: const BottomMenuAnimap(currentIndex: -1),
     );
   }
 }

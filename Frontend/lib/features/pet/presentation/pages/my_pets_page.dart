@@ -167,31 +167,31 @@ class _MyPetsPageState extends State<MyPetsPage> {
 
       floatingActionButton: _hayMascotasActivas
           ? Padding(
-        padding: const EdgeInsets.only(bottom: 90),
-        child: FloatingActionButton.extended(
-          backgroundColor: const Color(0xFF2563EB),
-          onPressed: () async {
-            final created = await Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (context) => const RegisterPetPage(),
-              ),
-            );
+              padding: const EdgeInsets.only(bottom: 90),
+              child: FloatingActionButton.extended(
+                backgroundColor: const Color(0xFF2563EB),
+                onPressed: () async {
+                  final created = await Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const RegisterPetPage(),
+                    ),
+                  );
 
-            if (created == true) {
-              _refreshPets();
-            }
-          },
+                  if (created == true) {
+                    _refreshPets();
+                  }
+                },
                 icon: const Icon(Icons.add, color: Colors.white),
-          label: const Text(
-            'Agregar',
+                label: const Text(
+                  'Agregar',
                   style: TextStyle(color: Colors.white),
-          ),
-        ),
-      )
+                ),
+              ),
+            )
           : null,
 
-      bottomNavigationBar: const BottomMenuAnimap(currentIndex: 1),
+      bottomNavigationBar: const BottomMenuAnimap(currentIndex: -1),
     );
   }
 }
@@ -272,15 +272,15 @@ class _PetCard extends StatelessWidget {
                 child: imageUrl.isEmpty
                     ? _GenericPetImage()
                     : Image.network(
-                  imageUrl,
+                        imageUrl,
                         headers: PetsService.authHeaders,
-                  width: 82,
-                  height: 82,
-                  fit: BoxFit.cover,
-                  errorBuilder: (context, error, stackTrace) {
-                    return const _GenericPetImage();
-                  },
-                ),
+                        width: 82,
+                        height: 82,
+                        fit: BoxFit.cover,
+                        errorBuilder: (context, error, stackTrace) {
+                          return const _GenericPetImage();
+                        },
+                      ),
               ),
               const SizedBox(width: 14),
               Expanded(

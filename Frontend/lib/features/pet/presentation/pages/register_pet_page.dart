@@ -5,6 +5,8 @@ import '../../data/catalogos_service.dart';
 import 'dart:io';
 import 'package:image_picker/image_picker.dart';
 import '../../data/mascotas_service.dart';
+import '../../data/pet_image_selection.dart';
+import 'pet_photos_management_page.dart';
 
 class RegisterPetPage extends StatefulWidget {
   final Map<String, dynamic>? mascotaEditar;
@@ -17,8 +19,6 @@ class RegisterPetPage extends StatefulWidget {
 
 class _RegisterPetPageState extends State<RegisterPetPage> {
   static const int minImages = 15;
-  static const int maxImagesPerRequest = 30;
-  static const int maxImageBytes = 5 * 1024 * 1024;
 
   final _formKey = GlobalKey<FormState>();
   final _nombreController = TextEditingController();
@@ -45,52 +45,34 @@ class _RegisterPetPageState extends State<RegisterPetPage> {
   final List<String> unidadesEdad = ['MESES', 'ANIOS'];
 
   final ImagePicker _picker = ImagePicker();
-  List<XFile> _imagenesMascota = [];
+  final List<XFile> _imagenesMascota = [];
 
   Future<void> _seleccionarImagenes() async {
     final List<XFile> imagenes = await _picker.pickMultiImage(imageQuality: 80);
 
     if (imagenes.isNotEmpty) {
-      final totalNuevas = _imagenesMascota.length + imagenes.length;
-      if (totalNuevas > maxImagesPerRequest) {
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Puedes cargar máximo 30 fotos por operación'),
-          ),
-        );
-        return;
-      }
-
-      const extensionesValidas = {'jpg', 'jpeg', 'png', 'webp'};
-      for (final imagen in imagenes) {
-        final extension = imagen.path.split('.').last.toLowerCase();
-        final length = await imagen.length();
-        if (!extensionesValidas.contains(extension) ||
-            length <= 0 ||
-            length > maxImageBytes) {
-          if (!mounted) return;
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text(
-                'Solo se permiten imágenes JPG, PNG o WEBP de hasta 5 MB',
-              ),
-            ),
-          );
-          return;
-        }
-      }
+      final result = await validatePetImageSelection(
+        selected: imagenes,
+        alreadyAdded: _imagenesMascota,
+      );
+      if (!mounted) return;
 
       setState(() {
-        _imagenesMascota.addAll(imagenes);
-        fotosCargadas = _imagenesMascota.length;
+        _imagenesMascota.addAll(result.accepted);
         final existePrincipal = _imagenesExistentes.any(
           (imagen) => imagen['esPrincipal'] == true,
         );
-        if (!isEditMode || !existePrincipal) {
-        _fotoPrincipalIndex ??= 0;
+        if (_imagenesMascota.isNotEmpty && (!isEditMode || !existePrincipal)) {
+          _fotoPrincipalIndex ??= 0;
         }
       });
+
+      final rejectionMessage = result.rejectionMessage;
+      if (rejectionMessage != null) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(rejectionMessage)));
+      }
     }
   }
 
@@ -106,9 +88,9 @@ class _RegisterPetPageState extends State<RegisterPetPage> {
   }
 
   Future<void> _cargarRazasPorEspecie(
-      int especieId, {
-        String? razaSeleccionadaId,
-      }) async {
+    int especieId, {
+    String? razaSeleccionadaId,
+  }) async {
     try {
       setState(() {
         _razas = [];
@@ -120,7 +102,7 @@ class _RegisterPetPageState extends State<RegisterPetPage> {
       final razasFinales = List<Map<String, dynamic>>.from(razasResponse);
 
       final existeRaza = razasFinales.any(
-            (raza) => raza['id'].toString() == razaSeleccionadaId,
+        (raza) => raza['id'].toString() == razaSeleccionadaId,
       );
 
       setState(() {
@@ -230,14 +212,17 @@ class _RegisterPetPageState extends State<RegisterPetPage> {
       );
 
       setState(() {
-        _imagenesExistentes = imagenes;
+        _imagenesExistentes = principalImageFirst(
+          imagenes,
+          (imagen) => imagen['esPrincipal'] == true,
+        );
         _isLoadingImages = false;
       });
     } catch (e) {
       print('ERROR CARGANDO FOTOS DE LA MASCOTA: $e');
 
       setState(() {
-      _isLoadingImages = false;
+        _isLoadingImages = false;
       });
 
       ScaffoldMessenger.of(
@@ -264,7 +249,7 @@ class _RegisterPetPageState extends State<RegisterPetPage> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(error.toString().replaceAll('Exception: ', ''))),
       );
-      }
+    }
   }
 
   Future<void> _eliminarImagenExistente(Map<String, dynamic> imagen) async {
@@ -285,7 +270,18 @@ class _RegisterPetPageState extends State<RegisterPetPage> {
     }
   }
 
-  int fotosCargadas = 0;
+  Future<void> _abrirGestionFotos() async {
+    final mascotaId = int.parse(widget.mascotaEditar!['id'].toString());
+    await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => PetPhotosManagementPage(mascotaId: mascotaId),
+      ),
+    );
+    if (mounted) await _cargarImagenesExistentes();
+  }
+
+  int get fotosCargadas => _imagenesExistentes.length + _imagenesMascota.length;
 
   final Color primaryGreen = const Color(0xFF4FA37A);
   final Color accentGreen = const Color(0xFF09613D);
@@ -360,94 +356,109 @@ class _RegisterPetPageState extends State<RegisterPetPage> {
       );
     }
 
-    return SizedBox(
-      height: 105,
-      child: ListView.separated(
-        scrollDirection: Axis.horizontal,
-        itemCount: _imagenesExistentes.length,
-        separatorBuilder: (_, __) => const SizedBox(width: 10),
-        itemBuilder: (context, index) {
-          final imagen = _imagenesExistentes[index];
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        SizedBox(
+          height: 120,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            itemCount: _imagenesExistentes.length,
+            separatorBuilder: (_, __) => const SizedBox(width: 10),
+            itemBuilder: (context, index) {
+              final imagen = _imagenesExistentes[index];
 
-          final imageUrl = '${MascotasService.originUrl}${imagen['url']}';
+              final imageUrl = '${MascotasService.originUrl}${imagen['url']}';
 
-          final esPrincipal = imagen['esPrincipal'] == true;
+              final esPrincipal =
+                  imagen['esPrincipal'] == true && _fotoPrincipalIndex == null;
 
-          return Stack(
-            children: [
-              ClipRRect(
-                borderRadius: BorderRadius.circular(14),
-                child: Image.network(
-                  imageUrl,
-                  headers: MascotasService.authHeaders,
-                  width: 95,
-                  height: 95,
-                  fit: BoxFit.cover,
-                  errorBuilder: (context, error, stackTrace) {
-                    return Container(
+              return Stack(
+                children: [
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(14),
+                    child: Image.network(
+                      imageUrl,
+                      headers: MascotasService.authHeaders,
                       width: 95,
                       height: 95,
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFE5E7EB),
-                        borderRadius: BorderRadius.circular(14),
-                      ),
-                      child: const Icon(Icons.pets, color: Color(0xFF6B7280)),
-                    );
-                  },
-                ),
-              ),
-                Positioned(
-                  left: 6,
-                  bottom: 8,
-                child: GestureDetector(
-                  onTap: esPrincipal
-                      ? null
-                      : () => _establecerPrincipalExistente(imagen),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 7,
-                      vertical: 4,
+                      fit: BoxFit.cover,
+                      errorBuilder: (context, error, stackTrace) {
+                        return Container(
+                          width: 95,
+                          height: 95,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFE5E7EB),
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                          child: const Icon(
+                            Icons.pets,
+                            color: Color(0xFF6B7280),
+                          ),
+                        );
+                      },
                     ),
-                    decoration: BoxDecoration(
-                      color: esPrincipal
-                          ? const Color(0xFF047857)
-                          : Colors.black54,
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Text(
-                      esPrincipal ? 'Principal' : 'Elegir',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 10,
-                        fontWeight: FontWeight.w600,
+                  ),
+                  Positioned(
+                    left: 6,
+                    bottom: 8,
+                    child: GestureDetector(
+                      onTap: esPrincipal
+                          ? null
+                          : () => _establecerPrincipalExistente(imagen),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 7,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
+                          color: esPrincipal
+                              ? const Color(0xFF047857)
+                              : Colors.black54,
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Text(
+                          esPrincipal ? 'Principal' : 'Elegir',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 10,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
                       ),
                     ),
                   ),
-                ),
-              ),
-              Positioned(
-                right: 4,
-                top: 4,
-                child: GestureDetector(
-                  onTap: () => _eliminarImagenExistente(imagen),
-                  child: Container(
-                    padding: const EdgeInsets.all(4),
-                    decoration: const BoxDecoration(
-                      color: Colors.black54,
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Icon(
-                      Icons.close,
-                      color: Colors.white,
-                      size: 17,
+                  Positioned(
+                    right: 4,
+                    top: 4,
+                    child: GestureDetector(
+                      onTap: () => _eliminarImagenExistente(imagen),
+                      child: Container(
+                        padding: const EdgeInsets.all(4),
+                        decoration: const BoxDecoration(
+                          color: Colors.black54,
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(
+                          Icons.close,
+                          color: Colors.white,
+                          size: 17,
+                        ),
+                      ),
                     ),
                   ),
-                ),
-              ),
-            ],
-          );
-        },
-      ),
+                ],
+              );
+            },
+          ),
+        ),
+        const SizedBox(height: 8),
+        OutlinedButton.icon(
+          onPressed: _abrirGestionFotos,
+          icon: const Icon(Icons.photo_library_outlined),
+          label: const Text('Ver todas las fotos'),
+        ),
+      ],
     );
   }
 
@@ -769,10 +780,10 @@ class _RegisterPetPageState extends State<RegisterPetPage> {
                         onChanged: _isLoading
                             ? null
                             : (value) {
-                          setState(() {
-                            _unidadEdadSeleccionada = value;
-                          });
-                        },
+                                setState(() {
+                                  _unidadEdadSeleccionada = value;
+                                });
+                              },
                         validator: (value) {
                           if (value == null) {
                             return 'La unidad de edad es obligatoria';
@@ -854,9 +865,7 @@ class _RegisterPetPageState extends State<RegisterPetPage> {
                         child: Column(
                           children: [
                             Text(
-                              isEditMode
-                                  ? 'Fotos actuales y nuevas'
-                                  : 'Fotos cargadas: $fotosCargadas / 15',
+                              '$fotosCargadas fotos cargadas · mínimo requerido: 15',
                               style: const TextStyle(
                                 fontSize: 16,
                                 fontWeight: FontWeight.bold,
@@ -931,10 +940,10 @@ class _RegisterPetPageState extends State<RegisterPetPage> {
                               itemCount: _imagenesMascota.length,
                               gridDelegate:
                                   const SliverGridDelegateWithFixedCrossAxisCount(
-                                crossAxisCount: 3,
-                                crossAxisSpacing: 10,
-                                mainAxisSpacing: 10,
-                              ),
+                                    crossAxisCount: 3,
+                                    crossAxisSpacing: 10,
+                                    mainAxisSpacing: 10,
+                                  ),
                               itemBuilder: (context, index) {
                                 final imagen = _imagenesMascota[index];
 
@@ -957,14 +966,21 @@ class _RegisterPetPageState extends State<RegisterPetPage> {
                                         onTap: () {
                                           setState(() {
                                             _imagenesMascota.removeAt(index);
-                                            fotosCargadas =
-                                                _imagenesMascota.length;
 
                                             if (_imagenesMascota.isEmpty) {
                                               _fotoPrincipalIndex = null;
                                             } else if (_fotoPrincipalIndex ==
                                                 index) {
-                                              _fotoPrincipalIndex = 0;
+                                              final existePrincipal =
+                                                  _imagenesExistentes.any(
+                                                    (imagen) =>
+                                                        imagen['esPrincipal'] ==
+                                                        true,
+                                                  );
+                                              _fotoPrincipalIndex =
+                                                  isEditMode && existePrincipal
+                                                  ? null
+                                                  : 0;
                                             } else if (_fotoPrincipalIndex !=
                                                     null &&
                                                 index < _fotoPrincipalIndex!) {
@@ -994,7 +1010,11 @@ class _RegisterPetPageState extends State<RegisterPetPage> {
                                       child: GestureDetector(
                                         onTap: () {
                                           setState(() {
-                                            _fotoPrincipalIndex = index;
+                                            moveImageToFirst(
+                                              _imagenesMascota,
+                                              index,
+                                            );
+                                            _fotoPrincipalIndex = 0;
                                           });
                                         },
                                         child: Container(
@@ -1047,22 +1067,22 @@ class _RegisterPetPageState extends State<RegisterPetPage> {
                           ),
                           child: _isLoading
                               ? const SizedBox(
-                            width: 22,
-                            height: 22,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2.5,
-                              color: Colors.white,
-                            ),
-                          )
+                                  width: 22,
+                                  height: 22,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2.5,
+                                    color: Colors.white,
+                                  ),
+                                )
                               : Text(
                                   isEditMode
                                       ? 'Editar Mascota'
                                       : 'Registrar Mascota',
-                            style: TextStyle(
-                              fontSize: 17,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
+                                  style: TextStyle(
+                                    fontSize: 17,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
                         ),
                       ),
                     ],
@@ -1073,7 +1093,7 @@ class _RegisterPetPageState extends State<RegisterPetPage> {
           ],
         ),
       ),
-      bottomNavigationBar: const BottomMenuAnimap(currentIndex: 1),
+      bottomNavigationBar: const BottomMenuAnimap(currentIndex: -1),
     );
   }
 }

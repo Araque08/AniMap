@@ -34,13 +34,13 @@ class _PetProfilePageState extends State<PetProfilePage> {
 
     List<Map<String, dynamic>> imagenes = [];
 
-      try {
-        imagenes = await MascotasService.obtenerImagenesMascota(
-          mascotaId: mascotaId,
-        );
-      } catch (error) {
-        debugPrint('No se pudieron cargar imágenes de la mascota: $error');
-      }
+    try {
+      imagenes = await MascotasService.obtenerImagenesMascota(
+        mascotaId: mascotaId,
+      );
+    } catch (error) {
+      debugPrint('No se pudieron cargar imágenes de la mascota: $error');
+    }
 
     mascota['fotos'] = imagenes;
 
@@ -250,7 +250,7 @@ class _PetProfilePageState extends State<PetProfilePage> {
 
               return _ErrorView(
                 message:
-                'No se pudo cargar el perfil de la mascota\n${snapshot.error}',
+                    'No se pudo cargar el perfil de la mascota\n${snapshot.error}',
                 onRetry: () {
                   setState(() {
                     _futurePet = _getPetProfile(widget.mascotaId);
@@ -309,19 +309,19 @@ class _PetProfilePageState extends State<PetProfilePage> {
                             Expanded(
                               child: widget.mostrarAccionesDueno
                                   ? Align(
-                                alignment: Alignment.centerRight,
-                                child: IconButton(
-                                  tooltip: 'Eliminar mascota',
-                                  onPressed: () {
-                                    _confirmDeletePet(pet);
-                                  },
-                                  icon: const Icon(
-                                    Icons.delete_outline,
-                                    color: Colors.red,
-                                    size: 28,
-                                  ),
-                                ),
-                              )
+                                      alignment: Alignment.centerRight,
+                                      child: IconButton(
+                                        tooltip: 'Eliminar mascota',
+                                        onPressed: () {
+                                          _confirmDeletePet(pet);
+                                        },
+                                        icon: const Icon(
+                                          Icons.delete_outline,
+                                          color: Colors.red,
+                                          size: 28,
+                                        ),
+                                      ),
+                                    )
                                   : const SizedBox(),
                             ),
                           ],
@@ -339,24 +339,24 @@ class _PetProfilePageState extends State<PetProfilePage> {
                               child: ClipOval(
                                 child: mainImage.isEmpty
                                     ? const Icon(
-                                  Icons.pets,
-                                  size: 70,
-                                  color: Color(0xFF4D9B6A),
-                                )
+                                        Icons.pets,
+                                        size: 70,
+                                        color: Color(0xFF4D9B6A),
+                                      )
                                     : Image.network(
-                                  mainImage,
+                                        mainImage,
                                         headers: MascotasService.authHeaders,
-                                  width: 132,
-                                  height: 132,
-                                  fit: BoxFit.cover,
-                                  errorBuilder: (_, __, ___) {
-                                    return const Icon(
-                                      Icons.pets,
-                                      size: 70,
-                                      color: Color(0xFF4D9B6A),
-                                    );
-                                  },
-                                ),
+                                        width: 132,
+                                        height: 132,
+                                        fit: BoxFit.cover,
+                                        errorBuilder: (_, __, ___) {
+                                          return const Icon(
+                                            Icons.pets,
+                                            size: 70,
+                                            color: Color(0xFF4D9B6A),
+                                          );
+                                        },
+                                      ),
                               ),
                             ),
 
@@ -455,7 +455,7 @@ class _PetProfilePageState extends State<PetProfilePage> {
         ),
       ),
 
-      bottomNavigationBar: const BottomMenuAnimap(currentIndex: 1),
+      bottomNavigationBar: const BottomMenuAnimap(currentIndex: -1),
     );
   }
 }
