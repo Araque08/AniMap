@@ -390,7 +390,6 @@ class _ProfilePageState extends State<ProfilePage> {
                       // MARCA INFERIOR
                       // ==========================================
 
-                      const _AniMapFooter(),
                     ],
                   ),
                 ),
@@ -792,44 +791,6 @@ class _ProfileOptionCard extends StatelessWidget {
           ),
         ),
       ),
-    );
-  }
-}
-
-// ============================================================================
-// PIE DE PÁGINA
-// ============================================================================
-
-class _AniMapFooter extends StatelessWidget {
-  const _AniMapFooter();
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      children: [
-        Container(
-          width: 46,
-          height: 46,
-          decoration: BoxDecoration(
-            color: ProfilePage.lightGreen,
-            borderRadius: BorderRadius.circular(15),
-          ),
-          child: const Icon(
-            Icons.pets_rounded,
-            color: ProfilePage.darkGreen,
-            size: 25,
-          ),
-        ),
-        const SizedBox(height: 8),
-        const Text(
-          'AniMap',
-          style: TextStyle(
-            color: ProfilePage.textGrey,
-            fontSize: 12,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-      ],
     );
   }
 }

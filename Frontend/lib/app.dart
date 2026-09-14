@@ -7,6 +7,7 @@ import 'features/pet/presentation/pages/pet_profile_page.dart';
 import 'features/map/presentation/pages/map_page.dart';
 import 'features/user/presentation/pages/profile_page.dart';
 import 'features/report/presentation/pages/create_lost_report_page.dart';
+import 'features/admin/presentation/pages/admin_home_page.dart';
 
 class AniMapApp extends StatelessWidget {
   const AniMapApp({super.key});
@@ -31,6 +32,7 @@ class AniMapApp extends StatelessWidget {
         '/profile': (context) => const ProfilePage(),
         '/faqs': (context) => const FaqScreen(),
         '/pet-list': (context) => const MyPetsPage(),
+        '/AdminHomePage': (context) => const AdminHomePage(),
       },
     );
   }

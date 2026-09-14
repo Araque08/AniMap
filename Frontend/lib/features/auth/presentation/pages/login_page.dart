@@ -1,9 +1,14 @@
 import 'package:flutter/material.dart';
 import 'register_page.dart';
 import '../../data/auth_service.dart';
-import '../../../map/presentation/pages/map_page.dart';
+
 import 'forgot_password_page.dart';
 import 'verify_account_page.dart';
+// Panel de inicio de AniMap usuarios
+import '../../../map/presentation/pages/map_page.dart';
+
+// Panel de administración de AniMap
+import '../../../admin/presentation/pages/admin_home_page.dart';
 
 class LoginPage extends StatefulWidget {
   final AuthService? authService;
@@ -43,8 +48,10 @@ class _LoginPageState extends State<LoginPage> {
   /* Envio del formulario logIn*/
   Future<void> _submitLogin() async {
     final isValid = _formKey.currentState?.validate() ?? false;
-    /* valida si es correcto el ingreso*/
+
+    /* valida si es correcto el ingreso */
     if (!isValid) return;
+
     final email = _emailController.text.trim().toLowerCase();
 
     setState(() {
@@ -55,31 +62,92 @@ class _LoginPageState extends State<LoginPage> {
     });
 
     try {
+      /*
+      Enviamos las credenciales al backend.
+    */
       final response = await _authService.login(
         email: email,
         password: _passwordController.text,
         deviceId: 'android-emulador',
       );
 
+      /*
+      Obtenemos la información devuelta
+      por el backend.
+    */
       final data = response['data'];
       final user = data?['user'];
-      final nombre = user?['nombre']?.toString() ?? 'usuario';
+
+      final nombre =
+          user?['nombre']?.toString() ?? 'usuario';
+
+      /*
+      Obtenemos el rol real almacenado
+      en PostgreSQL.
+
+      Ejemplos:
+      ADMINISTRADOR
+      USUARIO
+    */
+      final rol = user?['rol']
+          ?.toString()
+          .trim()
+          .toUpperCase();
 
       if (!mounted) return;
 
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (context) => MapPage(userName: nombre)),
-      );
+      /*
+      Dependiendo del rol dirigimos al usuario
+      a la sección correspondiente de AniMap.
+    */
+      if (rol == 'ADMINISTRADOR') {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (context) =>
+            const AdminHomePage(),
+          ),
+        );
+
+        return;
+      }
+
+      if (rol == 'USUARIO') {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (context) =>
+                MapPage(userName: nombre),
+          ),
+        );
+
+        return;
+      }
+
+      /*
+      Si por alguna razón el backend devuelve
+      un usuario sin un rol reconocido,
+      evitamos darle acceso a alguna sección.
+    */
+      setState(() {
+        _hasLoginError = true;
+        _loginErrorMessage =
+        'La cuenta no tiene un rol válido asignado';
+      });
     } on AuthException catch (e) {
       if (!mounted) return;
 
       setState(() {
         _hasLoginError = true;
-        _unverifiedEmail = e.message == 'La cuenta aún no ha sido verificada'
+
+        _unverifiedEmail =
+        e.message ==
+            'La cuenta aún no ha sido verificada'
             ? email
             : null;
-        _loginErrorMessage = e.message == 'Credenciales inválidas'
+
+        _loginErrorMessage =
+        e.message == 'Credenciales inválidas'
             ? 'Correo o contraseña incorrectos'
             : e.message;
       });
@@ -89,7 +157,8 @@ class _LoginPageState extends State<LoginPage> {
       setState(() {
         _hasLoginError = true;
         _unverifiedEmail = null;
-        _loginErrorMessage = 'Error inesperado al iniciar sesión';
+        _loginErrorMessage =
+        'Error inesperado al iniciar sesión';
       });
     } finally {
       if (mounted) {

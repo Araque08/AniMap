@@ -317,121 +317,119 @@ async function registerUser(data) {
   INICIO DE SESIÓN
   ============================================================
 */
-
 async function loginUser(data) {
-
   const {
-
     email,
     password,
-
     deviceId = 'mobile-app',
-
   } = data;
 
-
-  const client =
-    await db.pool.connect();
-
+  const client = await db.pool.connect();
 
   try {
-
     await client.query('BEGIN');
 
+    /*
+      Buscamos el usuario junto con el rol que tiene asignado.
+
+      La relación se obtiene mediante:
+
+      usuario
+          ↓
+      usuario_rol
+          ↓
+      rol
+    */
+    const result = await client.query(
+      `
+        SELECT
+          u.id,
+          u.nombre,
+          u.email,
+          u.telefono,
+          u.password_hash,
+          u.is_verified,
+          u.estado_cuenta,
+          u.last_login_at,
+          r.nombre AS rol
+
+        FROM usuario u
+
+        LEFT JOIN usuario_rol ur
+          ON ur.fk_usuario = u.id
+
+        LEFT JOIN rol r
+          ON r.id = ur.fk_rol
+
+        WHERE u.email = $1
+
+        LIMIT 1
+      `,
+      [
+        email
+      ]
+    );
 
     /*
-      Buscamos el usuario.
+      Validamos que el usuario exista.
     */
-    const result =
-      await client.query(
-        `
-          SELECT
-
-            id,
-            nombre,
-            email,
-            telefono,
-            password_hash,
-            is_verified,
-            estado_cuenta,
-            last_login_at
-
-          FROM usuario
-
-          WHERE email = $1
-
-          LIMIT 1
-        `,
-        [
-          email
-        ]
-      );
-
-
     if (result.rowCount === 0) {
-
       throw createHttpError(
         'Credenciales inválidas',
         401
       );
-
     }
 
+    const user = result.rows[0];
 
-    const user =
-      result.rows[0];
-
+    /*
+      Verificamos que tenga un rol asignado.
+    */
+    if (!user.rol) {
+      throw createHttpError(
+        'El usuario no tiene un rol asignado',
+        403
+      );
+    }
 
     /*
       Verificamos que la cuenta esté activa.
     */
-    if (
-      user.estado_cuenta !== 'ACTIVO'
-    ) {
-
+    if (user.estado_cuenta !== 'ACTIVO') {
       throw createHttpError(
         'La cuenta no está activa',
         403
       );
-
     }
-
 
     /*
       Verificamos que la cuenta esté verificada.
     */
     if (!user.is_verified) {
-
       throw createHttpError(
         'La cuenta aún no ha sido verificada',
         403
       );
-
     }
 
-
     /*
-      Comparamos la contraseña.
+      Comparamos la contraseña ingresada
+      con el hash almacenado.
     */
-    const passwordOk =
-      await compareHash(
-        password,
-        user.password_hash
-      );
-
+    const passwordOk = await compareHash(
+      password,
+      user.password_hash
+    );
 
     if (!passwordOk) {
-
       throw createHttpError(
         'Credenciales inválidas',
         401
       );
-
     }
 
-
     /*
-      Actualizamos último inicio de sesión.
+      Actualizamos la fecha del último inicio de sesión.
     */
     await client.query(
       `
@@ -447,43 +445,40 @@ async function loginUser(data) {
       ]
     );
 
-
     /*
-      Creamos Access Token.
+      Creamos el Access Token.
+
+      IMPORTANTE:
+      Ya no usamos el rol fijo 'USUARIO'.
+
+      Ahora guardamos dentro del token
+      el rol real obtenido desde PostgreSQL.
     */
-    const accessToken =
-      signAccessToken({
-
-        sub: user.id,
-
-        email: user.email,
-
-        role: 'USUARIO',
-
-      });
-
+    const accessToken = signAccessToken({
+      sub: user.id,
+      email: user.email,
+      role: user.rol,
+    });
 
     /*
-      Creamos Refresh Token.
+      Creamos el Refresh Token.
     */
-    const refreshToken =
-      signRefreshToken({
-
-        sub: user.id,
-
-        deviceId,
-
-      });
-
-
-    const refreshTokenHash =
-      await hashText(
-        refreshToken
-      );
-
+    const refreshToken = signRefreshToken({
+      sub: user.id,
+      deviceId,
+    });
 
     /*
-      Cerramos sesiones anteriores del mismo dispositivo.
+      Guardamos solamente el hash
+      del Refresh Token.
+    */
+    const refreshTokenHash = await hashText(
+      refreshToken
+    );
+
+    /*
+      Cerramos sesiones anteriores
+      correspondientes al mismo dispositivo.
     */
     await client.query(
       `
@@ -494,17 +489,14 @@ async function loginUser(data) {
 
         WHERE
           fk_usuario = $1
-
           AND device_id = $2
-
           AND vigente = TRUE
       `,
       [
         user.id,
-        deviceId,
+        deviceId
       ]
     );
-
 
     /*
       Registramos la nueva sesión.
@@ -531,83 +523,80 @@ async function loginUser(data) {
           NOW(),
 
           NOW()
-          + ($4 || ' days')::interval,
+            + ($4 || ' days')::interval,
 
           TRUE
 
         )
       `,
       [
-
         user.id,
-
         deviceId,
-
         refreshTokenHash,
-
         String(
           env.REFRESH_TOKEN_TTL_DAYS
         ),
-
       ]
     );
 
-
     /*
-      Consultamos nuevamente los datos actualizados.
+      Consultamos nuevamente los datos actualizados
+      incluyendo el rol del usuario.
     */
-    const freshUserResult =
-      await client.query(
-        `
-          SELECT
+    const freshUserResult = await client.query(
+      `
+        SELECT
+          u.id,
+          u.nombre,
+          u.email,
+          u.telefono,
+          u.is_verified,
+          u.estado_cuenta,
+          u.fecha_registro,
+          u.last_login_at,
+          r.nombre AS rol
 
-            id,
-            nombre,
-            email,
-            telefono,
-            is_verified,
-            estado_cuenta,
-            fecha_registro,
-            last_login_at
+        FROM usuario u
 
-          FROM usuario
+        LEFT JOIN usuario_rol ur
+          ON ur.fk_usuario = u.id
 
-          WHERE id = $1
-        `,
-        [
-          user.id
-        ]
-      );
+        LEFT JOIN rol r
+          ON r.id = ur.fk_rol
 
+        WHERE u.id = $1
+
+        LIMIT 1
+      `,
+      [
+        user.id
+      ]
+    );
 
     await client.query('COMMIT');
 
+    /*
+      Devolvemos al frontend:
 
+      - datos del usuario
+      - rol
+      - Access Token
+      - Refresh Token
+    */
     return {
-
-      user:
-        freshUserResult.rows[0],
-
+      user: freshUserResult.rows[0],
       accessToken,
-
       refreshToken,
-
     };
 
-
   } catch (error) {
-
     await client.query('ROLLBACK');
 
     throw error;
 
-
   } finally {
-
     client.release();
-
   }
-
 }
 
 
