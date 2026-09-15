@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../faq/admin_faq_page.dart';
+
 class AdminHomePage extends StatelessWidget {
   const AdminHomePage({
     super.key,
@@ -74,10 +76,18 @@ class AdminHomePage extends StatelessWidget {
                       childAspectRatio: 1.05,
                       children: [
                         _AdminOptionCard(
-                          title: 'Usuarios',
-                          subtitle: 'Gestionar cuentas',
-                          icon: Icons.people_alt_outlined,
-                          onTap: onUsuariosTap,
+                          title: 'Preguntas\nfrecuentes',
+                          subtitle: 'Gestionar FAQ',
+                          icon: Icons.help_outline_rounded,
+                          onTap: onFaqTap ??
+                                  () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => const AdminFaqPage(),
+                                  ),
+                                );
+                              },
                         ),
                         _AdminOptionCard(
                           title: 'Reportes',

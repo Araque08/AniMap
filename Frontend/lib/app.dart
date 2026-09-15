@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
 import 'features/auth/presentation/pages/login_page.dart';
-import 'features/faq/presentation/screens/faq_page.dart';
+import 'features/faq/presentation/pages/faq_page.dart';
 import 'features/pet/presentation/pages/register_pet_page.dart';
 import 'features/pet/presentation/pages/my_pets_page.dart';
 import 'features/pet/presentation/pages/pet_profile_page.dart';
 import 'features/map/presentation/pages/map_page.dart';
 import 'features/user/presentation/pages/profile_page.dart';
 import 'features/report/presentation/pages/create_lost_report_page.dart';
-import 'features/admin/presentation/pages/admin_home_page.dart';
+import 'features/admin/presentation/pages/home admin/admin_home_page.dart';
 
 class AniMapApp extends StatelessWidget {
   const AniMapApp({super.key});

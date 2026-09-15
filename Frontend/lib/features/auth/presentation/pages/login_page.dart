@@ -8,7 +8,8 @@ import 'verify_account_page.dart';
 import '../../../map/presentation/pages/map_page.dart';
 
 // Panel de administración de AniMap
-import '../../../admin/presentation/pages/admin_home_page.dart';
+import '../../../admin/presentation/pages/home admin/admin_home_page.dart';
+import '../../../admin/presentation/pages/faq/admin_faq_page.dart';
 
 class LoginPage extends StatefulWidget {
   final AuthService? authService;

@@ -9,27 +9,26 @@ const authRoutes = require('../modules/auth/auth.routes');
 const catalogosRoutes = require('../modules/catalogos/catalogos.routes');
 const mascotasRoutes = require('../modules/pets/mascotas.routes');
 const petsRoutes = require('../modules/pets/pets.routes');
-
-/*
-  Aquí importo las rutas del módulo del mapa.
-  Este módulo será el encargado de entregar al frontend los datos que necesita
-  para pintar mascotas perdidas, avistamientos y mascotas encontradas.
-*/
 const mapRoutes = require('../modules/map/map.routes');
 const profileRoutes = require('../modules/profile/profile.routes');
 const reportsRoutes = require('../modules/reports/reports.routes');
 
 /*
+  Rutas del módulo de preguntas frecuentes.
+*/
+const faqRoutes = require('../modules/faq/faq.routes');
+
+/*
   Aquí creo el router principal de Express.
+
   Este router se conecta después en app.js bajo el prefijo /api.
-  Por eso, cualquier ruta definida aquí realmente queda disponible como /api/...
 */
 const router = express.Router();
 
 /*
   Ruta de prueba para verificar que la API está funcionando.
-  la podemos consultar desde el navegador en:
-  http://localhost:3000/api/health
+
+  GET /api/health
 */
 router.get('/health', (req, res) => {
   res.status(200).json({
@@ -39,36 +38,68 @@ router.get('/health', (req, res) => {
 });
 
 /*
-  Aquí conecto el módulo de autenticación.
-  Todas las rutas internas de auth.routes.js quedan bajo:
-  /api/auth
+  ============================================================
+  AUTENTICACIÓN
+  ============================================================
 */
+
 router.use('/auth', authRoutes);
 
 /*
-  Aquí conecto el módulo de catálogos.
-  Sirve para consultar datos base como especies, razas u otros listados
-  necesarios para formularios de la aplicación.
+  ============================================================
+  CATÁLOGOS
+  ============================================================
 */
+
 router.use('/catalogos', catalogosRoutes);
 
 /*
-  Aquí conecto las rutas de mascotas.
+  ============================================================
+  MASCOTAS
+  ============================================================
 */
+
 router.use('/pets', mascotasRoutes);
 router.use('/pets', petsRoutes);
 
 /*
-  Aquí conecto el nuevo módulo del mapa.
-  Con esta línea, la ruta definida en map.routes.js como /reports queda
-  disponible finalmente como:
-  http://localhost:3000/api/map/reports
+  ============================================================
+  MAPA
+  ============================================================
 */
+
 router.use('/map', mapRoutes);
+
+/*
+  ============================================================
+  PERFIL
+  ============================================================
+*/
+
 router.use('/profile', profileRoutes);
+
+/*
+  ============================================================
+  REPORTES
+  ============================================================
+*/
+
 router.use('/reports', reportsRoutes);
 
 /*
-  Exporto el router principal para que app.js lo pueda montar en /api.
+  ============================================================
+  PREGUNTAS FRECUENTES
+  ============================================================
+
+  Todas las rutas de faq.routes.js estarán disponibles bajo:
+
+  /api/faqs
+*/
+
+router.use('/faqs', faqRoutes);
+
+/*
+  Exporto el router principal para que app.js
+  lo pueda montar bajo /api.
 */
 module.exports = router;
