@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../../widgets/bottom_menu_animap.dart';
 import '../../../../widgets/top_menu_animap.dart';
-import '../../../admin/data/faq_service.dart';
+import '../../../admin/data/faq/faq_service.dart';
 
 class FaqScreen extends StatefulWidget {
   final FaqService? faqService;

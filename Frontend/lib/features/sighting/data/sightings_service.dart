@@ -16,7 +16,7 @@ class SightingsException implements Exception {
 }
 
 class SightingsService {
-  static const String originUrl = 'http://10.0.2.2:3000';
+  static const String originUrl = 'http://172.20.8.104:3000';
   static const String baseUrl = '$originUrl/api/sightings';
 
   static Future<List<Map<String, dynamic>>> getLinkableReports() async {

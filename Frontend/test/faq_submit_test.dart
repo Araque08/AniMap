@@ -1,8 +1,8 @@
 import 'dart:async';
 import 'dart:convert';
 
-import 'package:animap/features/admin/data/faq_service.dart';
-import 'package:animap/features/admin/presentation/pages/admin_faq_page.dart';
+import 'package:animap/features/admin/data/faq/faq_service.dart';
+import 'package:animap/features/admin/presentation/pages/faq/admin_faq_page.dart';
 import 'package:animap/features/auth/data/authenticated_http_client.dart';
 import 'package:animap/features/auth/data/session_manager.dart';
 import 'package:animap/features/auth/data/session_storage.dart';

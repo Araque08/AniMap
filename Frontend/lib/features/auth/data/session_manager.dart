@@ -38,7 +38,7 @@ class LogoutResult {
 class SessionManager extends ChangeNotifier {
   static const refreshTokenKey = 'animap_refresh_token';
   static const deviceIdKey = 'animap_device_id';
-  static const _defaultBaseUrl = 'http://10.0.2.2:3000/api/auth';
+  static const _defaultBaseUrl = 'http://172.20.8.104:3000/api/auth';
   static final SessionManager instance = SessionManager();
 
   final SessionStorage storage;

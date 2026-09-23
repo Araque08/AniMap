@@ -11,7 +11,7 @@ import 'features/user/presentation/pages/profile_page.dart';
 import 'features/report/presentation/pages/create_lost_report_page.dart';
 import 'features/report/presentation/pages/report_type_selector_page.dart';
 import 'features/sighting/presentation/pages/create_sighting_page.dart';
-import 'features/admin/presentation/pages/admin_home_page.dart';
+import 'features/admin/presentation/pages/home/admin_home_page.dart';
 
 class AniMapApp extends StatefulWidget {
   final SessionManager? sessionManager;

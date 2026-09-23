@@ -37,7 +37,7 @@ class AuthService {
 
     Android Emulator usa 10.0.2.2 para acceder al localhost del equipo.
   */
-  static const String baseUrl = 'http://10.0.2.2:3000/api';
+  static const String baseUrl = 'http://172.20.8.104:3000/api';
 
   Future<String> getDeviceId() => sessionManager.getDeviceId();
 

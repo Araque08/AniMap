@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../map/presentation/pages/map_page.dart';
-import '../../admin/presentation/pages/admin_home_page.dart';
+import '../../admin/presentation/pages/home/admin_home_page.dart';
 import '../data/session_manager.dart';
 import 'pages/login_page.dart';
 

@@ -2,9 +2,9 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
-import '../../auth/data/auth_service.dart';
-import '../../auth/data/authenticated_http_client.dart';
-import '../../auth/data/session_manager.dart';
+import '../../../auth/data/auth_service.dart';
+import '../../../auth/data/authenticated_http_client.dart';
+import '../../../auth/data/session_manager.dart';
 
 class FaqException implements Exception {
   final String message;
