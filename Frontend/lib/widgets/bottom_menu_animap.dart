@@ -2,11 +2,25 @@ import 'package:flutter/material.dart';
 
 class BottomMenuAnimap extends StatelessWidget {
   final int currentIndex;
+  final Future<bool> Function(int targetIndex)? onBeforeNavigate;
+  final VoidCallback? onReportTap;
 
-  const BottomMenuAnimap({super.key, required this.currentIndex});
+  const BottomMenuAnimap({
+    super.key,
+    required this.currentIndex,
+    this.onBeforeNavigate,
+    this.onReportTap,
+  });
 
-  void _navigate(BuildContext context, int index) {
-    if (index == currentIndex) return;
+  Future<void> _navigate(BuildContext context, int index) async {
+    final reportOverride = index == 1 && onReportTap != null;
+    if (index == currentIndex && !reportOverride) return;
+    if (onBeforeNavigate != null && !await onBeforeNavigate!(index)) return;
+    if (!context.mounted) return;
+    if (reportOverride) {
+      onReportTap!();
+      return;
+    }
 
     String routeName;
 
@@ -41,7 +55,7 @@ class BottomMenuAnimap extends StatelessWidget {
           border: Border.all(color: const Color(0xFF7CC484), width: 1.3),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.12),
+              color: Colors.black.withValues(alpha: 0.12),
               blurRadius: 8,
               offset: const Offset(0, 2),
             ),
@@ -82,7 +96,7 @@ class BottomMenuAnimap extends StatelessWidget {
                     shape: BoxShape.circle,
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withOpacity(0.18),
+                        color: Colors.black.withValues(alpha: 0.18),
                         blurRadius: 8,
                         offset: const Offset(0, 2),
                       ),
@@ -158,7 +172,7 @@ class _MenuIcon extends StatelessWidget {
         child: Icon(
           icon,
           size: 38,
-          color: isSelected ? green : green.withOpacity(0.85),
+          color: isSelected ? green : green.withValues(alpha: 0.85),
         ),
       ),
     );

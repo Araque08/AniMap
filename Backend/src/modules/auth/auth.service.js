@@ -1,9 +1,10 @@
 const db = require('../../config/postgres_db');
 const env = require('../../config/env');
 
-const { hashText, compareHash } = require('../../utils/hash');
+const { hashText, compareHash, hashRefreshToken } = require('../../utils/hash');
 
-const { randomInt } = require('node:crypto');
+const { randomInt, randomUUID } = require('node:crypto');
+const { getSingleRole } = require('./auth.role.service');
 
 const {
   signAccessToken,
@@ -318,7 +319,7 @@ async function registerUser(data) {
   ============================================================
 */
 
-async function loginUser(data) {
+async function loginUser(data, { pool = db.pool } = {}) {
 
   const {
 
@@ -331,7 +332,7 @@ async function loginUser(data) {
 
 
   const client =
-    await db.pool.connect();
+    await pool.connect();
 
 
   try {
@@ -429,6 +430,7 @@ async function loginUser(data) {
 
     }
 
+    const role = await getSingleRole(client, user.id);
 
     /*
       Actualizamos último inicio de sesión.
@@ -458,7 +460,9 @@ async function loginUser(data) {
 
         email: user.email,
 
-        role: 'USUARIO',
+        role,
+
+        deviceId,
 
       });
 
@@ -473,11 +477,13 @@ async function loginUser(data) {
 
         deviceId,
 
+        jti: randomUUID(),
+
       });
 
 
     const refreshTokenHash =
-      await hashText(
+      hashRefreshToken(
         refreshToken
       );
 
@@ -585,8 +591,10 @@ async function loginUser(data) {
 
     return {
 
-      user:
-        freshUserResult.rows[0],
+      user: {
+        ...freshUserResult.rows[0],
+        rol: role,
+      },
 
       accessToken,
 

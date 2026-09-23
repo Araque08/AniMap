@@ -117,6 +117,16 @@ const loginSchema = z.object({
     .optional(),
 });
 
+const sessionTokenSchema = z
+  .object({
+    refreshToken: z
+      .string({ error: 'El refresh token es obligatorio' })
+      .trim()
+      .min(1, 'El refresh token es obligatorio')
+      .max(4096, 'Refresh token inválido'),
+  })
+  .strict();
+
 /*
   Aquí validamos el correo y el código utilizado
   para verificar una cuenta nueva.
@@ -230,6 +240,8 @@ const resetPasswordSchema = z
 module.exports = {
   registerSchema,
   loginSchema,
+  refreshSchema: sessionTokenSchema,
+  logoutSchema: sessionTokenSchema,
   verifyAccountSchema,
   resendVerificationCodeSchema,
   forgotPasswordSchema,

@@ -1,17 +1,23 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
-import '../../auth/data/auth_service.dart';
+import '../../auth/data/authenticated_http_client.dart';
+import '../../auth/data/session_manager.dart';
 
 class MascotasService {
   static const String baseUrl = 'http://10.0.2.2:3000/api/pets';
   static const String originUrl = 'http://10.0.2.2:3000';
 
+  static Map<String, String> get authHeaders {
+    final token = SessionManager.instance.accessToken;
+    if (token == null || token.isEmpty) return const {};
+    return {'Authorization': 'Bearer $token'};
+  }
+
   static http.MediaType _imageContentType(String path) {
     final normalizedPath = path.toLowerCase();
 
-    if (normalizedPath.endsWith('.jpg') ||
-        normalizedPath.endsWith('.jpeg')) {
+    if (normalizedPath.endsWith('.jpg') || normalizedPath.endsWith('.jpeg')) {
       return http.MediaType('image', 'jpeg');
     }
     if (normalizedPath.endsWith('.png')) {
@@ -22,14 +28,6 @@ class MascotasService {
     }
 
     throw ArgumentError('Formato de imagen no soportado');
-  }
-
-  static Map<String, String> get authHeaders {
-    final token = AuthService.accessToken;
-    if (token == null || token.isEmpty) {
-      throw StateError('No hay una sesión autenticada');
-    }
-    return {'Authorization': 'Bearer $token'};
   }
 
   static Future<Map<String, dynamic>> registrarMascota({
@@ -44,43 +42,35 @@ class MascotasService {
     required List<XFile> imagenes,
     required int fotoPrincipalIndex,
   }) async {
-    final request = http.MultipartRequest('POST', Uri.parse(baseUrl));
-
-    request.headers.addAll(authHeaders);
-    request.fields['fk_especie'] = fkEspecie.toString();
-    request.fields['nombre'] = nombre;
-    request.fields['color'] = color;
-    request.fields['sexo'] = sexo;
-    request.fields['foto_principal_index'] = fotoPrincipalIndex.toString();
-
-    if (fkRaza != null) {
-      request.fields['fk_raza'] = fkRaza.toString();
-    }
-
-    if (edadAprox != null) {
-      request.fields['edad_aprox'] = edadAprox.toString();
-    }
-
-    if (unidadEdad != null) {
-      request.fields['unidad_edad'] = unidadEdad;
-    }
-
-    if (observaciones != null && observaciones.trim().isNotEmpty) {
-      request.fields['observaciones'] = observaciones.trim();
-    }
-
-    for (final imagen in imagenes) {
-      request.files.add(
-        await http.MultipartFile.fromPath(
-          'imagenes',
-          imagen.path,
-          contentType: _imageContentType(imagen.path),
-        ),
-      );
-    }
-
-    final streamedResponse = await request.send();
-    final response = await http.Response.fromStream(streamedResponse);
+    final response = await AuthenticatedHttpClient.instance.sendMultipart((
+      token,
+    ) async {
+      final request = http.MultipartRequest('POST', Uri.parse(baseUrl));
+      request.headers['Authorization'] = 'Bearer $token';
+      request.fields['fk_especie'] = fkEspecie.toString();
+      request.fields['nombre'] = nombre;
+      request.fields['color'] = color;
+      request.fields['sexo'] = sexo;
+      request.fields['foto_principal_index'] = fotoPrincipalIndex.toString();
+      if (fkRaza != null) request.fields['fk_raza'] = fkRaza.toString();
+      if (edadAprox != null) {
+        request.fields['edad_aprox'] = edadAprox.toString();
+      }
+      if (unidadEdad != null) request.fields['unidad_edad'] = unidadEdad;
+      if (observaciones != null && observaciones.trim().isNotEmpty) {
+        request.fields['observaciones'] = observaciones.trim();
+      }
+      for (final imagen in imagenes) {
+        request.files.add(
+          await http.MultipartFile.fromPath(
+            'imagenes',
+            imagen.path,
+            contentType: _imageContentType(imagen.path),
+          ),
+        );
+      }
+      return request;
+    });
 
     final data = jsonDecode(response.body);
 
@@ -96,7 +86,7 @@ class MascotasService {
   }) async {
     final url = Uri.parse('$baseUrl/$mascotaId/images');
 
-    final response = await http.get(url, headers: authHeaders);
+    final response = await AuthenticatedHttpClient.instance.get(url);
 
     if (response.statusCode != 200) {
       throw Exception('No se pudieron cargar las imágenes');
@@ -120,7 +110,7 @@ class MascotasService {
   }) async {
     final url = Uri.parse('$baseUrl/$mascotaId');
 
-    final response = await http.get(url, headers: authHeaders);
+    final response = await AuthenticatedHttpClient.instance.get(url);
 
     if (response.statusCode != 200) {
       throw Exception('No se pudo cargar la mascota');
@@ -157,7 +147,7 @@ class MascotasService {
   static Future<void> eliminarMascota({required int mascotaId}) async {
     final url = Uri.parse('$baseUrl/$mascotaId');
 
-    final response = await http.delete(url, headers: authHeaders);
+    final response = await AuthenticatedHttpClient.instance.delete(url);
 
     if (response.body.trim().startsWith('<!DOCTYPE html>') ||
         response.body.trim().startsWith('<html')) {
@@ -197,9 +187,9 @@ class MascotasService {
       'observaciones': observaciones,
     };
 
-    final response = await http.put(
+    final response = await AuthenticatedHttpClient.instance.put(
       url,
-      headers: {'Content-Type': 'application/json', ...authHeaders},
+      headers: {'Content-Type': 'application/json'},
       body: jsonEncode(body),
     );
 
@@ -225,24 +215,24 @@ class MascotasService {
   }) async {
     final url = Uri.parse('$baseUrl/$mascotaId/images');
 
-    final request = http.MultipartRequest('POST', url);
-
-    request.headers.addAll(authHeaders);
-    request.fields['foto_principal_index'] = fotoPrincipalIndex.toString();
-    request.fields['marcar_como_principal'] = marcarComoPrincipal.toString();
-
-    for (final imagen in imagenes) {
-      request.files.add(
-        await http.MultipartFile.fromPath(
-          'imagenes',
-          imagen.path,
-          contentType: _imageContentType(imagen.path),
-        ),
-      );
-    }
-
-    final streamedResponse = await request.send();
-    final response = await http.Response.fromStream(streamedResponse);
+    final response = await AuthenticatedHttpClient.instance.sendMultipart((
+      token,
+    ) async {
+      final request = http.MultipartRequest('POST', url);
+      request.headers['Authorization'] = 'Bearer $token';
+      request.fields['foto_principal_index'] = fotoPrincipalIndex.toString();
+      request.fields['marcar_como_principal'] = marcarComoPrincipal.toString();
+      for (final imagen in imagenes) {
+        request.files.add(
+          await http.MultipartFile.fromPath(
+            'imagenes',
+            imagen.path,
+            contentType: _imageContentType(imagen.path),
+          ),
+        );
+      }
+      return request;
+    });
 
     final data = jsonDecode(response.body);
 
@@ -255,9 +245,8 @@ class MascotasService {
     required int mascotaId,
     required String imageId,
   }) async {
-    final response = await http.put(
+    final response = await AuthenticatedHttpClient.instance.put(
       Uri.parse('$baseUrl/$mascotaId/images/$imageId/principal'),
-      headers: authHeaders,
     );
     final data = jsonDecode(response.body);
     if (response.statusCode != 200 || data['ok'] != true) {
@@ -271,13 +260,61 @@ class MascotasService {
     required int mascotaId,
     required String imageId,
   }) async {
-    final response = await http.delete(
+    final response = await AuthenticatedHttpClient.instance.delete(
       Uri.parse('$baseUrl/$mascotaId/images/$imageId'),
-      headers: authHeaders,
     );
     final data = jsonDecode(response.body);
     if (response.statusCode != 200 || data['ok'] != true) {
       throw Exception(data['message'] ?? 'No se pudo eliminar la foto');
+    }
+  }
+
+  static Future<List<int>> descargarFoto(String url) async {
+    final uri = Uri.parse(url.startsWith('http') ? url : '$originUrl$url');
+    final response = await AuthenticatedHttpClient.instance.get(uri);
+    if (response.statusCode != 200 ||
+        !(response.headers['content-type'] ?? '').startsWith('image/')) {
+      throw Exception('No se pudo validar la foto existente');
+    }
+    return response.bodyBytes;
+  }
+
+  static Future<void> guardarCambiosFotos({
+    required int mascotaId,
+    required List<String> originalImageIds,
+    required List<String> retainedImageIds,
+    required List<XFile> newImages,
+    String? principalExistingId,
+    int? principalNewIndex,
+  }) async {
+    final url = Uri.parse('$baseUrl/$mascotaId/images/batch');
+    final response = await AuthenticatedHttpClient.instance.sendMultipart((
+      token,
+    ) async {
+      final request = http.MultipartRequest('PUT', url);
+      request.headers['Authorization'] = 'Bearer $token';
+      request.fields['original_image_ids'] = jsonEncode(originalImageIds);
+      request.fields['retained_image_ids'] = jsonEncode(retainedImageIds);
+      if (principalExistingId != null) {
+        request.fields['principal_existing_id'] = principalExistingId;
+      }
+      if (principalNewIndex != null) {
+        request.fields['principal_new_index'] = principalNewIndex.toString();
+      }
+      for (final image in newImages) {
+        request.files.add(
+          await http.MultipartFile.fromPath(
+            'imagenes',
+            image.path,
+            contentType: _imageContentType(image.name),
+          ),
+        );
+      }
+      return request;
+    });
+    final data = jsonDecode(response.body);
+    if (response.statusCode != 200 || data['ok'] != true) {
+      throw Exception(data['message'] ?? 'No se pudieron guardar los cambios');
     }
   }
 }

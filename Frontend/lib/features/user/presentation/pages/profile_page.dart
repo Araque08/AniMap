@@ -1,9 +1,18 @@
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import '../../../../widgets/bottom_menu_animap.dart';
 import '../../../../widgets/top_menu_animap.dart';
-import '../../../auth/data/auth_service.dart';
+import '../../../auth/data/session_manager.dart';
+import '../../../auth/presentation/session_navigation.dart';
+import '../../../pet/presentation/pages/my_pets_page.dart';
 import '../../data/profile_service.dart';
 import 'profile_options_pages.dart';
+import '../widgets/profile_photo_preview.dart';
+
+typedef ProfileLoader = Future<Map<String, dynamic>> Function();
+typedef ProfilePhotoPicker = Future<XFile?> Function();
+typedef ProfilePhotoUploader =
+    Future<Map<String, dynamic>> Function(XFile image);
 
 class ProfilePage extends StatefulWidget {
   const ProfilePage({
@@ -15,6 +24,11 @@ class ProfilePage extends StatefulWidget {
     this.onHome,
     this.onPets,
     this.onProfile,
+    this.profileLoader,
+    this.photoPicker,
+    this.photoUploader,
+    this.personalProfileUpdater,
+    this.sessionManager,
   });
 
   final VoidCallback? onMenu;
@@ -25,6 +39,11 @@ class ProfilePage extends StatefulWidget {
   final VoidCallback? onHome;
   final VoidCallback? onPets;
   final VoidCallback? onProfile;
+  final ProfileLoader? profileLoader;
+  final ProfilePhotoPicker? photoPicker;
+  final ProfilePhotoUploader? photoUploader;
+  final PersonalProfileUpdater? personalProfileUpdater;
+  final SessionManager? sessionManager;
 
   static const Color primaryGreen = Color(0xFF51BD73);
   static const Color darkGreen = Color(0xFF3F9B67);
@@ -37,19 +56,80 @@ class ProfilePage extends StatefulWidget {
 
 class _ProfilePageState extends State<ProfilePage> {
   late Future<Map<String, dynamic>> _profileFuture;
+  final ImagePicker _imagePicker = ImagePicker();
+  bool _uploadingPhoto = false;
 
   @override
   void initState() {
     super.initState();
-    _profileFuture = ProfileService.obtenerPerfil();
+    _profileFuture = _loadProfile();
   }
+
+  Future<Map<String, dynamic>> _loadProfile() =>
+      (widget.profileLoader ?? ProfileService.obtenerPerfil)();
 
   void _reloadProfile() {
     if (!mounted) return;
 
     setState(() {
-      _profileFuture = ProfileService.obtenerPerfil();
+      _profileFuture = _loadProfile();
     });
+  }
+
+  void _applyUpdatedProfile(Map<String, dynamic> profile) {
+    if (!mounted) return;
+    setState(() {
+      _profileFuture = Future.value(Map<String, dynamic>.from(profile));
+    });
+  }
+
+  Future<void> _pickAndUploadPhoto() async {
+    if (_uploadingPhoto) return;
+    var chooseAnother = true;
+    while (chooseAnother && mounted) {
+      chooseAnother = false;
+      final image = await (widget.photoPicker != null
+          ? widget.photoPicker!()
+          : _imagePicker.pickImage(source: ImageSource.gallery));
+      if (image == null || !mounted) return;
+
+      final validationMessage = await ProfileService.validarFotoPerfil(image);
+      if (!mounted) return;
+      if (validationMessage != null) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(validationMessage)));
+        return;
+      }
+
+      final result = await showDialog<ProfilePhotoPreviewResult>(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => ProfilePhotoPreviewDialog(
+          image: image,
+          uploader: (selected) async {
+            if (mounted) setState(() => _uploadingPhoto = true);
+            try {
+              return await (widget.photoUploader ??
+                  ProfileService.actualizarFotoPerfil)(selected);
+            } finally {
+              if (mounted) setState(() => _uploadingPhoto = false);
+            }
+          },
+        ),
+      );
+      if (!mounted || result == null) return;
+      chooseAnother = result.action == ProfilePhotoPreviewAction.chooseAnother;
+      if (result.action == ProfilePhotoPreviewAction.uploaded &&
+          result.profile != null) {
+        setState(() {
+          _profileFuture = Future.value(result.profile!);
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Foto de perfil actualizada')),
+        );
+      }
+    }
   }
 
   @override
@@ -93,7 +173,7 @@ class _ProfilePageState extends State<ProfilePage> {
   Widget _buildStatusScaffold({required Widget child}) {
     return Scaffold(
       backgroundColor: Colors.white,
-      drawer: const AniMapSideMenu(),
+      drawer: AniMapSideMenu(sessionManager: widget.sessionManager),
       body: SafeArea(
         child: Center(
           child: Padding(padding: const EdgeInsets.all(24), child: child),
@@ -105,141 +185,153 @@ class _ProfilePageState extends State<ProfilePage> {
 
   Widget _buildProfile(BuildContext context, Map<String, dynamic> profile) {
     final userName = profile['nombre']?.toString() ?? '';
-    final profilePhotoUrl = profile['foto_url']?.toString();
+    final email = profile['email']?.toString() ?? '';
+    final profilePhotoUrl = ProfileService.absolutePhotoUrl(
+      profile['foto_url'],
+    );
     final ImageProvider? avatarImage =
         profilePhotoUrl != null && profilePhotoUrl.trim().isNotEmpty
-        ? NetworkImage(profilePhotoUrl)
+        ? NetworkImage(profilePhotoUrl, headers: ProfileService.imageHeaders)
         : null;
 
     return Scaffold(
-      backgroundColor: Colors.white,
-      drawer: const AniMapSideMenu(),
+      backgroundColor: const Color(0xFFF3F7F4),
+      drawer: AniMapSideMenu(sessionManager: widget.sessionManager),
       body: SafeArea(
         child: Column(
           children: [
-            _Header(
-              userName: userName,
-              avatarImage: avatarImage,
-              onMenu: widget.onMenu,
-              onNotifications: widget.onNotifications,
-            ),
+            TopMenuAnimap(onNotificationTap: widget.onNotifications),
             Expanded(
-              child: Container(
-                width: double.infinity,
-                color: Colors.white,
-                child: Column(
-                  children: [
-                    const SizedBox(height: 18),
-                    _ProfileOption(
-                      icon: Icons.person,
-                      text: 'Información Personal',
-                      onTap: () async {
-                        await Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => PersonalInfoPage(
-                              profile: profile,
-                              onUpdated: _reloadProfile,
+              child: ListView(
+                padding: const EdgeInsets.fromLTRB(16, 18, 16, 28),
+                children: [
+                  _ProfileHeaderCard(
+                    userName: userName,
+                    email: email,
+                    avatarImage: avatarImage,
+                    uploadingPhoto: _uploadingPhoto,
+                    onEditPhoto: _pickAndUploadPhoto,
+                  ),
+                  const SizedBox(height: 22),
+                  const _SectionLabel('Tu cuenta'),
+                  const SizedBox(height: 8),
+                  _OptionsCard(
+                    children: [
+                      _ProfileOption(
+                        icon: Icons.person,
+                        text: 'Información Personal',
+                        onTap: () async {
+                          await Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => PersonalInfoPage(
+                                profile: profile,
+                                onUpdated: () {},
+                                onProfileUpdated: _applyUpdatedProfile,
+                                profileUpdater: widget.personalProfileUpdater,
+                              ),
                             ),
-                          ),
-                        );
-                      },
-                    ),
-                    _ProfileOption(
-                      icon: Icons.lock,
-                      text: 'Sesiones activas',
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => const ActiveSessionsPage(),
-                          ),
-                        );
-                      },
-                    ),
-                    _ProfileOption(
-                      icon: Icons.settings_applications,
-                      text: 'Preferencias de notificación',
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => const NotificationPreferencesPage(),
-                          ),
-                        );
-                      },
-                    ),
-                    _ProfileOption(
-                      icon: Icons.logout,
-                      text: 'Cerrar sesión',
-                      onTap: () {
-                        _showConfirmDialog(
-                          context: context,
-                          title: 'Cerrar sesión',
-                          message:
-                              '¿Estás seguro de que deseas cerrar tu sesión?',
-                          confirmText: 'Cerrar sesión',
-                          onConfirm: () {
-                            Navigator.pop(context);
+                          );
+                        },
+                      ),
+                      const Divider(height: 1, indent: 58),
+                      _ProfileOption(
+                        icon: Icons.pets_rounded,
+                        text: 'Mis Mascotas',
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => const MyPetsPage(),
+                            ),
+                          );
+                        },
+                      ),
+                      const Divider(height: 1, indent: 58),
+                      _ProfileOption(
+                        icon: Icons.lock,
+                        text: 'Sesiones activas',
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => const ActiveSessionsPage(),
+                            ),
+                          );
+                        },
+                      ),
+                      const Divider(height: 1, indent: 58),
+                      _ProfileOption(
+                        icon: Icons.settings_applications,
+                        text: 'Preferencias de notificación',
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) =>
+                                  const NotificationPreferencesPage(),
+                            ),
+                          );
+                        },
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 22),
+                  const _SectionLabel('Seguridad'),
+                  const SizedBox(height: 8),
+                  _OptionsCard(
+                    children: [
+                      _ProfileOption(
+                        icon: Icons.logout,
+                        text: 'Cerrar sesión',
+                        onTap: () async {
+                          final loggedOut = await confirmLogoutAndNavigate(
+                            context,
+                            sessionManager: widget.sessionManager,
+                          );
+                          if (loggedOut) widget.onLogout?.call();
+                        },
+                      ),
+                      const Divider(height: 1, indent: 58),
+                      _ProfileOption(
+                        icon: Icons.person_remove,
+                        text: 'Eliminar cuenta',
+                        isDanger: true,
+                        onTap: () {
+                          _showConfirmDialog(
+                            context: context,
+                            title: 'Eliminar cuenta',
+                            message:
+                                'Esta acción eliminará tu cuenta y la información asociada. ¿Deseas continuar?',
+                            confirmText: 'Eliminar',
+                            isDanger: true,
+                            onConfirm: () {
+                              Navigator.pop(context);
 
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text('Sesión cerrada correctamente'),
-                              ),
-                            );
-
-                            AuthService.clearAccessToken();
-
-                            if (widget.onLogout != null) {
-                              widget.onLogout!();
-                            } else {
-                              Navigator.pushNamedAndRemoveUntil(
-                                context,
-                                '/login',
-                                (_) => false,
-                              );
-                            }
-                          },
-                        );
-                      },
-                    ),
-                    _ProfileOption(
-                      icon: Icons.person_remove,
-                      text: 'Eliminar cuenta',
-                      onTap: () {
-                        _showConfirmDialog(
-                          context: context,
-                          title: 'Eliminar cuenta',
-                          message:
-                              'Esta acción eliminará tu cuenta y la información asociada. ¿Deseas continuar?',
-                          confirmText: 'Eliminar',
-                          isDanger: true,
-                          onConfirm: () {
-                            Navigator.pop(context);
-
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text(
-                                  'Solicitud de eliminación de cuenta realizada',
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text(
+                                    'Solicitud de eliminación de cuenta realizada',
+                                  ),
                                 ),
-                              ),
-                            );
+                              );
 
-                            if (widget.onDeleteAccount != null) {
-                              widget.onDeleteAccount!();
-                            }
-                          },
-                        );
-                      },
-                    ),
-                    const Spacer(),
-                    SizedBox(
-                      height: 80,
-                      width: double.infinity,
-                      child: CustomPaint(painter: _BottomWavePainter()),
-                    ),
-                  ],
-                ),
+                              if (widget.onDeleteAccount != null) {
+                                widget.onDeleteAccount!();
+                              }
+                            },
+                          );
+                        },
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 18),
+                  const Text(
+                    'AniMap · cuidamos juntos de quienes más quieres',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: Color(0xFF718078), fontSize: 12),
+                  ),
+                ],
               ),
             ),
           ],
@@ -250,203 +342,206 @@ class _ProfilePageState extends State<ProfilePage> {
   }
 }
 
-class _Header extends StatelessWidget {
-  const _Header({
+class _ProfileHeaderCard extends StatelessWidget {
+  const _ProfileHeaderCard({
     required this.userName,
+    required this.email,
     required this.avatarImage,
-    this.onMenu,
-    this.onNotifications,
+    required this.uploadingPhoto,
+    required this.onEditPhoto,
   });
 
   final String userName;
+  final String email;
   final ImageProvider? avatarImage;
-  final VoidCallback? onMenu;
-  final VoidCallback? onNotifications;
+  final bool uploadingPhoto;
+  final VoidCallback onEditPhoto;
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      height: 245,
+    return Container(
       width: double.infinity,
-      child: Stack(
-        children: [
-          ClipPath(
-            clipper: _HeaderClipper(),
-            child: Container(height: 190, color: ProfilePage.primaryGreen),
+      padding: const EdgeInsets.fromLTRB(20, 24, 20, 22),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [Color(0xFF4AAA70), Color(0xFF75C990)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x260E5534),
+            blurRadius: 18,
+            offset: Offset(0, 8),
           ),
-          const TopMenuAnimap(),
-          Positioned(
-            left: 0,
-            right: 0,
-            bottom: 30,
-            child: Column(
-              children: [
-                CircleAvatar(
-                  radius: 54,
-                  backgroundColor: Colors.white,
-                  child: CircleAvatar(
-                    radius: 50,
-                    backgroundColor: const Color(0xFFD7D7D7),
-                    backgroundImage: avatarImage,
-                    child: avatarImage == null
-                        ? const Icon(
-                            Icons.person,
-                            size: 58,
-                            color: Colors.white,
-                          )
-                        : null,
+        ],
+      ),
+      child: Column(
+        children: [
+          Semantics(
+            button: true,
+            label: 'Editar foto de perfil',
+            child: GestureDetector(
+              onTap: uploadingPhoto ? null : onEditPhoto,
+              child: Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  CircleAvatar(
+                    radius: 62,
+                    backgroundColor: Colors.white,
+                    child: CircleAvatar(
+                      radius: 57,
+                      backgroundColor: const Color(0xFFD8E7DD),
+                      backgroundImage: avatarImage,
+                      onBackgroundImageError: avatarImage == null
+                          ? null
+                          : (_, _) {},
+                      child: uploadingPhoto
+                          ? const CircularProgressIndicator()
+                          : avatarImage == null
+                          ? const Icon(
+                              Icons.person_rounded,
+                              size: 66,
+                              color: Colors.white,
+                            )
+                          : null,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 9),
-                Text(
-                  userName,
-                  style: const TextStyle(
-                    color: ProfilePage.textDark,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w700,
+                  Positioned(
+                    right: -3,
+                    bottom: 4,
+                    child: Container(
+                      width: 38,
+                      height: 38,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF2E7651),
+                        shape: BoxShape.circle,
+                        border: Border.all(color: Colors.white, width: 3),
+                      ),
+                      child: const Icon(
+                        Icons.edit,
+                        size: 18,
+                        color: Colors.white,
+                      ),
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
+          const SizedBox(height: 16),
+          Text(
+            userName.isEmpty ? 'Usuario AniMap' : userName,
+            key: const ValueKey('profile-header-name'),
+            textAlign: TextAlign.center,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 22,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          if (email.isNotEmpty) ...[
+            const SizedBox(height: 5),
+            Text(
+              email,
+              textAlign: TextAlign.center,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(color: Color(0xFFEAF7EE), fontSize: 14),
+            ),
+          ],
         ],
       ),
     );
   }
 }
 
-class _ProfileOption extends StatelessWidget {
-  const _ProfileOption({required this.icon, required this.text, this.onTap});
+class _SectionLabel extends StatelessWidget {
+  const _SectionLabel(this.text);
 
-  final IconData icon;
   final String text;
-  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      width: 245,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(6),
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 8),
-          decoration: const BoxDecoration(
-            border: Border(
-              bottom: BorderSide(color: Color(0xFF777777), width: 0.8),
-            ),
-          ),
-          child: Row(
-            children: [
-              SizedBox(
-                width: 35,
-                child: Icon(icon, color: Colors.black, size: 21),
-              ),
-              Expanded(
-                child: Text(
-                  text,
-                  style: const TextStyle(
-                    fontSize: 11,
-                    color: Colors.black,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
+    return Text(
+      text.toUpperCase(),
+      style: const TextStyle(
+        color: Color(0xFF66756D),
+        fontSize: 12,
+        fontWeight: FontWeight.w800,
+        letterSpacing: 0.8,
       ),
     );
   }
 }
 
-class _HeaderClipper extends CustomClipper<Path> {
-  @override
-  Path getClip(Size size) {
-    final path = Path();
+class _OptionsCard extends StatelessWidget {
+  const _OptionsCard({required this.children});
 
-    path.lineTo(0, size.height * 0.82);
-
-    path.quadraticBezierTo(
-      size.width * 0.35,
-      size.height * 0.92,
-      size.width * 0.65,
-      size.height * 0.78,
-    );
-
-    path.quadraticBezierTo(
-      size.width * 0.84,
-      size.height * 0.69,
-      size.width,
-      size.height * 0.65,
-    );
-
-    path.lineTo(size.width, 0);
-    path.close();
-
-    return path;
-  }
+  final List<Widget> children;
 
   @override
-  bool shouldReclip(covariant CustomClipper<Path> oldClipper) {
-    return false;
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.white,
+      elevation: 1,
+      shadowColor: const Color(0x22000000),
+      borderRadius: BorderRadius.circular(18),
+      clipBehavior: Clip.antiAlias,
+      child: Column(children: children),
+    );
   }
 }
 
-class _BottomWavePainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paintLight = Paint()
-      ..color = ProfilePage.lightGreen
-      ..style = PaintingStyle.fill;
+class _ProfileOption extends StatelessWidget {
+  const _ProfileOption({
+    required this.icon,
+    required this.text,
+    this.onTap,
+    this.isDanger = false,
+  });
 
-    final paintGreen = Paint()
-      ..color = ProfilePage.primaryGreen.withOpacity(0.45)
-      ..style = PaintingStyle.fill;
-
-    final pathLight = Path()
-      ..moveTo(0, size.height * 0.45)
-      ..quadraticBezierTo(
-        size.width * 0.28,
-        size.height * 0.25,
-        size.width * 0.55,
-        size.height * 0.42,
-      )
-      ..quadraticBezierTo(
-        size.width * 0.78,
-        size.height * 0.57,
-        size.width,
-        size.height * 0.35,
-      )
-      ..lineTo(size.width, size.height)
-      ..lineTo(0, size.height)
-      ..close();
-
-    final pathGreen = Path()
-      ..moveTo(0, size.height * 0.72)
-      ..quadraticBezierTo(
-        size.width * 0.35,
-        size.height * 0.45,
-        size.width * 0.7,
-        size.height * 0.66,
-      )
-      ..quadraticBezierTo(
-        size.width * 0.87,
-        size.height * 0.76,
-        size.width,
-        size.height * 0.52,
-      )
-      ..lineTo(size.width, size.height)
-      ..lineTo(0, size.height)
-      ..close();
-
-    canvas.drawPath(pathLight, paintLight);
-    canvas.drawPath(pathGreen, paintGreen);
-  }
+  final IconData icon;
+  final String text;
+  final VoidCallback? onTap;
+  final bool isDanger;
 
   @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) {
-    return false;
+  Widget build(BuildContext context) {
+    final color = isDanger ? const Color(0xFFC83E45) : const Color(0xFF33483E);
+    return ListTile(
+      onTap: onTap,
+      minLeadingWidth: 24,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 3),
+      leading: Container(
+        width: 36,
+        height: 36,
+        decoration: BoxDecoration(
+          color: isDanger ? const Color(0xFFFFECEC) : const Color(0xFFE7F4EB),
+          borderRadius: BorderRadius.circular(11),
+        ),
+        child: Icon(
+          icon,
+          color: isDanger ? color : ProfilePage.darkGreen,
+          size: 20,
+        ),
+      ),
+      title: Text(
+        text,
+        style: TextStyle(
+          color: color,
+          fontWeight: FontWeight.w700,
+          fontSize: 14,
+        ),
+      ),
+      trailing: Icon(
+        Icons.chevron_right_rounded,
+        color: color.withValues(alpha: 0.65),
+      ),
+    );
   }
 }
 

@@ -2,6 +2,8 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
+import 'session_manager.dart';
+
 /*
   Aquí hicimos una excepción personalizada para manejar errores
   relacionados con autenticación.
@@ -23,13 +25,12 @@ class AuthException implements Exception {
   relacionados con autenticación y cuenta.
 */
 class AuthService {
-  static String? _accessToken;
+  final SessionManager sessionManager;
+  final http.Client _client;
 
-  static String? get accessToken => _accessToken;
-
-  static void clearAccessToken() {
-    _accessToken = null;
-  }
+  AuthService({SessionManager? sessionManager, http.Client? client})
+    : sessionManager = sessionManager ?? SessionManager.instance,
+      _client = client ?? http.Client();
 
   /*
     Aquí definimos la URL base del backend.
@@ -37,6 +38,8 @@ class AuthService {
     Android Emulator usa 10.0.2.2 para acceder al localhost del equipo.
   */
   static const String baseUrl = 'http://10.0.2.2:3000/api';
+
+  Future<String> getDeviceId() => sessionManager.getDeviceId();
 
   /*
     ============================================================
@@ -60,7 +63,7 @@ class AuthService {
   }) async {
     final url = Uri.parse('$baseUrl/auth/register');
 
-    final response = await http.post(
+    final response = await _client.post(
       url,
       headers: {'Content-Type': 'application/json'},
       body: jsonEncode({
@@ -109,7 +112,7 @@ class AuthService {
   }) async {
     final url = Uri.parse('$baseUrl/auth/login');
 
-    final response = await http.post(
+    final response = await _client.post(
       url,
       headers: {'Content-Type': 'application/json'},
       body: jsonEncode({
@@ -123,14 +126,27 @@ class AuthService {
 
     if (response.statusCode >= 200 && response.statusCode < 300) {
       final token = data['data']?['accessToken']?.toString();
+      final refreshToken = data['data']?['refreshToken']?.toString();
+      final role = data['data']?['user']?['rol']
+          ?.toString()
+          .trim()
+          .toUpperCase();
 
-      if (token == null || token.isEmpty) {
-        throw AuthException(
-          'El servidor no devolvió un token de acceso válido',
-        );
+      if (token == null ||
+          token.isEmpty ||
+          refreshToken == null ||
+          refreshToken.isEmpty) {
+        throw AuthException('El servidor no devolvió una sesión válida');
+      }
+      if (role != 'USUARIO' && role != 'ADMINISTRADOR') {
+        throw AuthException('La cuenta no tiene un rol válido asignado');
       }
 
-      _accessToken = token;
+      await sessionManager.establishSession(
+        accessToken: token,
+        refreshToken: refreshToken,
+        role: role,
+      );
       return data;
     }
 
@@ -158,7 +174,7 @@ class AuthService {
   }) async {
     final url = Uri.parse('$baseUrl/auth/verify-account');
 
-    final response = await http.post(
+    final response = await _client.post(
       url,
       headers: {'Content-Type': 'application/json'},
       body: jsonEncode({'email': email, 'code': code}),
@@ -194,7 +210,7 @@ class AuthService {
   }) async {
     final url = Uri.parse('$baseUrl/auth/resend-verification-code');
 
-    final response = await http.post(
+    final response = await _client.post(
       url,
       headers: {'Content-Type': 'application/json'},
       body: jsonEncode({'email': email}),
@@ -240,7 +256,7 @@ class AuthService {
   Future<Map<String, dynamic>> forgotPassword({required String email}) async {
     final url = Uri.parse('$baseUrl/auth/forgot-password');
 
-    final response = await http.post(
+    final response = await _client.post(
       url,
       headers: {'Content-Type': 'application/json'},
       body: jsonEncode({'email': email}),
@@ -300,7 +316,7 @@ class AuthService {
   }) async {
     final url = Uri.parse('$baseUrl/auth/reset-password');
 
-    final response = await http.post(
+    final response = await _client.post(
       url,
       headers: {'Content-Type': 'application/json'},
       body: jsonEncode({

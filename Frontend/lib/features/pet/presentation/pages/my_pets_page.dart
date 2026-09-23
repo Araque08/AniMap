@@ -4,8 +4,12 @@ import '../../data/pets_service.dart';
 import 'register_pet_page.dart';
 import 'pet_profile_page.dart';
 
+typedef MyPetsLoader = Future<List<Map<String, dynamic>>> Function();
+
 class MyPetsPage extends StatefulWidget {
-  const MyPetsPage({super.key});
+  const MyPetsPage({super.key, this.petsLoader});
+
+  final MyPetsLoader? petsLoader;
 
   @override
   State<MyPetsPage> createState() => _MyPetsPageState();
@@ -19,12 +23,15 @@ class _MyPetsPageState extends State<MyPetsPage> {
   @override
   void initState() {
     super.initState();
-    _futureMascotas = PetsService.getMyPets();
+    _futureMascotas = _loadPets();
   }
+
+  Future<List<Map<String, dynamic>>> _loadPets() =>
+      (widget.petsLoader ?? PetsService.getMyPets)();
 
   Future<void> _refreshPets() async {
     setState(() {
-      _futureMascotas = PetsService.getMyPets();
+      _futureMascotas = _loadPets();
     });
   }
 
@@ -52,14 +59,27 @@ class _MyPetsPageState extends State<MyPetsPage> {
       appBar: AppBar(
         backgroundColor: const Color(0xFFF7F8FA),
         elevation: 0,
-        centerTitle: true,
-        title: const Text(
-          'Mis Mascotas',
-          style: TextStyle(
-            color: Color(0xFF1F2937),
-            fontWeight: FontWeight.w700,
-            fontSize: 20,
-          ),
+        centerTitle: false,
+        toolbarHeight: 68,
+        title: const Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              'Mis Mascotas',
+              style: TextStyle(
+                color: Color(0xFF263238),
+                fontWeight: FontWeight.w700,
+                fontSize: 20,
+              ),
+            ),
+            Text(
+              'Administra tus mascotas registradas',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(color: Color(0xFF718078), fontSize: 12),
+            ),
+          ],
         ),
         iconTheme: const IconThemeData(color: Color(0xFF1F2937)),
       ),
@@ -140,7 +160,7 @@ class _MyPetsPageState extends State<MyPetsPage> {
 
                     if (result == true) {
                       setState(() {
-                        _futureMascotas = PetsService.getMyPets();
+                        _futureMascotas = _loadPets();
                       });
                     }
                   },
@@ -166,27 +186,25 @@ class _MyPetsPageState extends State<MyPetsPage> {
       ),
 
       floatingActionButton: _hayMascotasActivas
-          ? Padding(
-              padding: const EdgeInsets.only(bottom: 90),
-              child: FloatingActionButton.extended(
-                backgroundColor: const Color(0xFF2563EB),
-                onPressed: () async {
-                  final created = await Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => const RegisterPetPage(),
-                    ),
-                  );
+          ? FloatingActionButton.extended(
+              backgroundColor: const Color(0xFF3F9B67),
+              elevation: 3,
+              onPressed: () async {
+                final created = await Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const RegisterPetPage(),
+                  ),
+                );
 
-                  if (created == true) {
-                    _refreshPets();
-                  }
-                },
-                icon: const Icon(Icons.add, color: Colors.white),
-                label: const Text(
-                  'Agregar',
-                  style: TextStyle(color: Colors.white),
-                ),
+                if (created == true) {
+                  _refreshPets();
+                }
+              },
+              icon: const Icon(Icons.add, color: Colors.white),
+              label: const Text(
+                'Agregar mascota',
+                style: TextStyle(color: Colors.white),
               ),
             )
           : null,
@@ -216,13 +234,13 @@ class _PetCard extends StatelessWidget {
   });
 
   Color get statusColor {
-    switch (status) {
+    switch (status.toUpperCase()) {
       case 'ACTIVA':
         return const Color(0xFF16A34A);
       case 'PERDIDA':
-        return const Color(0xFFDC2626);
+        return const Color(0xFFD97706);
       case 'ENCONTRADA':
-        return const Color(0xFF2563EB);
+        return const Color(0xFF16A34A);
       case 'INACTIVA':
         return const Color(0xFF6B7280);
       default:
@@ -231,13 +249,13 @@ class _PetCard extends StatelessWidget {
   }
 
   String get statusText {
-    switch (status) {
+    switch (status.toUpperCase()) {
       case 'ACTIVA':
         return 'Activa';
       case 'PERDIDA':
         return 'Perdida';
       case 'ENCONTRADA':
-        return 'Encontrada';
+        return 'Activa';
       case 'INACTIVA':
         return 'Inactiva';
       default:
@@ -248,6 +266,7 @@ class _PetCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
+      key: ValueKey('pet-card-$name'),
       margin: const EdgeInsets.only(bottom: 14),
       decoration: BoxDecoration(
         color: Colors.white,
@@ -268,7 +287,7 @@ class _PetCard extends StatelessWidget {
           child: Row(
             children: [
               ClipRRect(
-                borderRadius: BorderRadius.circular(18),
+                borderRadius: BorderRadius.circular(16),
                 child: imageUrl.isEmpty
                     ? _GenericPetImage()
                     : Image.network(
@@ -309,6 +328,7 @@ class _PetCard extends StatelessWidget {
                     ),
                     const SizedBox(height: 10),
                     Container(
+                      key: ValueKey('pet-status-${status.toUpperCase()}'),
                       padding: const EdgeInsets.symmetric(
                         horizontal: 10,
                         vertical: 5,
@@ -377,7 +397,7 @@ class _EmptyPetsView extends StatelessWidget {
               border: Border.all(color: const Color(0xFFA7F3D0), width: 1.4),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.06),
+                  color: Colors.black.withValues(alpha: 0.06),
                   blurRadius: 14,
                   offset: const Offset(0, 6),
                 ),
@@ -414,7 +434,7 @@ class _EmptyPetsView extends StatelessWidget {
                 const SizedBox(height: 10),
 
                 const Text(
-                  'Registra tu primera mascota para poder verla aquí, editar su información y consultar su perfil cuando lo necesites.',
+                  'Agrega tu primera mascota para comenzar.',
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     color: Color(0xFF6B7280),
@@ -432,7 +452,7 @@ class _EmptyPetsView extends StatelessWidget {
                     onPressed: onAddPet,
                     icon: const Icon(Icons.add, color: Colors.white),
                     label: const Text(
-                      'Registrar mascota',
+                      'Agregar mascota',
                       style: TextStyle(
                         color: Colors.white,
                         fontSize: 15,
@@ -485,7 +505,7 @@ class _ErrorView extends StatelessWidget {
             const SizedBox(height: 20),
             ElevatedButton(
               style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF2563EB),
+                backgroundColor: const Color(0xFF3F9B67),
                 padding: const EdgeInsets.symmetric(
                   horizontal: 22,
                   vertical: 13,

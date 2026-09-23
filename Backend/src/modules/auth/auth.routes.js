@@ -1,12 +1,16 @@
 const express = require('express');
+const rateLimit = require('express-rate-limit');
 
 const validateBody = require('../../middleware/validate.middleware');
+const authMiddleware = require('../../middleware/auth.middleware');
 
 const authController = require('./auth.controller');
 
 const {
   registerSchema,
   loginSchema,
+  refreshSchema,
+  logoutSchema,
   verifyAccountSchema,
   resendVerificationCodeSchema,
   forgotPasswordSchema,
@@ -14,6 +18,35 @@ const {
 } = require('./auth.schemas');
 
 const router = express.Router();
+
+const limiterOptions = {
+  windowMs: 15 * 60 * 1000,
+  limit: 10,
+  standardHeaders: 'draft-8',
+  legacyHeaders: false,
+};
+
+const loginLimiter = rateLimit({
+  ...limiterOptions,
+  skipSuccessfulRequests: true,
+  message: {
+    ok: false,
+    message: 'Demasiados intentos de inicio de sesión. Intenta nuevamente en unos minutos.',
+  },
+});
+
+function sensitiveLimiter() {
+  return rateLimit({
+    ...limiterOptions,
+    message: { ok: false, message: 'Demasiados intentos. Intenta más tarde.' },
+  });
+}
+
+const registerLimiter = sensitiveLimiter();
+const verifyLimiter = sensitiveLimiter();
+const resendLimiter = sensitiveLimiter();
+const forgotLimiter = sensitiveLimiter();
+const resetLimiter = sensitiveLimiter();
 
 
 /*
@@ -45,6 +78,7 @@ function requireJson(req, res, next) {
 
 router.post(
   '/register',
+  registerLimiter,
   requireJson,
   validateBody(registerSchema),
   authController.register
@@ -59,9 +93,31 @@ router.post(
 
 router.post(
   '/login',
+  loginLimiter,
   requireJson,
   validateBody(loginSchema),
   authController.login
+);
+
+router.post(
+  '/refresh',
+  requireJson,
+  validateBody(refreshSchema),
+  authController.refresh
+);
+
+router.post(
+  '/logout',
+  requireJson,
+  validateBody(logoutSchema),
+  authController.logout
+);
+
+router.get('/sessions', authMiddleware, authController.listSessions);
+router.post(
+  '/sessions/:id/revoke',
+  authMiddleware,
+  authController.revokeSession
 );
 
 
@@ -73,6 +129,7 @@ router.post(
 
 router.post(
   '/verify-account',
+  verifyLimiter,
   requireJson,
   validateBody(verifyAccountSchema),
   authController.verifyAccount
@@ -87,6 +144,7 @@ router.post(
 
 router.post(
   '/resend-verification-code',
+  resendLimiter,
   requireJson,
   validateBody(resendVerificationCodeSchema),
   authController.resendVerificationCode
@@ -110,6 +168,7 @@ router.post(
 */
 router.post(
   '/forgot-password',
+  forgotLimiter,
   requireJson,
   validateBody(forgotPasswordSchema),
   authController.forgotPassword
@@ -130,6 +189,7 @@ router.post(
 */
 router.post(
   '/reset-password',
+  resetLimiter,
   requireJson,
   validateBody(resetPasswordSchema),
   authController.resetPassword

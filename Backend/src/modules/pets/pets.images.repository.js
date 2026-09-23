@@ -8,6 +8,20 @@ async function getCollection() {
   return db.collection(COLLECTION_NAME);
 }
 
+async function findActivePetImages({ mascotaId, usuarioId, imageIds }) {
+  if (!imageIds.length) return [];
+  const collection = await getCollection();
+  const objectIds = imageIds.map((id) =>
+    id instanceof ObjectId ? id : new ObjectId(id)
+  );
+  return collection.find({
+    _id: { $in: objectIds },
+    mascotaIdPg: Number(mascotaId),
+    usuarioIdPg: Number(usuarioId),
+    estado: 'ACTIVA',
+  }).toArray();
+}
+
 async function guardarImagenesMascota({
   mascotaIdPg,
   usuarioIdPg,
@@ -161,6 +175,7 @@ module.exports = {
   eliminarImagenMascotaMongo,
   eliminarImagenesMascotaMongoPorIds,
   establecerPrincipalMongo,
+  findActivePetImages,
   guardarImagenesMascota,
   inactivarImagenesMascotaMongo,
   reactivarImagenesMascotaMongo,

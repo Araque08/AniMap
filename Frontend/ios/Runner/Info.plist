@@ -27,7 +27,11 @@
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>AniMap usa tu ubicación para registrar dónde se perdió tu mascota.</string>
+	<string>AniMap usa tu ubicación para registrar reportes de pérdida y avistamientos.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>AniMap usa tu galería para adjuntar fotos a mascotas, perfiles y avistamientos.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>AniMap usa la cámara para adjuntar una foto opcional al avistamiento.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

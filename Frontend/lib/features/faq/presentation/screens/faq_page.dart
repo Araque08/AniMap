@@ -2,9 +2,11 @@ import 'package:flutter/material.dart';
 
 import '../../../../widgets/bottom_menu_animap.dart';
 import '../../../../widgets/top_menu_animap.dart';
+import '../../../admin/data/faq_service.dart';
 
 class FaqScreen extends StatefulWidget {
-  const FaqScreen({super.key});
+  final FaqService? faqService;
+  const FaqScreen({super.key, this.faqService});
 
   @override
   State<FaqScreen> createState() => _FaqScreenState();
@@ -12,48 +14,47 @@ class FaqScreen extends StatefulWidget {
 
 class _FaqScreenState extends State<FaqScreen> {
   String selectedCategory = 'Todas';
+  late final FaqService _service = widget.faqService ?? FaqService();
+  List<Map<String, dynamic>> faqs = [];
+  List<Map<String, dynamic>> _categories = [];
+  bool _loading = true;
+  String? _error;
 
-  final List<Map<String, String>> faqs = [
-    {
-      'category': 'General',
-      'question': '¿Qué es AniMap?',
-      'answer':
-          'AniMap es una aplicación móvil para reportar mascotas perdidas y avistamientos dentro de una comunidad, usando mapa interactivo, ubicación y notificaciones.',
-    },
-    {
-      'category': 'Mascotas',
-      'question': '¿Cómo registro una mascota?',
-      'answer':
-          'Debes ingresar a la sección Mis Mascotas, completar los datos de la mascota y guardar su información para poder gestionarla dentro de la aplicación.',
-    },
-    {
-      'category': 'Reportes',
-      'question': '¿Cómo creo un reporte de mascota perdida?',
-      'answer':
-          'Debes entrar en Crear reporte, seleccionar una mascota registrada, agregar una descripción del caso y marcar la última ubicación conocida.',
-    },
-    {
-      'category': 'Avistamientos',
-      'question': '¿Puedo reportar una mascota que vi en la calle?',
-      'answer':
-          'Sí. Puedes registrar un avistamiento con una descripción, ubicación y una foto opcional para ayudar a la comunidad.',
-    },
-    {
-      'category': 'Notificaciones',
-      'question': '¿Cómo funcionan las notificaciones?',
-      'answer':
-          'La aplicación puede enviar alertas cuando se registre un avistamiento o una posible coincidencia relacionada con una mascota perdida.',
-    },
-    {
-      'category': 'Mapa',
-      'question': '¿Para qué sirve el mapa interactivo?',
-      'answer':
-          'El mapa permite visualizar reportes de mascotas perdidas y avistamientos mediante marcadores de ubicación.',
-    },
-  ];
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final results = await Future.wait([
+        _service.getPublicFaqs(),
+        _service.getCategories(),
+      ]);
+      if (!mounted) return;
+      setState(() {
+        faqs = results[0];
+        _categories = results[1];
+        _loading = false;
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _error = error.toString();
+        _loading = false;
+      });
+    }
+  }
 
   List<String> get categories {
-    final values = faqs.map((faq) => faq['category']!).toSet().toList();
+    final values = _categories
+        .map((category) => category['nombre'].toString())
+        .toList();
     return ['Todas', ...values];
   }
 
@@ -61,7 +62,7 @@ class _FaqScreenState extends State<FaqScreen> {
   Widget build(BuildContext context) {
     final filteredFaqs = selectedCategory == 'Todas'
         ? faqs
-        : faqs.where((faq) => faq['category'] == selectedCategory).toList();
+        : faqs.where((faq) => faq['categoria'] == selectedCategory).toList();
 
     return Scaffold(
       backgroundColor: const Color(0xFFF7FAF7),
@@ -110,7 +111,7 @@ class _FaqScreenState extends State<FaqScreen> {
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               scrollDirection: Axis.horizontal,
               itemCount: categories.length,
-              separatorBuilder: (_, __) => const SizedBox(width: 8),
+              separatorBuilder: (_, _) => const SizedBox(width: 8),
               itemBuilder: (context, index) {
                 final category = categories[index];
                 final isSelected = selectedCategory == category;
@@ -136,7 +137,22 @@ class _FaqScreenState extends State<FaqScreen> {
           ),
 
           Expanded(
-            child: filteredFaqs.isEmpty
+            child: _loading
+                ? const Center(child: CircularProgressIndicator())
+                : _error != null
+                ? Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(_error!, textAlign: TextAlign.center),
+                        TextButton(
+                          onPressed: _load,
+                          child: const Text('Reintentar'),
+                        ),
+                      ],
+                    ),
+                  )
+                : filteredFaqs.isEmpty
                 ? const Center(
                     child: Text(
                       'No hay preguntas registradas.',
@@ -170,7 +186,7 @@ class _FaqScreenState extends State<FaqScreen> {
                             16,
                           ),
                           title: Text(
-                            faq['question']!,
+                            faq['pregunta']?.toString() ?? '',
                             style: const TextStyle(
                               fontWeight: FontWeight.bold,
                               fontSize: 15,
@@ -180,7 +196,7 @@ class _FaqScreenState extends State<FaqScreen> {
                           subtitle: Padding(
                             padding: const EdgeInsets.only(top: 4),
                             child: Text(
-                              faq['category']!,
+                              faq['categoria']?.toString() ?? '',
                               style: const TextStyle(
                                 color: Color(0xFF2E7D5B),
                                 fontSize: 12,
@@ -192,7 +208,7 @@ class _FaqScreenState extends State<FaqScreen> {
                             Align(
                               alignment: Alignment.centerLeft,
                               child: Text(
-                                faq['answer']!,
+                                faq['respuesta']?.toString() ?? '',
                                 style: const TextStyle(
                                   fontSize: 14,
                                   height: 1.4,

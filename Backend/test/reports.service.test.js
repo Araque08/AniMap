@@ -24,8 +24,8 @@ function fakePool(handler) {
 
 const location = {
   metodo: 'MAPA',
-  lat: 4.6569,
-  lng: -74.1095,
+  lat: 4.651,
+  lng: -74.109,
   precisionM: null,
   direccion: 'Punto seleccionado',
   placeId: null,
@@ -56,6 +56,34 @@ test('lista mascotas reportables filtrando por el usuario autenticado', async ()
   assert.equal(pets.length, 1);
   assert.equal(pets[0].id, 7);
   assert.equal(pets[0].fotoPrincipal.id, 'foto-temporal');
+});
+
+test('Mis reportes conserva todo el historial y reportes repetidos de una mascota', async () => {
+  const rows = [
+    { id: 31, fk_mascota: 7, estado: 'FINALIZADO', cerrado_en: '2026-06-01' },
+    { id: 32, fk_mascota: 7, estado: 'FINALIZADO', cerrado_en: '2026-08-24' },
+    { id: 33, fk_mascota: 7, estado: 'ACTIVO', cerrado_en: null },
+  ].map((row) => ({
+    ...row,
+    mascota_nombre: 'Temporal',
+    mascota_estado: row.estado === 'ACTIVO' ? 'PERDIDA' : 'ACTIVA',
+    especie_nombre: 'Perro',
+    raza_nombre: 'Criollo',
+    lat: '4.65',
+    lng: '-74.10',
+  }));
+  const pool = fakePool((sql, params) => {
+    assert.ok(sql.includes('WHERE r.fk_usuario = $1'));
+    assert.ok(!sql.includes("INTERVAL '30 days'"));
+    assert.deepEqual(params, [5]);
+    return { rowCount: rows.length, rows };
+  });
+  const service = createReportsService(pool);
+
+  const reports = await service.listOwnReports(5);
+
+  assert.deepEqual(reports.map((report) => report.id), [31, 32, 33]);
+  assert.ok(reports.every((report) => report.mascotaId === 7));
 });
 
 test('crea reporte y marca la mascota como PERDIDA en una transacción', async () => {
@@ -134,7 +162,7 @@ test('impide crear un segundo reporte activo', async () => {
   assert.equal(pool.calls.at(-1).sql, 'ROLLBACK');
 });
 
-test('finaliza el reporte y marca la mascota como ENCONTRADA', async () => {
+test('finaliza el reporte y devuelve la mascota a ACTIVA', async () => {
   const pool = fakePool((sql) => {
     if (sql.startsWith('SELECT id, fk_mascota, estado FROM reporte')) {
       return {
@@ -150,8 +178,54 @@ test('finaliza el reporte y marca la mascota como ENCONTRADA', async () => {
 
   assert.equal(report.estado, 'FINALIZADO');
   assert.ok(pool.calls.some((call) => call.sql.includes("estado = 'FINALIZADO'")));
-  assert.ok(pool.calls.some((call) => call.sql.includes("estado = 'ENCONTRADA'")));
+  assert.ok(pool.calls.some((call) => call.sql.includes("estado = 'ACTIVA'")));
+  assert.ok(pool.calls.some(
+    (call) =>
+      call.sql.includes("estado = 'FINALIZADO'") &&
+      call.sql.includes("AT TIME ZONE 'UTC'")
+  ));
   assert.equal(pool.calls.at(-1).sql, 'COMMIT');
+});
+
+test('convierte un conflicto de fechas de PostgreSQL en error controlado', async () => {
+  const pool = fakePool((sql) => {
+    if (sql.startsWith('SELECT id, fk_mascota, estado FROM reporte')) {
+      return {
+        rowCount: 1,
+        rows: [{ id: 11, fk_mascota: 7, estado: 'ACTIVO' }],
+      };
+    }
+    if (sql.startsWith('UPDATE reporte')) {
+      const error = new Error('check constraint');
+      error.code = '23514';
+      error.constraint = 'chk_reporte_fechas';
+      throw error;
+    }
+    throw new Error(`Consulta inesperada: ${sql}`);
+  });
+  const service = createReportsService(pool);
+
+  await assert.rejects(
+    service.closeReport(3, 11),
+    (error) => error.statusCode === 409 && /inconsistencia/.test(error.message)
+  );
+  assert.equal(pool.calls.at(-1).sql, 'ROLLBACK');
+});
+
+test('otro usuario no puede cerrar el reporte', async () => {
+  const pool = fakePool((sql) => {
+    if (sql.startsWith('SELECT id, fk_mascota, estado FROM reporte')) {
+      return { rowCount: 0, rows: [] };
+    }
+    throw new Error(`Consulta inesperada: ${sql}`);
+  });
+  const service = createReportsService(pool);
+
+  await assert.rejects(
+    service.closeReport(99, 11),
+    (error) => error.statusCode === 404
+  );
+  assert.equal(pool.calls.at(-1).sql, 'ROLLBACK');
 });
 
 test('no permite volver a cerrar un reporte finalizado', async () => {
@@ -227,7 +301,7 @@ test('edita un reporte activo y su ubicación en una transacción', async () => 
   assert.ok(pool.calls.some(
     (call) =>
       call.sql.startsWith('UPDATE reporte') &&
-      call.sql.includes("AT TIME ZONE 'America/Bogota'")
+      call.sql.includes("AT TIME ZONE 'UTC'")
   ));
   assert.ok(pool.calls.some((call) => call.sql.startsWith('UPDATE ubicacion')));
   assert.equal(pool.calls.at(-1).sql, 'COMMIT');

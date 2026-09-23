@@ -1,4 +1,5 @@
 const postgres = require('../../config/postgres_db');
+const geofence = require('../geofence/geofence.service');
 
 function createHttpError(message, statusCode) {
   const error = new Error(message);
@@ -33,6 +34,7 @@ function normalizeReport(row) {
     creadoEn: row.creado_en,
     actualizadoEn: row.actualizado_en,
     cerradoEn: row.cerrado_en,
+    avistamientosCount: Number(row.avistamientos_count || 0),
     mascota: {
       id: row.fk_mascota,
       nombre: row.mascota_nombre,
@@ -54,6 +56,7 @@ function normalizeReport(row) {
       lng: Number(row.lng),
       precisionM:
         row.precision_m === null ? null : Number(row.precision_m),
+      referencia: row.ubicacion_metodo === 'DIRECCION' ? null : row.direccion,
       direccion: row.direccion,
       placeId: row.place_id,
     },
@@ -63,16 +66,21 @@ function normalizeReport(row) {
 const REPORT_SELECT = `
   SELECT
     r.id, r.fk_mascota, r.descripcion, r.mostrar_contacto, r.estado,
-    to_char(r.creado_en, 'YYYY-MM-DD"T"HH24:MI:SS.MS') || '-05:00' AS creado_en,
-    to_char(r.actualizado_en, 'YYYY-MM-DD"T"HH24:MI:SS.MS') || '-05:00' AS actualizado_en,
+    to_char((r.creado_en AT TIME ZONE 'UTC') AT TIME ZONE 'America/Bogota',
+      'YYYY-MM-DD"T"HH24:MI:SS.MS') || '-05:00' AS creado_en,
+    to_char((r.actualizado_en AT TIME ZONE 'UTC') AT TIME ZONE 'America/Bogota',
+      'YYYY-MM-DD"T"HH24:MI:SS.MS') || '-05:00' AS actualizado_en,
     CASE WHEN r.cerrado_en IS NULL THEN NULL
-      ELSE to_char(r.cerrado_en, 'YYYY-MM-DD"T"HH24:MI:SS.MS') || '-05:00'
+      ELSE to_char((r.cerrado_en AT TIME ZONE 'UTC') AT TIME ZONE 'America/Bogota',
+        'YYYY-MM-DD"T"HH24:MI:SS.MS') || '-05:00'
     END AS cerrado_en,
     m.nombre AS mascota_nombre, m.estado AS mascota_estado,
     e.nombre AS especie_nombre, raza.nombre AS raza_nombre,
     ub.metodo AS ubicacion_metodo, ub.lat, ub.lng, ub.precision_m,
     ub.direccion, ub.place_id,
-    fp.storage_ref AS foto_storage_ref, fp.url_preview AS foto_url_preview
+    fp.storage_ref AS foto_storage_ref, fp.url_preview AS foto_url_preview,
+    (SELECT COUNT(*)::int FROM avistamiento av
+     WHERE av.fk_reporte_perdida = r.id) AS avistamientos_count
   FROM reporte r
   INNER JOIN mascota m ON m.id = r.fk_mascota
   INNER JOIN especie e ON e.id = m.fk_especie
@@ -85,7 +93,7 @@ const REPORT_SELECT = `
     LIMIT 1
   ) fp ON TRUE`;
 
-function createReportsService(pool = postgres.pool) {
+function createReportsService(pool = postgres.pool, allowedArea = geofence) {
   async function listReportablePets(userId) {
     const result = await pool.query(
       `SELECT
@@ -136,6 +144,7 @@ function createReportsService(pool = postgres.pool) {
   }
 
   async function createReport(userId, data) {
+    allowedArea.validateAllowedArea(data.ubicacion.lat, data.ubicacion.lng);
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
@@ -163,9 +172,10 @@ function createReportsService(pool = postgres.pool) {
       const reportResult = await client.query(
         `INSERT INTO reporte (
           fk_usuario, fk_mascota, mostrar_contacto, descripcion, estado, creado_en
-        ) VALUES ($1, $2, $3, $4, 'ACTIVO', CURRENT_TIMESTAMP AT TIME ZONE 'America/Bogota')
+        ) VALUES ($1, $2, $3, $4, 'ACTIVO', CURRENT_TIMESTAMP AT TIME ZONE 'UTC')
         RETURNING id, estado,
-          to_char(creado_en, 'YYYY-MM-DD"T"HH24:MI:SS.MS') || '-05:00' AS creado_en`,
+          to_char((creado_en AT TIME ZONE 'UTC') AT TIME ZONE 'America/Bogota',
+            'YYYY-MM-DD"T"HH24:MI:SS.MS') || '-05:00' AS creado_en`,
         [
           userId,
           data.mascotaId,
@@ -179,7 +189,7 @@ function createReportsService(pool = postgres.pool) {
         `INSERT INTO ubicacion (
           fk_reporte, metodo, lat, lng, precision_m, direccion, place_id, "timestamp"
         ) VALUES ($1, $2, $3, $4, $5, $6, $7,
-          CURRENT_TIMESTAMP AT TIME ZONE 'America/Bogota')`,
+          CURRENT_TIMESTAMP AT TIME ZONE 'UTC')`,
         [
           report.id,
           data.ubicacion.metodo,
@@ -193,7 +203,7 @@ function createReportsService(pool = postgres.pool) {
 
       await client.query(
         `UPDATE mascota
-         SET estado = 'PERDIDA', actualizado_en = CURRENT_TIMESTAMP AT TIME ZONE 'America/Bogota'
+         SET estado = 'PERDIDA', actualizado_en = CURRENT_TIMESTAMP AT TIME ZONE 'UTC'
          WHERE id = $1 AND fk_usuario = $2`,
         [data.mascotaId, userId]
       );
@@ -212,6 +222,9 @@ function createReportsService(pool = postgres.pool) {
   }
 
   async function updateReport(userId, reportId, data) {
+    if (data.ubicacion) {
+      allowedArea.validateAllowedArea(data.ubicacion.lat, data.ubicacion.lng);
+    }
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
@@ -240,9 +253,10 @@ function createReportsService(pool = postgres.pool) {
       const updateResult = await client.query(
         `UPDATE reporte
          SET descripcion = $1, mostrar_contacto = $2,
-             actualizado_en = CURRENT_TIMESTAMP AT TIME ZONE 'America/Bogota'
+             actualizado_en = CURRENT_TIMESTAMP AT TIME ZONE 'UTC'
          WHERE id = $3 AND fk_usuario = $4
-         RETURNING to_char(actualizado_en, 'YYYY-MM-DD"T"HH24:MI:SS.MS') || '-05:00' AS actualizado_en`,
+         RETURNING to_char((actualizado_en AT TIME ZONE 'UTC') AT TIME ZONE 'America/Bogota',
+           'YYYY-MM-DD"T"HH24:MI:SS.MS') || '-05:00' AS actualizado_en`,
         [descripcion, mostrarContacto, reportId, userId]
       );
 
@@ -251,7 +265,7 @@ function createReportsService(pool = postgres.pool) {
           `UPDATE ubicacion
            SET metodo = $1, lat = $2, lng = $3, precision_m = $4,
                direccion = $5, place_id = $6,
-               "timestamp" = CURRENT_TIMESTAMP AT TIME ZONE 'America/Bogota'
+               "timestamp" = CURRENT_TIMESTAMP AT TIME ZONE 'UTC'
            WHERE fk_reporte = $7`,
           [
             data.ubicacion.metodo,
@@ -304,14 +318,16 @@ function createReportsService(pool = postgres.pool) {
       const closeResult = await client.query(
         `UPDATE reporte
          SET estado = 'FINALIZADO',
-             cerrado_en = CURRENT_TIMESTAMP AT TIME ZONE 'America/Bogota'
+             cerrado_en = CURRENT_TIMESTAMP AT TIME ZONE 'UTC',
+             actualizado_en = CURRENT_TIMESTAMP AT TIME ZONE 'UTC'
          WHERE id = $1 AND fk_usuario = $2
-         RETURNING to_char(cerrado_en, 'YYYY-MM-DD"T"HH24:MI:SS.MS') || '-05:00' AS cerrado_en`,
+         RETURNING to_char((cerrado_en AT TIME ZONE 'UTC') AT TIME ZONE 'America/Bogota',
+           'YYYY-MM-DD"T"HH24:MI:SS.MS') || '-05:00' AS cerrado_en`,
         [reportId, userId]
       );
       const petResult = await client.query(
         `UPDATE mascota
-         SET estado = 'ENCONTRADA', actualizado_en = CURRENT_TIMESTAMP AT TIME ZONE 'America/Bogota'
+         SET estado = 'ACTIVA', actualizado_en = CURRENT_TIMESTAMP AT TIME ZONE 'UTC'
          WHERE id = $1 AND fk_usuario = $2
          RETURNING id`,
         [report.fk_mascota, userId]
@@ -328,6 +344,12 @@ function createReportsService(pool = postgres.pool) {
       };
     } catch (error) {
       await client.query('ROLLBACK').catch(() => undefined);
+      if (error.code === '23514' && error.constraint === 'chk_reporte_fechas') {
+        throw createHttpError(
+          'No fue posible finalizar el reporte por una inconsistencia en sus fechas',
+          409
+        );
+      }
       throw error;
     } finally {
       client.release();

@@ -7,7 +7,7 @@ const env = {
 DB_HOST: process.env.DB_HOST || '127.0.0.1',
 DB_PORT: Number(process.env.DB_PORT || 15432),
 DB_USER: process.env.DB_USER || 'postgres',
-DB_PASSWORD: process.env.DB_PASSWORD || 'e]F~tly|{&/.$Mud',
+DB_PASSWORD: process.env.DB_PASSWORD,
 DB_NAME: process.env.DB_NAME || 'animap',
 DB_SSL: process.env.DB_SSL === 'true',
 
@@ -17,6 +17,8 @@ DB_SSL: process.env.DB_SSL === 'true',
   REFRESH_TOKEN_TTL_DAYS: Number(process.env.REFRESH_TOKEN_TTL_DAYS || 7),
 
   CORS_ORIGIN: process.env.CORS_ORIGIN || '*',
+  GEOFENCE_MODE: process.env.GEOFENCE_MODE,
+  GOOGLE_GEOCODING_API_KEY: process.env.GOOGLE_GEOCODING_API_KEY,
 };
 
 module.exports = env;

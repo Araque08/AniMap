@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'register_page.dart';
 import '../../data/auth_service.dart';
-import '../../../map/presentation/pages/map_page.dart';
 import 'forgot_password_page.dart';
 import 'verify_account_page.dart';
 
@@ -55,21 +54,25 @@ class _LoginPageState extends State<LoginPage> {
     });
 
     try {
+      final deviceId = await _authService.getDeviceId();
       final response = await _authService.login(
         email: email,
         password: _passwordController.text,
-        deviceId: 'android-emulador',
+        deviceId: deviceId,
       );
 
       final data = response['data'];
       final user = data?['user'];
       final nombre = user?['nombre']?.toString() ?? 'usuario';
+      final role = _authService.sessionManager.role;
 
       if (!mounted) return;
 
-      Navigator.pushReplacement(
+      Navigator.pushNamedAndRemoveUntil(
         context,
-        MaterialPageRoute(builder: (context) => MapPage(userName: nombre)),
+        role == 'ADMINISTRADOR' ? '/admin' : '/home',
+        (_) => false,
+        arguments: nombre,
       );
     } on AuthException catch (e) {
       if (!mounted) return;

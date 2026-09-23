@@ -1,4 +1,5 @@
 const authService = require('./auth.service');
+const { authSessionService } = require('./auth.session.service');
 
 /*
   Aquí hicimos el controlador de registro.
@@ -55,6 +56,65 @@ async function login(req, res, next) {
 
   } catch (error) {
     next(error);
+  }
+}
+
+async function refresh(req, res, next) {
+  try {
+    const tokens = await authSessionService.refreshSession(
+      req.validatedBody.refreshToken
+    );
+    return res.status(200).json({
+      ok: true,
+      message: 'Sesión renovada correctamente',
+      data: tokens,
+    });
+  } catch (error) {
+    return next(error);
+  }
+}
+
+async function logout(req, res, next) {
+  try {
+    const result = await authSessionService.logoutSession(
+      req.validatedBody.refreshToken
+    );
+    return res.status(200).json({
+      ok: true,
+      message: 'Sesión cerrada correctamente',
+      data: result,
+    });
+  } catch (error) {
+    return next(error);
+  }
+}
+
+async function listSessions(req, res, next) {
+  try {
+    const sessions = await authSessionService.listSessions(
+      req.auth.userId,
+      req.auth.deviceId
+    );
+    return res.status(200).json({ ok: true, data: sessions });
+  } catch (error) {
+    return next(error);
+  }
+}
+
+async function revokeSession(req, res, next) {
+  try {
+    const result = await authSessionService.revokeSession(
+      req.auth.userId,
+      req.auth.deviceId,
+      req.params.id
+    );
+    return res.status(200).json({
+      ok: true,
+      message: 'Sesión cerrada correctamente',
+      data: result,
+    });
+  } catch (error) {
+    return next(error);
   }
 }
 
@@ -241,6 +301,14 @@ module.exports = {
   register,
 
   login,
+
+  refresh,
+
+  logout,
+
+  listSessions,
+
+  revokeSession,
 
   verifyAccount,
 

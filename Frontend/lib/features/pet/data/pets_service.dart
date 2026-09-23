@@ -1,22 +1,20 @@
 import 'dart:convert';
-import 'package:http/http.dart' as http;
-import '../../auth/data/auth_service.dart';
+import '../../auth/data/authenticated_http_client.dart';
+import '../../auth/data/session_manager.dart';
 
 class PetsService {
   static const String baseUrl = 'http://10.0.2.2:3000/api';
 
   static Map<String, String> get authHeaders {
-    final token = AuthService.accessToken;
-    if (token == null || token.isEmpty) {
-      throw StateError('No hay una sesión autenticada');
-    }
+    final token = SessionManager.instance.accessToken;
+    if (token == null || token.isEmpty) return const {};
     return {'Authorization': 'Bearer $token'};
   }
 
   static Future<List<Map<String, dynamic>>> getMyPets() async {
     final url = Uri.parse('$baseUrl/pets/my');
 
-    final response = await http.get(url, headers: authHeaders);
+    final response = await AuthenticatedHttpClient.instance.get(url);
 
     if (response.statusCode != 200) {
       throw Exception('Error consultando las mascotas');

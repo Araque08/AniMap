@@ -1,5 +1,6 @@
 const express = require('express');
 const multer = require('multer');
+const crypto = require('crypto');
 const { ObjectId } = require('mongodb');
 const postgres = require('../../config/postgres_db');
 const { getMongoDb } = require('../../config/mongo_db');
@@ -8,6 +9,7 @@ const {
   eliminarImagenMascotaMongo,
   eliminarImagenesMascotaMongoPorIds,
   establecerPrincipalMongo,
+  findActivePetImages,
   guardarImagenesMascota,
   inactivarImagenesMascotaMongo,
   reactivarImagenesMascotaMongo,
@@ -57,6 +59,29 @@ function isValidImage(file) {
 
 function validPositiveInteger(value) {
   return Number.isInteger(value) && value > 0;
+}
+
+function parseStringArray(value) {
+  try {
+    const parsed = JSON.parse(value || '[]');
+    if (!Array.isArray(parsed) || !parsed.every((item) => typeof item === 'string')) {
+      return null;
+    }
+    return parsed;
+  } catch (_) {
+    return null;
+  }
+}
+
+function imagePayload(document) {
+  const value = document?.imagen || document?.buffer;
+  if (Buffer.isBuffer(value)) return value;
+  if (Buffer.isBuffer(value?.buffer)) return value.buffer;
+  return null;
+}
+
+function imageChecksum(buffer) {
+  return crypto.createHash('sha256').update(buffer).digest('hex');
 }
 
 async function petBelongsToUser(queryable, mascotaId, usuarioId, lock = false) {
@@ -359,6 +384,218 @@ router.post('/:id/images', uploadImages, async (req, res) => {
     }
     console.error('Error agregando fotos:', error);
     return res.status(500).json({ ok: false, message: 'Error agregando las fotos' });
+  } finally {
+    client.release();
+  }
+});
+
+// =====================================================
+// PUT /api/pets/:id/images/batch
+// Persiste en una sola operación el conjunto final editado en Flutter.
+// =====================================================
+router.put('/:id/images/batch', uploadImages, async (req, res) => {
+  const mascotaId = Number(req.params.id);
+  const files = req.files || [];
+  const originalIds = parseStringArray(req.body.original_image_ids);
+  const retainedIds = parseStringArray(req.body.retained_image_ids);
+  const principalExistingId = req.body.principal_existing_id?.trim() || null;
+  const principalNewIndex = req.body.principal_new_index === undefined ||
+      req.body.principal_new_index === ''
+    ? null
+    : Number(req.body.principal_new_index);
+
+  if (!validPositiveInteger(mascotaId)) {
+    return res.status(400).json({ ok: false, message: 'ID de mascota inválido' });
+  }
+  if (originalIds === null ||
+      retainedIds === null ||
+      originalIds.some((id) => !ObjectId.isValid(id)) ||
+      retainedIds.some((id) => !ObjectId.isValid(id)) ||
+      new Set(originalIds).size !== originalIds.length ||
+      new Set(retainedIds).size !== retainedIds.length) {
+    return res.status(400).json({ ok: false, message: 'Conjunto de fotos inválido' });
+  }
+  if (retainedIds.some((id) => !originalIds.includes(id))) {
+    return res.status(400).json({ ok: false, message: 'Conjunto de fotos inválido' });
+  }
+  if (!files.every(isValidImage)) {
+    return res.status(400).json({
+      ok: false,
+      message: 'Debes enviar imágenes JPEG, PNG o WEBP válidas de hasta 5 MB',
+    });
+  }
+  const existingPrincipalSelected = principalExistingId !== null;
+  const newPrincipalSelected = principalNewIndex !== null;
+  if (existingPrincipalSelected === newPrincipalSelected ||
+      (existingPrincipalSelected && !ObjectId.isValid(principalExistingId)) ||
+      (newPrincipalSelected &&
+        (!Number.isInteger(principalNewIndex) ||
+          principalNewIndex < 0 ||
+          principalNewIndex >= files.length))) {
+    return res.status(400).json({
+      ok: false,
+      message: 'Debes seleccionar exactamente una foto principal',
+    });
+  }
+  if (retainedIds.length + files.length < MIN_IMAGES) {
+    return res.status(409).json({
+      ok: false,
+      code: 'MINIMUM_PET_PHOTOS_REQUIRED',
+      message: `Debes mantener mínimo ${MIN_IMAGES} fotografías. Actualmente tienes ${retainedIds.length + files.length}.`,
+    });
+  }
+  if (principalExistingId && !retainedIds.includes(principalExistingId)) {
+    return res.status(400).json({
+      ok: false,
+      message: 'La foto principal debe pertenecer al conjunto final',
+    });
+  }
+
+  const client = await postgres.pool.connect();
+  let nuevasImagenes = [];
+  const documentosEliminados = [];
+  let principalesMongoAnteriores = null;
+  try {
+    await client.query('BEGIN');
+    const mascota = await petBelongsToUser(client, mascotaId, req.auth.userId, true);
+    if (!mascota || mascota.estado === 'INACTIVA') {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ ok: false, message: 'Mascota no encontrada' });
+    }
+
+    const current = await client.query(
+      `SELECT storage_ref, es_principal
+       FROM foto_mascota
+       WHERE fk_mascota = $1
+       ORDER BY fecha ASC
+       FOR UPDATE`,
+      [mascotaId]
+    );
+    const currentIds = new Set(current.rows.map((row) => row.storage_ref));
+    if (currentIds.size !== originalIds.length ||
+        originalIds.some((id) => !currentIds.has(id))) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({
+        ok: false,
+        message: 'Las fotos cambiaron. Recarga la galería e inténtalo nuevamente.',
+      });
+    }
+
+    const retainedDocuments = await findActivePetImages({
+      mascotaId,
+      usuarioId: req.auth.userId,
+      imageIds: retainedIds,
+    });
+    if (retainedDocuments.length !== retainedIds.length) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({
+        ok: false,
+        message: 'No se pudo validar el conjunto actual de fotos',
+      });
+    }
+
+    const checksums = new Set();
+    for (const document of retainedDocuments) {
+      const payload = imagePayload(document);
+      if (!payload) {
+        await client.query('ROLLBACK');
+        return res.status(409).json({ ok: false, message: 'Una foto existente no es válida' });
+      }
+      const checksum = imageChecksum(payload);
+      if (checksums.has(checksum)) {
+        await client.query('ROLLBACK');
+        return res.status(409).json({ ok: false, message: 'El conjunto final contiene fotos duplicadas' });
+      }
+      checksums.add(checksum);
+    }
+    for (const file of files) {
+      const checksum = imageChecksum(file.buffer);
+      if (checksums.has(checksum)) {
+        await client.query('ROLLBACK');
+        return res.status(409).json({ ok: false, message: 'Esta foto ya fue agregada' });
+      }
+      checksums.add(checksum);
+    }
+
+    nuevasImagenes = files.length
+      ? await guardarImagenesMascota({
+          mascotaIdPg: mascotaId,
+          usuarioIdPg: req.auth.userId,
+          files,
+          fotoPrincipalIndex: null,
+        })
+      : [];
+
+    for (const imagen of nuevasImagenes) {
+      await client.query(
+        `INSERT INTO foto_mascota (fk_mascota, storage_ref, url_preview, es_principal)
+         VALUES ($1, $2, $3, FALSE)`,
+        [mascotaId, imagen.storageRef, imagen.urlPreview]
+      );
+    }
+
+    const finalPrincipalId = principalExistingId ||
+      nuevasImagenes[principalNewIndex].storageRef;
+    await client.query(
+      'UPDATE foto_mascota SET es_principal = FALSE WHERE fk_mascota = $1',
+      [mascotaId]
+    );
+    const principalUpdate = await client.query(
+      `UPDATE foto_mascota
+       SET es_principal = TRUE
+       WHERE fk_mascota = $1 AND storage_ref = $2`,
+      [mascotaId, finalPrincipalId]
+    );
+    if (principalUpdate.rowCount !== 1) {
+      throw new Error('No fue posible establecer la foto principal');
+    }
+    principalesMongoAnteriores = await establecerPrincipalMongo({
+      mascotaId,
+      usuarioId: req.auth.userId,
+      imageId: finalPrincipalId,
+    });
+
+    const removedIds = originalIds.filter((id) => !retainedIds.includes(id));
+    for (const imageId of removedIds) {
+      await client.query(
+        'DELETE FROM foto_mascota WHERE fk_mascota = $1 AND storage_ref = $2',
+        [mascotaId, imageId]
+      );
+      documentosEliminados.push(
+        await eliminarImagenMascotaMongo({
+          mascotaId,
+          usuarioId: req.auth.userId,
+          imageId,
+        })
+      );
+    }
+
+    await client.query('COMMIT');
+    return res.status(200).json({
+      ok: true,
+      message: 'Fotos actualizadas correctamente',
+      total: retainedIds.length + nuevasImagenes.length,
+    });
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => undefined);
+    await eliminarImagenesMascotaMongoPorIds(
+      nuevasImagenes.map((imagen) => imagen.id)
+    ).catch(() => undefined);
+    for (const document of documentosEliminados) {
+      await restaurarImagenMascotaMongo(document).catch(() => undefined);
+    }
+    if (principalesMongoAnteriores) {
+      await restaurarPrincipalesMongo({
+        mascotaId,
+        usuarioId: req.auth.userId,
+        principalIds: principalesMongoAnteriores,
+      }).catch(() => undefined);
+    }
+    console.error('Error guardando lote de fotos:', error);
+    return res.status(500).json({
+      ok: false,
+      message: 'No fue posible guardar los cambios de fotos',
+    });
   } finally {
     client.release();
   }

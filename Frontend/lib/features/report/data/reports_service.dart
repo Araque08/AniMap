@@ -2,7 +2,8 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
-import '../../auth/data/auth_service.dart';
+import '../../auth/data/authenticated_http_client.dart';
+import '../../auth/data/session_manager.dart';
 
 class ReportsException implements Exception {
   final String message;
@@ -17,25 +18,18 @@ class ReportsService {
   static const String originUrl = 'http://10.0.2.2:3000';
   static const String baseUrl = '$originUrl/api/reports';
 
-  static Map<String, String> get _headers {
-    final token = AuthService.accessToken;
-    if (token == null || token.isEmpty) {
-      throw ReportsException('No hay una sesión autenticada');
-    }
-    return {
-      'Authorization': 'Bearer $token',
-      'Content-Type': 'application/json',
-    };
-  }
+  static const Map<String, String> _headers = {
+    'Content-Type': 'application/json',
+  };
 
   static Map<String, String> get imageHeaders {
-    final token = AuthService.accessToken;
+    final token = SessionManager.instance.accessToken;
     if (token == null || token.isEmpty) return const {};
     return {'Authorization': 'Bearer $token'};
   }
 
   static Future<List<Map<String, dynamic>>> getReportablePets() async {
-    final response = await http.get(
+    final response = await AuthenticatedHttpClient.instance.get(
       Uri.parse('$baseUrl/pets'),
       headers: _headers,
     );
@@ -50,7 +44,7 @@ class ReportsService {
   }
 
   static Future<List<Map<String, dynamic>>> getMyReports() async {
-    final response = await http.get(
+    final response = await AuthenticatedHttpClient.instance.get(
       Uri.parse('$baseUrl/my'),
       headers: _headers,
     );
@@ -72,7 +66,7 @@ class ReportsService {
     required bool mostrarContacto,
     required Map<String, dynamic> ubicacion,
   }) async {
-    final response = await http.post(
+    final response = await AuthenticatedHttpClient.instance.post(
       Uri.parse(baseUrl),
       headers: _headers,
       body: jsonEncode({
@@ -92,16 +86,17 @@ class ReportsService {
     required int reportId,
     required String descripcion,
     required bool mostrarContacto,
-    required Map<String, dynamic> ubicacion,
+    Map<String, dynamic>? ubicacion,
   }) async {
-    final response = await http.patch(
+    final payload = <String, dynamic>{
+      'descripcion': descripcion.trim().isEmpty ? null : descripcion.trim(),
+      'mostrarContacto': mostrarContacto,
+    };
+    if (ubicacion != null) payload['ubicacion'] = ubicacion;
+    final response = await AuthenticatedHttpClient.instance.patch(
       Uri.parse('$baseUrl/$reportId'),
       headers: _headers,
-      body: jsonEncode({
-        'descripcion': descripcion.trim().isEmpty ? null : descripcion.trim(),
-        'mostrarContacto': mostrarContacto,
-        'ubicacion': ubicacion,
-      }),
+      body: jsonEncode(payload),
     );
     final data = _decode(response);
     if (response.statusCode != 200 || data['ok'] != true) {
@@ -112,7 +107,7 @@ class ReportsService {
   }
 
   static Future<void> closeReport(int reportId) async {
-    final response = await http.post(
+    final response = await AuthenticatedHttpClient.instance.post(
       Uri.parse('$baseUrl/$reportId/close'),
       headers: _headers,
     );

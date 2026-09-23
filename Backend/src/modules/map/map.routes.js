@@ -16,11 +16,14 @@ router.get('/images/:imageId', async (req, res) => {
     const reference = await pool.query(
       `SELECT f.fk_mascota
        FROM foto_mascota f
-       INNER JOIN reporte r
-         ON r.fk_mascota = f.fk_mascota AND r.estado = 'ACTIVO'
-       INNER JOIN mascota m
-         ON m.id = f.fk_mascota AND m.estado = 'PERDIDA'
-       WHERE f.storage_ref = $1 AND f.es_principal = TRUE
+       INNER JOIN reporte r ON r.fk_mascota = f.fk_mascota
+       INNER JOIN mascota m ON m.id = f.fk_mascota
+       WHERE f.storage_ref = $1
+         AND ((r.estado = 'ACTIVO' AND m.estado = 'PERDIDA')
+           OR (r.estado = 'FINALIZADO'
+             AND m.estado <> 'INACTIVA'
+             AND r.cerrado_en >=
+               (CURRENT_TIMESTAMP AT TIME ZONE 'UTC') - INTERVAL '30 days'))
        LIMIT 1`,
       [imageId]
     );
@@ -73,9 +76,11 @@ router.get('/reports', optionalAuthMiddleware, async (req, res) => {
         r.id AS reporte_id,
         r.descripcion AS reporte_descripcion,
         r.estado AS reporte_estado,
-        to_char(r.creado_en, 'YYYY-MM-DD"T"HH24:MI:SS.MS') || '-05:00' AS creado_en,
+        to_char((r.creado_en AT TIME ZONE 'UTC') AT TIME ZONE 'America/Bogota',
+          'YYYY-MM-DD"T"HH24:MI:SS.MS') || '-05:00' AS creado_en,
         CASE WHEN r.cerrado_en IS NULL THEN NULL
-          ELSE to_char(r.cerrado_en, 'YYYY-MM-DD"T"HH24:MI:SS.MS') || '-05:00'
+          ELSE to_char((r.cerrado_en AT TIME ZONE 'UTC') AT TIME ZONE 'America/Bogota',
+            'YYYY-MM-DD"T"HH24:MI:SS.MS') || '-05:00'
         END AS cerrado_en,
         r.mostrar_contacto,
         r.fk_usuario AS report_owner_id,
@@ -94,10 +99,12 @@ router.get('/reports', optionalAuthMiddleware, async (req, res) => {
           ELSE NULL
         END AS owner_phone,
 
+        ub.metodo,
         ub.lat,
         ub.lng,
         ub.direccion,
-        fp.storage_ref AS foto_storage_ref
+        photos.foto_storage_ref,
+        photos.foto_storage_refs
       FROM reporte r
       INNER JOIN mascota m
         ON m.id = r.fk_mascota
@@ -110,12 +117,19 @@ router.get('/reports', optionalAuthMiddleware, async (req, res) => {
       INNER JOIN ubicacion ub
         ON ub.fk_reporte = r.id
       LEFT JOIN LATERAL (
-        SELECT storage_ref
+        SELECT
+          (ARRAY_AGG(storage_ref ORDER BY es_principal DESC, id))[1]
+            AS foto_storage_ref,
+          ARRAY_AGG(storage_ref ORDER BY es_principal DESC, id)
+            AS foto_storage_refs
         FROM foto_mascota
-        WHERE fk_mascota = m.id AND es_principal = TRUE
-        LIMIT 1
-      ) fp ON TRUE
-      WHERE r.estado = 'ACTIVO' AND m.estado = 'PERDIDA'
+        WHERE fk_mascota = m.id
+      ) photos ON TRUE
+      WHERE (r.estado = 'ACTIVO' AND m.estado = 'PERDIDA')
+         OR (r.estado = 'FINALIZADO'
+           AND m.estado <> 'INACTIVA'
+           AND r.cerrado_en >=
+             (CURRENT_TIMESTAMP AT TIME ZONE 'UTC') - INTERVAL '30 days')
       ORDER BY r.creado_en DESC;
     `);
 
@@ -130,17 +144,33 @@ router.get('/reports', optionalAuthMiddleware, async (req, res) => {
       SELECT
         a.id AS avistamiento_id,
         a.descripcion,
-        a.fecha_hora,
-        a.estado,
+        to_char(a.fecha_hora, 'YYYY-MM-DD"T"HH24:MI:SS.MS') || 'Z'
+          AS fecha_hora,
+        a.fk_reporte_perdida,
+        ub.metodo,
         ub.lat,
         ub.lng,
         ub.direccion,
-        u.nombre AS reporter_name
+        r.id AS reporte_id,
+        m.nombre AS mascota_nombre,
+        e.nombre AS especie_nombre,
+        raza.nombre AS raza_nombre,
+        fa.storage_ref AS foto_storage_ref,
+        fa.url_preview AS foto_url_preview
       FROM avistamiento a
-      INNER JOIN usuario u
-        ON u.id = a.fk_usuario
       INNER JOIN ubicacion ub
         ON ub.fk_avistamiento = a.id
+      LEFT JOIN reporte r ON r.id = a.fk_reporte_perdida
+      LEFT JOIN mascota m ON m.id = r.fk_mascota
+      LEFT JOIN especie e ON e.id = m.fk_especie
+      LEFT JOIN raza ON raza.id = m.fk_raza
+      LEFT JOIN LATERAL (
+        SELECT storage_ref, url_preview
+        FROM foto_avistamiento
+        WHERE fk_avistamiento = a.id
+        ORDER BY id
+        LIMIT 1
+      ) fa ON TRUE
       ORDER BY a.fecha_hora DESC;
     `);
 
@@ -148,8 +178,9 @@ router.get('/reports', optionalAuthMiddleware, async (req, res) => {
       const isOwner =
         Number.isInteger(req.auth?.userId) &&
         req.auth.userId === Number(row.report_owner_id);
+      const isActive = row.reporte_estado === 'ACTIVO';
       const showContact =
-        !isOwner && row.mostrar_contacto === true && Boolean(row.owner_phone);
+        isActive && !isOwner && row.mostrar_contacto === true && Boolean(row.owner_phone);
 
       return {
         id: `lost_${row.reporte_id}`,
@@ -162,16 +193,27 @@ router.get('/reports', optionalAuthMiddleware, async (req, res) => {
         ]
           .filter(Boolean)
           .join(' · '),
-        location: row.direccion || 'Ubicación reportada en el mapa',
+        location: row.metodo === 'DIRECCION' && row.direccion
+          ? row.direccion
+          : 'Punto marcado en el mapa',
+        reference: row.metodo === 'DIRECCION' ? '' : (row.direccion || ''),
         description:
           row.reporte_descripcion || 'Mascota reportada como perdida.',
-        dateText: row.creado_en,
+        dateText: isActive ? row.creado_en : row.cerrado_en,
+        createdDateText: row.creado_en,
+        closedDateText: row.cerrado_en,
         imageUrl: row.foto_storage_ref
           ? `/api/map/images/${row.foto_storage_ref}`
           : null,
+        imageUrls: Array.isArray(row.foto_storage_refs)
+          ? row.foto_storage_refs.map((storageRef) =>
+            `/api/map/images/${storageRef}`)
+          : row.foto_storage_ref
+            ? [`/api/map/images/${row.foto_storage_ref}`]
+            : [],
         lat: Number(row.lat),
         lng: Number(row.lng),
-        type: 'lost',
+        type: isActive ? 'lost' : 'found',
         isOwner,
         showContact,
         ownerName: '',
@@ -180,23 +222,38 @@ router.get('/reports', optionalAuthMiddleware, async (req, res) => {
       };
     });
 
-    const avistamientos = avistamientosResult.rows.map((row) => ({
-      id: `sighting_${row.avistamiento_id}`,
-      title: 'Avistamiento',
-      petName: 'No identificado',
-      details: 'Avistamiento reportado por la comunidad',
-      location: row.direccion || 'Ubicación reportada en el mapa',
-      description: row.descripcion || 'Avistamiento reportado en la zona.',
-      dateText: row.fecha_hora,
-      imageUrl: null,
-      lat: Number(row.lat),
-      lng: Number(row.lng),
-      type: 'sighting',
-      showContact: false,
-      ownerName: row.reporter_name || 'Usuario de la comunidad',
-      ownerPhone: '',
-      ownerEmail: '',
-    }));
+    const avistamientos = avistamientosResult.rows.map((row) => {
+      const linked =
+        row.fk_reporte_perdida !== null &&
+        row.fk_reporte_perdida !== undefined;
+      return {
+        id: `sighting_${row.avistamiento_id}`,
+        title: 'Avistamiento',
+        petName: linked ? row.mascota_nombre : 'Sin reporte vinculado',
+        details: linked
+          ? [row.especie_nombre, row.raza_nombre].filter(Boolean).join(' · ')
+          : 'Avistamiento independiente',
+        location: row.metodo === 'DIRECCION' && row.direccion
+          ? row.direccion
+          : 'Punto marcado en el mapa',
+        reference: '',
+        description: row.descripcion,
+        dateText: row.fecha_hora,
+        imageUrl: row.foto_storage_ref
+          ? (row.foto_url_preview || `/api/sightings/images/${row.foto_storage_ref}`)
+          : null,
+        imageUrls: row.foto_storage_ref
+          ? [(row.foto_url_preview || `/api/sightings/images/${row.foto_storage_ref}`)]
+          : [],
+        lat: Number(row.lat),
+        lng: Number(row.lng),
+        type: 'sighting',
+        isLinked: linked,
+        linkedReportId: linked ? Number(row.reporte_id) : null,
+        showContact: false,
+        isOwner: false,
+      };
+    });
 
     const data = [...reportes, ...avistamientos];
 

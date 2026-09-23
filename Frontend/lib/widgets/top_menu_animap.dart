@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 
+import '../features/auth/data/session_manager.dart';
+import '../features/auth/presentation/session_navigation.dart';
+
 class TopMenuAnimap extends StatelessWidget {
-  const TopMenuAnimap({
-    super.key,
-    this.onNotificationTap,
-  });
+  const TopMenuAnimap({super.key, this.onNotificationTap});
 
   final VoidCallback? onNotificationTap;
 
@@ -35,58 +35,56 @@ class TopMenuAnimap extends StatelessWidget {
                 onPressed: () {
                   Scaffold.of(context).openDrawer();
                 },
-                icon: const Icon(
-                  Icons.menu,
-                  size: 30,
-                  color: Colors.black87,
-                ),
+                icon: const Icon(Icons.menu, size: 30, color: Colors.black87),
               );
             },
           ),
 
-          const Spacer(),
+          Expanded(
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Image.asset(
+                    'assets/images/logo_animap.png',
+                    height: 46,
+                    errorBuilder: (context, error, stackTrace) {
+                      return Container(
+                        width: 42,
+                        height: 42,
+                        decoration: const BoxDecoration(
+                          color: accentGreen,
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(
+                          Icons.pets,
+                          color: Colors.white,
+                          size: 26,
+                        ),
+                      );
+                    },
+                  ),
 
-          Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Image.asset(
-                'assets/images/logo_animap.png',
-                height: 46,
-                errorBuilder: (context, error, stackTrace) {
-                  return Container(
-                    width: 42,
-                    height: 42,
-                    decoration: const BoxDecoration(
-                      color: accentGreen,
-                      shape: BoxShape.circle,
+                  const SizedBox(width: 8),
+
+                  const Text(
+                    'AniMap',
+                    style: TextStyle(
+                      fontSize: 28,
+                      fontWeight: FontWeight.w800,
+                      color: darkText,
                     ),
-                    child: const Icon(
-                      Icons.pets,
-                      color: Colors.white,
-                      size: 26,
-                    ),
-                  );
-                },
+                  ),
+                ],
               ),
-
-              const SizedBox(width: 8),
-
-              const Text(
-                'AniMap',
-                style: TextStyle(
-                  fontSize: 28,
-                  fontWeight: FontWeight.w800,
-                  color: darkText,
-                ),
-              ),
-            ],
+            ),
           ),
 
-          const Spacer(),
-
           IconButton(
-            onPressed: onNotificationTap ??
-                    () {
+            onPressed:
+                onNotificationTap ??
+                () {
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(
                       content: Text('Aquí irán las notificaciones.'),
@@ -106,9 +104,9 @@ class TopMenuAnimap extends StatelessWidget {
 }
 
 class AniMapSideMenu extends StatelessWidget {
-  const AniMapSideMenu({
-    super.key,
-  });
+  final SessionManager? sessionManager;
+
+  const AniMapSideMenu({super.key, this.sessionManager});
 
   static const Color background = Color(0xFFF8FAF6);
   static const Color divider = Color(0xFFCFE4D7);
@@ -192,15 +190,11 @@ class AniMapSideMenu extends StatelessWidget {
 
             _SideMenuItem(
               text: 'Cerrar sesión',
-              onTap: () {
-                Navigator.pop(context);
-
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Sesión cerrada.'),
-                  ),
-                );
-              },
+              onTap: () => confirmLogoutAndNavigate(
+                context,
+                sessionManager: sessionManager,
+                closeDrawer: true,
+              ),
             ),
 
             _SideMenuItem(
@@ -217,10 +211,7 @@ class AniMapSideMenu extends StatelessWidget {
 }
 
 class _SideMenuItem extends StatelessWidget {
-  const _SideMenuItem({
-    required this.text,
-    required this.onTap,
-  });
+  const _SideMenuItem({required this.text, required this.onTap});
 
   final String text;
   final VoidCallback onTap;

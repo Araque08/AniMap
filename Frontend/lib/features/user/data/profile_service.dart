@@ -1,6 +1,9 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
-import '../../auth/data/auth_service.dart';
+import 'package:image_picker/image_picker.dart';
+import '../../auth/data/authenticated_http_client.dart';
+import '../../auth/data/session_manager.dart';
+import '../../pet/data/pet_image_selection.dart';
 
 class ProfileException implements Exception {
   final String message;
@@ -15,13 +18,9 @@ class ProfileService {
   static const String baseUrl = 'http://10.0.2.2:3000';
 
   static Future<Map<String, dynamic>> obtenerPerfil() async {
-    final token = _requireAccessToken();
     final url = Uri.parse('$baseUrl/api/profile');
 
-    final response = await http.get(
-      url,
-      headers: {'Authorization': 'Bearer $token'},
-    );
+    final response = await AuthenticatedHttpClient.instance.get(url);
 
     final body = _decodeResponse(response);
 
@@ -42,15 +41,11 @@ class ProfileService {
     required String nombre,
     required String telefono,
   }) async {
-    final token = _requireAccessToken();
     final url = Uri.parse('$baseUrl/api/profile');
 
-    final response = await http.patch(
+    final response = await AuthenticatedHttpClient.instance.patch(
       url,
-      headers: {
-        'Authorization': 'Bearer $token',
-        'Content-Type': 'application/json',
-      },
+      headers: {'Content-Type': 'application/json'},
       body: jsonEncode({'nombre': nombre, 'telefono': telefono}),
     );
 
@@ -67,19 +62,81 @@ class ProfileService {
     return Map<String, dynamic>.from(body['data']);
   }
 
-  static String _requireAccessToken() {
-    final token = AuthService.accessToken;
-
-    if (token == null || token.isEmpty) {
-      throw ProfileException(
-        'La sesión no está disponible. Inicia sesión nuevamente.',
-      );
+  static Future<Map<String, dynamic>> actualizarFotoPerfil(XFile image) async {
+    final validationMessage = await validarFotoPerfil(image);
+    if (validationMessage != null) {
+      throw ProfileException(validationMessage);
     }
 
-    return token;
+    final response = await AuthenticatedHttpClient.instance.sendMultipart((
+      token,
+    ) async {
+      final request = http.MultipartRequest(
+        'POST',
+        Uri.parse('$baseUrl/api/profile/photo'),
+      )..headers['Authorization'] = 'Bearer $token';
+      request.files.add(
+        await http.MultipartFile.fromPath(
+          'foto',
+          image.path,
+          contentType: _imageContentType(image.name),
+        ),
+      );
+      return request;
+    });
+    final body = _decodeResponse(response);
+    if (response.statusCode != 200 || body['ok'] != true) {
+      throw ProfileException(_extractErrorMessage(body));
+    }
+    if (body['data'] is! Map) {
+      throw ProfileException('El servidor devolvió un perfil inválido');
+    }
+    return Map<String, dynamic>.from(body['data']);
+  }
+
+  static Future<String?> validarFotoPerfil(XFile image) async {
+    final validation = await validatePetImageSelection(
+      selected: [image],
+      alreadyAdded: const [],
+      maxImages: 1,
+    );
+    if (validation.accepted.isEmpty) {
+      return validation.rejectionMessage ??
+          'Selecciona una imagen JPG, JPEG, PNG o WEBP de máximo 5 MB';
+    }
+    return null;
+  }
+
+  static http.MediaType _imageContentType(String path) {
+    final lower = path.toLowerCase();
+    if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) {
+      return http.MediaType('image', 'jpeg');
+    }
+    if (lower.endsWith('.png')) return http.MediaType('image', 'png');
+    if (lower.endsWith('.webp')) return http.MediaType('image', 'webp');
+    throw ProfileException('Formato de imagen no soportado');
+  }
+
+  static Map<String, String> get imageHeaders {
+    final token = SessionManager.instance.accessToken;
+    if (token == null || token.isEmpty) return const {};
+    return {'Authorization': 'Bearer $token'};
+  }
+
+  static String? absolutePhotoUrl(dynamic value) {
+    final path = value?.toString().trim() ?? '';
+    if (path.isEmpty) return null;
+    return path.startsWith('http') ? path : 'http://10.0.2.2:3000$path';
   }
 
   static Map<String, dynamic> _decodeResponse(http.Response response) {
+    final contentType = response.headers['content-type']?.toLowerCase() ?? '';
+    if (!contentType.contains('application/json')) {
+      return {
+        'message':
+            'El servidor respondió en un formato inesperado (HTTP ${response.statusCode}).',
+      };
+    }
     try {
       final decoded = jsonDecode(response.body);
 

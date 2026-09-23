@@ -1,21 +1,31 @@
 import 'dart:convert';
+import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
-import 'package:http/http.dart' as http;
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../../widgets/bottom_menu_animap.dart';
 import '../../../../widgets/top_menu_animap.dart';
-import '../../../auth/data/auth_service.dart';
+import '../../data/map_reports_client.dart';
 import '../../../report/data/report_datetime.dart';
+import '../../../report/data/device_location_service.dart';
+
+typedef DeviceLocationLoader = Future<DeviceLocation> Function();
 
 class MapPage extends StatefulWidget {
   final String userName;
+  final DeviceLocationLoader? locationLoader;
+  final MapReportsClient? reportsClient;
 
-  const MapPage({super.key, this.userName = ''});
+  const MapPage({
+    super.key,
+    this.userName = '',
+    this.locationLoader,
+    this.reportsClient,
+  });
 
   @override
   State<MapPage> createState() => _MapPageState();
@@ -30,6 +40,17 @@ enum MapFilter { active, found }
 enum MapStatus { loaded, empty, error }
 
 enum ReportType { lost, sighting, found }
+
+Color markerColorForReportType(ReportType type) {
+  switch (type) {
+    case ReportType.lost:
+      return const Color(0xFFE96F67);
+    case ReportType.sighting:
+      return const Color(0xFFF2A65A);
+    case ReportType.found:
+      return const Color(0xFF3F9568);
+  }
+}
 
 /* ============================================================================
    MODELO PARA LOS REPORTES DEL MAPA
@@ -46,11 +67,18 @@ class MapReport {
   final String petName;
   final String details;
   final String location;
+  final String reference;
   final String description;
   final String dateText;
+  final String createdDateText;
+  final String closedDateText;
+  final DateTime? occurredAt;
   final String? imageUrl;
+  final List<String> imageUrls;
   final LatLng position;
   final ReportType type;
+  final bool isLinked;
+  final int? linkedReportId;
 
   /*
     Aquí guardo los datos de contacto del dueño.
@@ -69,11 +97,18 @@ class MapReport {
     required this.petName,
     required this.details,
     required this.location,
+    required this.reference,
     required this.description,
     required this.dateText,
+    this.createdDateText = '',
+    this.closedDateText = '',
+    required this.occurredAt,
     required this.imageUrl,
+    this.imageUrls = const [],
     required this.position,
     required this.type,
+    this.isLinked = false,
+    this.linkedReportId,
     required this.showContact,
     required this.isOwner,
     required this.ownerName,
@@ -87,17 +122,27 @@ class MapReport {
     la estructura visual que ya teníamos funcionando.
   */
   factory MapReport.fromJson(Map<String, dynamic> json) {
+    final rawDate = json['dateText'];
     return MapReport(
       id: json['id']?.toString() ?? '',
       title: json['title']?.toString() ?? 'Reporte',
       petName: json['petName']?.toString() ?? 'No identificado',
       details: json['details']?.toString() ?? '',
       location: json['location']?.toString() ?? 'Ubicación no disponible',
+      reference: json['reference']?.toString() ?? '',
       description: json['description']?.toString() ?? 'Sin descripción',
-      dateText: _formatDateText(json['dateText']),
+      dateText: _formatDateText(rawDate),
+      createdDateText: _formatDateText(json['createdDateText']),
+      closedDateText: json['closedDateText'] == null
+          ? ''
+          : _formatDateText(json['closedDateText']),
+      occurredAt: reportDateTimeInBogota(rawDate),
       imageUrl: _imageUrl(json['imageUrl']),
+      imageUrls: _imageUrls(json['imageUrls'], json['imageUrl']),
       position: LatLng(_toDouble(json['lat']), _toDouble(json['lng'])),
       type: _parseReportType(json['type']),
+      isLinked: json['isLinked'] == true,
+      linkedReportId: int.tryParse(json['linkedReportId']?.toString() ?? ''),
       showContact: json['showContact'] == true,
       isOwner: json['isOwner'] == true,
       ownerName: json['ownerName']?.toString() ?? '',
@@ -110,6 +155,19 @@ class MapReport {
     final path = value?.toString();
     if (path == null || path.isEmpty) return null;
     return path.startsWith('http') ? path : 'http://10.0.2.2:3000$path';
+  }
+
+  static List<String> _imageUrls(dynamic values, dynamic principal) {
+    final urls = <String>[];
+    final principalUrl = _imageUrl(principal);
+    if (principalUrl != null) urls.add(principalUrl);
+    if (values is List) {
+      for (final value in values) {
+        final url = _imageUrl(value);
+        if (url != null && !urls.contains(url)) urls.add(url);
+      }
+    }
+    return urls;
   }
 
   /*
@@ -126,7 +184,7 @@ class MapReport {
       case 'sighting':
         return ReportType.sighting;
       default:
-        return ReportType.sighting;
+        throw const FormatException('Tipo de reporte no soportado');
     }
   }
 
@@ -149,12 +207,53 @@ class MapReport {
   }
 }
 
+double distanceBetweenMeters(LatLng from, LatLng to) {
+  const earthRadiusMeters = 6371000.0;
+  double radians(double degrees) => degrees * math.pi / 180.0;
+  final dLat = radians(to.latitude - from.latitude);
+  final dLng = radians(to.longitude - from.longitude);
+  final lat1 = radians(from.latitude);
+  final lat2 = radians(to.latitude);
+  final a =
+      math.sin(dLat / 2) * math.sin(dLat / 2) +
+      math.cos(lat1) * math.cos(lat2) * math.sin(dLng / 2) * math.sin(dLng / 2);
+  return earthRadiusMeters * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a));
+}
+
+MapReport? selectNearestReport(List<MapReport> reports, LatLng? userLocation) {
+  if (reports.isEmpty) return null;
+  final ordered = List<MapReport>.of(reports);
+  ordered.sort((a, b) {
+    if (userLocation != null) {
+      final byDistance = distanceBetweenMeters(
+        userLocation,
+        a.position,
+      ).compareTo(distanceBetweenMeters(userLocation, b.position));
+      if (byDistance != 0) return byDistance;
+    }
+    final aDate = a.occurredAt;
+    final bDate = b.occurredAt;
+    if (aDate != null && bDate != null) {
+      final byNewestDate = bDate.compareTo(aDate);
+      if (byNewestDate != 0) return byNewestDate;
+    } else if (aDate != null) {
+      return -1;
+    } else if (bDate != null) {
+      return 1;
+    }
+    return a.id.compareTo(b.id);
+  });
+  return ordered.first;
+}
+
 /* ============================================================================
    PÁGINA PRINCIPAL DEL MAPA
    ============================================================================ */
 
 class _MapPageState extends State<MapPage> {
   GoogleMapController? _mapController;
+  LatLng? _userLocation;
+  LatLng? _pendingCameraTarget;
 
   MapFilter _selectedFilter = MapFilter.active;
   MapStatus _status = MapStatus.loaded;
@@ -243,7 +342,7 @@ class _MapPageState extends State<MapPage> {
       } else {
         markerIcon =
             _sightingMarkerIcon ??
-            BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen);
+            BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueOrange);
       }
 
       return Marker(
@@ -275,14 +374,16 @@ class _MapPageState extends State<MapPage> {
     se usa para avistamientos y mascotas encontradas.
   */
   Future<void> _loadCustomMarkers() async {
-    _lostMarkerIcon = await _createPawMarker(pinColor: const Color(0xFFE96F67));
+    _lostMarkerIcon = await _createPawMarker(
+      pinColor: markerColorForReportType(ReportType.lost),
+    );
 
     _sightingMarkerIcon = await _createPawMarker(
-      pinColor: const Color(0xFF4E967B),
+      pinColor: markerColorForReportType(ReportType.sighting),
     );
 
     _foundMarkerIcon = await _createPawMarker(
-      pinColor: const Color(0xFF4E967B),
+      pinColor: markerColorForReportType(ReportType.found),
     );
 
     /*
@@ -389,14 +490,17 @@ class _MapPageState extends State<MapPage> {
   */
   Future<void> _loadMapReports() async {
     try {
+      try {
+        final location =
+            await (widget.locationLoader ??
+                DeviceLocationService.getCurrentLocation)();
+        _userLocation = LatLng(location.latitude, location.longitude);
+      } catch (_) {
+        _userLocation = null;
+      }
       final Uri url = Uri.parse(_mapReportsUrl);
-      final token = AuthService.accessToken;
-      final http.Response response = await http.get(
-        url,
-        headers: token == null || token.isEmpty
-            ? const {}
-            : {'Authorization': 'Bearer $token'},
-      );
+      final response = await (widget.reportsClient ?? MapReportsClient())
+          .getReports(url);
 
       if (response.statusCode != 200) {
         if (!mounted) return;
@@ -414,19 +518,18 @@ class _MapPageState extends State<MapPage> {
 
       final List<dynamic> data = decodedBody['data'] as List<dynamic>? ?? [];
 
-      final List<MapReport> reports = data
-          .map((item) => MapReport.fromJson(item as Map<String, dynamic>))
-          .where(
-            /*
-              Aquí evito pintar marcadores sin coordenadas válidas.
-              Esto protege el mapa si llega algún registro incompleto desde
-              la base de datos.
-            */
-            (report) =>
-                report.position.latitude != 0.0 &&
-                report.position.longitude != 0.0,
-          )
-          .toList();
+      final List<MapReport> reports = [];
+      for (final item in data) {
+        try {
+          final report = MapReport.fromJson(item as Map<String, dynamic>);
+          if (report.position.latitude != 0.0 &&
+              report.position.longitude != 0.0) {
+            reports.add(report);
+          }
+        } on FormatException {
+          // Los tipos desconocidos se omiten; nunca se convierten en avistamiento.
+        }
+      }
 
       final List<MapReport> activeReports = reports
           .where(
@@ -446,17 +549,16 @@ class _MapPageState extends State<MapPage> {
 
       if (!mounted) return;
 
+      final selected = selectNearestReport(visibleReports, _userLocation);
       setState(() {
         _activeReports = activeReports;
         _foundReports = foundReports;
         _status = visibleReports.isEmpty ? MapStatus.empty : MapStatus.loaded;
-        _selectedReport = visibleReports.isNotEmpty
-            ? visibleReports.first
-            : null;
+        _selectedReport = selected;
       });
 
-      if (visibleReports.isNotEmpty) {
-        await _moveCamera(visibleReports.first.position);
+      if (selected != null) {
+        await _moveCamera(selected.position);
       }
     } catch (error) {
       if (!mounted) return;
@@ -482,14 +584,15 @@ class _MapPageState extends State<MapPage> {
         ? _activeReports
         : _foundReports;
 
+    final selected = selectNearestReport(nextReports, _userLocation);
     setState(() {
       _selectedFilter = filter;
       _status = nextReports.isEmpty ? MapStatus.empty : MapStatus.loaded;
-      _selectedReport = nextReports.isNotEmpty ? nextReports.first : null;
+      _selectedReport = selected;
     });
 
-    if (nextReports.isNotEmpty) {
-      _moveCamera(nextReports.first.position);
+    if (selected != null) {
+      _moveCamera(selected.position);
     }
   }
 
@@ -508,13 +611,35 @@ class _MapPageState extends State<MapPage> {
   Future<void> _moveCamera(LatLng target) async {
     final controller = _mapController;
 
-    if (controller == null) return;
+    if (controller == null) {
+      _pendingCameraTarget = target;
+      return;
+    }
+    _pendingCameraTarget = null;
 
-    await controller.animateCamera(
-      CameraUpdate.newCameraPosition(
-        CameraPosition(target: target, zoom: 15.5),
-      ),
-    );
+    try {
+      await controller.animateCamera(
+        CameraUpdate.newCameraPosition(
+          CameraPosition(target: target, zoom: 15.5),
+        ),
+      );
+    } catch (error) {
+      if (mounted) debugPrint('No se pudo mover la cámara del mapa: $error');
+    }
+  }
+
+  void _handleMapCreated(GoogleMapController controller) {
+    if (!mounted) {
+      controller.dispose();
+      return;
+    }
+    final previous = _mapController;
+    if (previous != null && !identical(previous, controller)) {
+      previous.dispose();
+    }
+    _mapController = controller;
+    final target = _pendingCameraTarget;
+    if (target != null) _moveCamera(target);
   }
 
   /*
@@ -550,7 +675,7 @@ class _MapPageState extends State<MapPage> {
     los reportes que ya fueron cargados desde la base de datos.
   */
   Future<void> _goToProjectZone() async {
-    await _moveCamera(_ciudadSalitre);
+    await _moveCamera(_userLocation ?? _ciudadSalitre);
 
     setState(() {
       _selectedReport = null;
@@ -582,7 +707,9 @@ class _MapPageState extends State<MapPage> {
 
   @override
   void dispose() {
-    _mapController?.dispose();
+    final controller = _mapController;
+    _mapController = null;
+    controller?.dispose();
     super.dispose();
   }
 
@@ -609,7 +736,7 @@ class _MapPageState extends State<MapPage> {
           */
           const TopMenuAnimap(),
 
-          _FilterBar(
+          MapReportFilterBar(
             selectedFilter: _selectedFilter,
             onActiveTap: () => _toggleFilter(MapFilter.active),
             onFoundTap: () => _toggleFilter(MapFilter.found),
@@ -622,9 +749,7 @@ class _MapPageState extends State<MapPage> {
                   status: _status,
                   markers: _markers,
                   initialPosition: _ciudadSalitre,
-                  onMapCreated: (controller) {
-                    _mapController = controller;
-                  },
+                  onMapCreated: _handleMapCreated,
                   onZoomIn: _zoomIn,
                   onZoomOut: _zoomOut,
                   onMyLocationTap: _goToProjectZone,
@@ -653,7 +778,7 @@ class _MapPageState extends State<MapPage> {
 
                     bottom: 38,
 
-                    child: _ReportPreviewCard(
+                    child: MapReportPreviewCard(
                       report: _selectedReport!,
                       onClose: () {
                         setState(() {
@@ -761,12 +886,13 @@ class _GoogleMapArea extends StatelessWidget {
    FILTROS DEL MAPA
    ============================================================================ */
 
-class _FilterBar extends StatelessWidget {
+class MapReportFilterBar extends StatelessWidget {
   final MapFilter selectedFilter;
   final VoidCallback onActiveTap;
   final VoidCallback onFoundTap;
 
-  const _FilterBar({
+  const MapReportFilterBar({
+    super.key,
     required this.selectedFilter,
     required this.onActiveTap,
     required this.onFoundTap,
@@ -774,24 +900,50 @@ class _FilterBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final showingFound = selectedFilter == MapFilter.found;
+
     return Container(
-      height: 68,
+      key: const ValueKey('map-report-filter-bar'),
+      height: showingFound ? 84 : 68,
       color: Colors.white,
       child: Center(
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            _FilterButton(
-              text: 'Activos',
-              selected: selectedFilter == MapFilter.active,
-              onTap: onActiveTap,
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                _FilterButton(
+                  text: 'Activos',
+                  selected: selectedFilter == MapFilter.active,
+                  onTap: onActiveTap,
+                ),
+                const SizedBox(width: 8),
+                _FilterButton(
+                  text: 'Encontrados',
+                  selected: showingFound,
+                  onTap: onFoundTap,
+                ),
+              ],
             ),
-            const SizedBox(width: 8),
-            _FilterButton(
-              text: 'Encontrados',
-              selected: selectedFilter == MapFilter.found,
-              onTap: onFoundTap,
-            ),
+            if (showingFound) ...[
+              const SizedBox(height: 3),
+              const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 8),
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text(
+                    'Mascotas encontradas en los últimos 30 días',
+                    maxLines: 1,
+                    style: TextStyle(
+                      color: Color(0xFF668274),
+                      fontSize: 11,
+                      fontWeight: FontWeight.normal,
+                    ),
+                  ),
+                ),
+              ),
+            ],
           ],
         ),
       ),
@@ -867,7 +1019,7 @@ class _Legend extends StatelessWidget {
       child: found
           ? const Row(
               children: [
-                Icon(Icons.location_on, size: 16, color: Color(0xFF4E967B)),
+                Icon(Icons.location_on, size: 16, color: Color(0xFF3F9568)),
                 SizedBox(width: 5),
                 Expanded(
                   child: Text(
@@ -895,7 +1047,7 @@ class _Legend extends StatelessWidget {
                 SizedBox(height: 5),
                 Row(
                   children: [
-                    Icon(Icons.location_on, size: 16, color: Color(0xFF4E967B)),
+                    Icon(Icons.visibility, size: 16, color: Color(0xFFF2A65A)),
                     SizedBox(width: 5),
                     Expanded(
                       child: Text(
@@ -998,11 +1150,15 @@ class _MapPetPhoto extends StatelessWidget {
   }
 }
 
-class _ReportPreviewCard extends StatelessWidget {
+class MapReportPreviewCard extends StatelessWidget {
   final MapReport report;
   final VoidCallback onClose;
 
-  const _ReportPreviewCard({required this.report, required this.onClose});
+  const MapReportPreviewCard({
+    super.key,
+    required this.report,
+    required this.onClose,
+  });
 
   static const Color primaryGreen = Color(0xFF4E967B);
   static const Color darkText = Color(0xFF405466);
@@ -1090,7 +1246,9 @@ class _ReportPreviewCard extends StatelessWidget {
                               context,
                               MaterialPageRoute(
                                 builder: (context) =>
-                                    _ReportDetailPage(report: report),
+                                    report.type == ReportType.sighting
+                                    ? SightingDetailPage(report: report)
+                                    : ReportDetailPage(report: report),
                               ),
                             );
                           },
@@ -1280,201 +1438,781 @@ class _LocationBar extends StatelessWidget {
   }
 }
 
-/* ============================================================================
-   PANTALLA TEMPORAL DE DETALLE DEL REPORTE
-   ============================================================================ */
+typedef ReportMapBuilder =
+    Widget Function(BuildContext context, LatLng position, bool interactive);
 
-/*
-  Aquí dejé una pantalla temporal para el detalle del reporte.
-  La idea es que el botón "Ver Detalle" ya tenga una navegación real.
+class SightingDetailPage extends StatelessWidget {
+  const SightingDetailPage({super.key, required this.report, this.mapBuilder});
 
-  En la versión final esta pantalla debería conectarse con el backend para traer
-  la información completa del reporte, la mascota, sus fotos, ubicación y datos
-  permitidos del dueño.
-*/
-class _ReportDetailPage extends StatelessWidget {
   final MapReport report;
-
-  const _ReportDetailPage({required this.report});
+  final ReportMapBuilder? mapBuilder;
 
   @override
   Widget build(BuildContext context) {
-    final bool isLost = report.type == ReportType.lost;
-    final bool isSighting = report.type == ReportType.sighting;
-    final bool isFound = report.type == ReportType.found;
-
-    final String dateLabel = isLost
-        ? 'Última vez visto'
-        : isSighting
-        ? 'Reportado el'
-        : 'Fecha de cierre';
-
-    final String statusLabel = isFound
-        ? 'Finalizado'
-        : isSighting
-        ? 'Avistamiento'
-        : 'Activo';
-
-    final Color statusColor = isLost
-        ? const Color(0xFFE96F67)
-        : const Color(0xFF4E967B);
-
     return Scaffold(
-      backgroundColor: const Color(0xFFDDEFE2),
+      backgroundColor: const Color(0xFFF4F8F5),
       appBar: AppBar(
-        backgroundColor: const Color(0xFFDDF2E7),
-        elevation: 0,
-        foregroundColor: const Color(0xFF405466),
-        title: Text(report.title),
+        title: const Text('Detalle del avistamiento'),
+        backgroundColor: const Color(0xFFFFE8CC),
+        foregroundColor: const Color(0xFF344955),
       ),
       body: SafeArea(
         top: false,
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            return SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 18),
-              child: ConstrainedBox(
-                constraints: BoxConstraints(
-                  /*
-                    Aquí hago que la tarjeta ocupe prácticamente toda la pantalla
-                    disponible, para que el detalle no quede flotando arriba con
-                    mucho espacio vacío en la parte inferior.
-                  */
-                  minHeight: constraints.maxHeight - 34,
-                ),
-                child: Container(
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(14, 16, 14, 28),
+          children: [
+            if (report.imageUrl != null)
+              ClipRRect(
+                borderRadius: BorderRadius.circular(20),
+                child: Image.network(
+                  report.imageUrl!,
+                  key: const ValueKey('sighting-detail-photo'),
+                  height: 230,
                   width: double.infinity,
-                  padding: const EdgeInsets.fromLTRB(18, 18, 18, 20),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.96),
-                    borderRadius: BorderRadius.circular(18),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.10),
-                        blurRadius: 8,
-                        offset: const Offset(0, 4),
-                      ),
-                    ],
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Center(
-                        child: _MapPetPhoto(
-                          imageUrl: report.imageUrl,
-                          size: 84,
-                          color: statusColor,
-                        ),
-                      ),
-                      const SizedBox(height: 22),
-                      Text(
-                        report.petName,
-                        style: const TextStyle(
-                          color: Color(0xFF405466),
-                          fontSize: 24,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        report.details,
-                        style: const TextStyle(
-                          color: Color(0xFF65756C),
-                          fontSize: 15,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      const SizedBox(height: 18),
-                      _StatusChip(text: statusLabel, color: statusColor),
-                      const SizedBox(height: 22),
-
-                      /*
-                        Aquí muestro la información principal del reporte.
-                        La etiqueta de fecha cambia según el tipo de caso:
-                        perdido, avistamiento o encontrado.
-                      */
-                      _DetailRow(label: 'Tipo', value: report.title),
-                      _DetailRow(label: dateLabel, value: report.dateText),
-                      _DetailRow(label: 'Ubicación', value: report.location),
-                      const SizedBox(height: 20),
-                      const Text(
-                        'Descripción',
-                        style: TextStyle(
-                          color: Color(0xFF405466),
-                          fontSize: 15,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        report.description,
-                        style: const TextStyle(
-                          color: Color(0xFF65756C),
-                          fontSize: 14,
-                          height: 1.35,
-                        ),
-                      ),
-
-                      /*
-                        Aquí agrego espacio flexible para que, cuando el detalle
-                        tenga poca información, el contenido no se vea comprimido
-                        arriba y la tarjeta conserve presencia en toda la pantalla.
-                      */
-                      if (report.type != ReportType.lost)
-                        const SizedBox(height: 32),
-
-                      if (report.type == ReportType.lost && report.isOwner) ...[
-                        const SizedBox(height: 24),
-                        Container(
-                          width: double.infinity,
-                          padding: const EdgeInsets.all(14),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFEAF6EF),
-                            borderRadius: BorderRadius.circular(14),
-                            border: Border.all(color: const Color(0xFFC7E1D1)),
-                          ),
-                          child: const Row(
-                            children: [
-                              Icon(Icons.verified_user_outlined),
-                              SizedBox(width: 10),
-                              Expanded(
-                                child: Text(
-                                  'Este reporte es tuyo',
-                                  style: TextStyle(fontWeight: FontWeight.bold),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ] else if (report.type == ReportType.lost) ...[
-                        const SizedBox(height: 24),
-                        const Text(
-                          'Contacto del dueño',
-                          style: TextStyle(
-                            color: Color(0xFF405466),
-                            fontSize: 15,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        const SizedBox(height: 10),
-                        if (report.showContact)
-                          _OwnerContactCard(report: report)
-                        else
-                          const Text(
-                            'El dueño no ha habilitado contacto directo para este reporte.',
-                            style: TextStyle(
-                              color: Color(0xFF65756C),
-                              fontSize: 14,
-                              height: 1.35,
-                            ),
-                          ),
-                      ],
-                    ],
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, _, _) => const SizedBox(
+                    height: 180,
+                    child: ColoredBox(
+                      color: Color(0xFFFFE8CC),
+                      child: Icon(Icons.visibility_outlined, size: 54),
+                    ),
                   ),
                 ),
               ),
-            );
-          },
+            if (report.imageUrl != null) const SizedBox(height: 14),
+            _ReportSectionCard(
+              icon: Icons.visibility_outlined,
+              title: 'Avistamiento',
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _ReportInfoLine(
+                    icon: Icons.schedule,
+                    label: 'Fecha y hora',
+                    value: report.dateText,
+                  ),
+                  const SizedBox(height: 5),
+                  Text(
+                    report.description,
+                    style: const TextStyle(
+                      color: Color(0xFF5E6F66),
+                      height: 1.4,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 14),
+            _ReportSectionCard(
+              icon: Icons.link,
+              title: 'Vinculación',
+              child: report.isLinked
+                  ? Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          report.petName,
+                          style: const TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                        if (report.details.isNotEmpty) Text(report.details),
+                        const SizedBox(height: 5),
+                        const Text(
+                          'Vinculado a un reporte activo de mascota perdida.',
+                          style: TextStyle(color: Color(0xFF65756C)),
+                        ),
+                      ],
+                    )
+                  : const Text(
+                      'Avistamiento sin reporte vinculado.',
+                      key: ValueKey('independent-sighting-label'),
+                      style: TextStyle(color: Color(0xFF65756C)),
+                    ),
+            ),
+            const SizedBox(height: 14),
+            _ReportSectionCard(
+              icon: Icons.location_on_outlined,
+              title: 'Ubicación del avistamiento',
+              child: Column(
+                children: [
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(16),
+                    child: SizedBox(
+                      height: 185,
+                      child: _ReportLocationMap(
+                        position: report.position,
+                        interactive: false,
+                        mapBuilder: mapBuilder,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      onPressed: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => ReportLocationViewPage(
+                            position: report.position,
+                            mapBuilder: mapBuilder,
+                            title: 'Ubicación del avistamiento',
+                          ),
+                        ),
+                      ),
+                      icon: const Icon(Icons.map_outlined),
+                      label: const Text('Ver ubicación en mapa'),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class ReportDetailPage extends StatelessWidget {
+  final MapReport report;
+  final ReportMapBuilder? mapBuilder;
+
+  const ReportDetailPage({super.key, required this.report, this.mapBuilder});
+
+  List<String> get _photos {
+    final result = <String>[];
+    if (report.imageUrl != null) result.add(report.imageUrl!);
+    for (final image in report.imageUrls) {
+      if (!result.contains(image)) result.add(image);
+    }
+    return result;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isFinalized = report.type == ReportType.found;
+    final statusColor = isFinalized
+        ? const Color(0xFF3F9568)
+        : const Color(0xFFE7655D);
+    final photos = _photos;
+    return Scaffold(
+      backgroundColor: const Color(0xFFF2F6F3),
+      appBar: AppBar(
+        title: const Text('Detalle del reporte'),
+        backgroundColor: const Color(0xFFDFF3E8),
+        foregroundColor: const Color(0xFF344955),
+      ),
+      body: SafeArea(
+        top: false,
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(14, 16, 14, 28),
+          children: [
+            _ReportPetHeader(
+              report: report,
+              statusLabel: isFinalized ? 'FINALIZADO' : 'ACTIVO',
+              statusColor: statusColor,
+            ),
+            const SizedBox(height: 14),
+            _ReportSectionCard(
+              icon: Icons.description_outlined,
+              title: 'Información del reporte',
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _ReportInfoLine(
+                    icon: Icons.calendar_today_outlined,
+                    label: 'Fecha del reporte',
+                    value: report.createdDateText.isEmpty
+                        ? report.dateText
+                        : report.createdDateText,
+                  ),
+                  if (isFinalized)
+                    _ReportInfoLine(
+                      icon: Icons.event_available_outlined,
+                      label: 'Fecha de cierre',
+                      value: report.closedDateText.isEmpty
+                          ? report.dateText
+                          : report.closedDateText,
+                    ),
+                  const SizedBox(height: 12),
+                  const Text(
+                    'Descripción',
+                    style: TextStyle(fontWeight: FontWeight.w800),
+                  ),
+                  const SizedBox(height: 5),
+                  Text(
+                    report.description,
+                    style: const TextStyle(
+                      color: Color(0xFF5E6F66),
+                      height: 1.4,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 14),
+            _ReportSectionCard(
+              icon: Icons.location_on_outlined,
+              title: 'Última ubicación reportada',
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(16),
+                    child: SizedBox(
+                      height: 175,
+                      child: _ReportLocationMap(
+                        position: report.position,
+                        interactive: false,
+                        mapBuilder: mapBuilder,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  const _ReportInfoLine(
+                    icon: Icons.pin_drop_outlined,
+                    label: 'Ubicación',
+                    value: 'Punto marcado en el mapa',
+                  ),
+                  if (report.reference.trim().isNotEmpty)
+                    _ReportInfoLine(
+                      icon: Icons.notes_outlined,
+                      label: 'Referencia adicional',
+                      value: report.reference.trim(),
+                    ),
+                  const SizedBox(height: 8),
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      key: const ValueKey('open-report-location'),
+                      onPressed: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => ReportLocationViewPage(
+                            position: report.position,
+                            mapBuilder: mapBuilder,
+                          ),
+                        ),
+                      ),
+                      icon: const Icon(Icons.map_outlined),
+                      label: const Text('Ver ubicación en mapa'),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 14),
+            _ReportSectionCard(
+              icon: Icons.photo_library_outlined,
+              title: 'Fotos de la mascota',
+              child: photos.isEmpty
+                  ? const Text(
+                      'Esta mascota no tiene fotos disponibles.',
+                      style: TextStyle(color: Color(0xFF65756C)),
+                    )
+                  : Column(
+                      children: [
+                        SizedBox(
+                          height: 92,
+                          child: ListView.separated(
+                            scrollDirection: Axis.horizontal,
+                            itemCount: photos.length.clamp(0, 5),
+                            separatorBuilder: (_, _) =>
+                                const SizedBox(width: 9),
+                            itemBuilder: (context, index) =>
+                                _ReportPhotoThumbnail(
+                                  key: ValueKey('report-preview-photo-$index'),
+                                  url: photos[index],
+                                  isPrincipal: index == 0,
+                                  onTap: () => Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (_) => ReportPhotoViewerPage(
+                                        photos: photos,
+                                        initialIndex: index,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        SizedBox(
+                          width: double.infinity,
+                          child: FilledButton.icon(
+                            key: const ValueKey('open-report-gallery'),
+                            onPressed: () => Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) =>
+                                    ReportPhotoGalleryPage(photos: photos),
+                              ),
+                            ),
+                            icon: const Icon(Icons.grid_view_rounded),
+                            label: Text(
+                              'Ver todas las fotos (${photos.length})',
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+            ),
+            if (report.isOwner) ...[
+              const SizedBox(height: 14),
+              Container(
+                padding: const EdgeInsets.all(15),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFE7F4EB),
+                  borderRadius: BorderRadius.circular(18),
+                  border: Border.all(color: const Color(0xFFB9DCC5)),
+                ),
+                child: const Row(
+                  children: [
+                    Icon(
+                      Icons.verified_user_outlined,
+                      color: Color(0xFF357552),
+                    ),
+                    SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        'Este reporte es tuyo',
+                        style: TextStyle(fontWeight: FontWeight.w800),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ] else if (!isFinalized) ...[
+              const SizedBox(height: 14),
+              _ReportSectionCard(
+                icon: Icons.contact_phone_outlined,
+                title: 'Contacto del dueño',
+                child: report.showContact
+                    ? _OwnerContactCard(report: report)
+                    : const Text(
+                        'El dueño no ha habilitado contacto directo para este reporte.',
+                        style: TextStyle(
+                          color: Color(0xFF65756C),
+                          height: 1.35,
+                        ),
+                      ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ReportPetHeader extends StatelessWidget {
+  const _ReportPetHeader({
+    required this.report,
+    required this.statusLabel,
+    required this.statusColor,
+  });
+
+  final MapReport report;
+  final String statusLabel;
+  final Color statusColor;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(22),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x16000000),
+            blurRadius: 14,
+            offset: Offset(0, 5),
+          ),
+        ],
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(18),
+            child: SizedBox(
+              width: 112,
+              height: 112,
+              child: report.imageUrl == null
+                  ? const ColoredBox(
+                      color: Color(0xFFE5F1E8),
+                      child: Icon(
+                        Icons.pets,
+                        size: 48,
+                        color: Color(0xFF478061),
+                      ),
+                    )
+                  : Image.network(
+                      report.imageUrl!,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, _, _) => const ColoredBox(
+                        color: Color(0xFFE5F1E8),
+                        child: Icon(Icons.pets, size: 48),
+                      ),
+                    ),
+            ),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  report.petName,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Color(0xFF344955),
+                    fontSize: 23,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                const SizedBox(height: 5),
+                Text(
+                  report.details,
+                  maxLines: 3,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(color: Color(0xFF65756C), height: 1.3),
+                ),
+                const SizedBox(height: 10),
+                _StatusChip(text: statusLabel, color: statusColor),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ReportSectionCard extends StatelessWidget {
+  const _ReportSectionCard({
+    required this.icon,
+    required this.title,
+    required this.child,
+  });
+
+  final IconData icon;
+  final String title;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: const Color(0xFFE1EAE4)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, color: const Color(0xFF3F9568)),
+              const SizedBox(width: 9),
+              Expanded(
+                child: Text(
+                  title,
+                  style: const TextStyle(
+                    color: Color(0xFF344955),
+                    fontSize: 16,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          child,
+        ],
+      ),
+    );
+  }
+}
+
+class _ReportInfoLine extends StatelessWidget {
+  const _ReportInfoLine({
+    required this.icon,
+    required this.label,
+    required this.value,
+  });
+
+  final IconData icon;
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 9),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, size: 18, color: const Color(0xFF5C8870)),
+          const SizedBox(width: 9),
+          Expanded(
+            child: Text.rich(
+              TextSpan(
+                style: const TextStyle(color: Color(0xFF5E6F66), height: 1.35),
+                children: [
+                  TextSpan(
+                    text: '$label: ',
+                    style: const TextStyle(fontWeight: FontWeight.w800),
+                  ),
+                  TextSpan(text: value),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ReportLocationMap extends StatelessWidget {
+  const _ReportLocationMap({
+    required this.position,
+    required this.interactive,
+    this.mapBuilder,
+  });
+
+  final LatLng position;
+  final bool interactive;
+  final ReportMapBuilder? mapBuilder;
+
+  @override
+  Widget build(BuildContext context) {
+    if (mapBuilder != null) return mapBuilder!(context, position, interactive);
+    return GoogleMap(
+      initialCameraPosition: CameraPosition(target: position, zoom: 16),
+      markers: {
+        Marker(markerId: const MarkerId('report-location'), position: position),
+      },
+      liteModeEnabled: !interactive,
+      compassEnabled: interactive,
+      mapToolbarEnabled: false,
+      myLocationButtonEnabled: false,
+      scrollGesturesEnabled: interactive,
+      zoomGesturesEnabled: interactive,
+      rotateGesturesEnabled: interactive,
+      tiltGesturesEnabled: interactive,
+      zoomControlsEnabled: interactive,
+    );
+  }
+}
+
+class ReportLocationViewPage extends StatelessWidget {
+  const ReportLocationViewPage({
+    super.key,
+    required this.position,
+    this.mapBuilder,
+    this.title = 'Última ubicación reportada',
+  });
+
+  final LatLng position;
+  final ReportMapBuilder? mapBuilder;
+  final String title;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(title),
+        backgroundColor: const Color(0xFF3F9568),
+        foregroundColor: Colors.white,
+      ),
+      body: _ReportLocationMap(
+        position: position,
+        interactive: true,
+        mapBuilder: mapBuilder,
+      ),
+    );
+  }
+}
+
+class _ReportPhotoThumbnail extends StatelessWidget {
+  const _ReportPhotoThumbnail({
+    super.key,
+    required this.url,
+    required this.isPrincipal,
+    required this.onTap,
+    this.fillCell = false,
+    this.headers,
+  });
+
+  final String url;
+  final bool isPrincipal;
+  final VoidCallback onTap;
+  final bool fillCell;
+  final Map<String, String>? headers;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      label: isPrincipal ? 'Foto principal' : 'Foto de mascota',
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: SizedBox(
+          width: fillCell ? double.infinity : 92,
+          height: fillCell ? double.infinity : 92,
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(13),
+                child: Image.network(
+                  url,
+                  headers: headers,
+                  cacheWidth: fillCell ? 360 : 240,
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, _, _) => const ColoredBox(
+                    color: Color(0xFFE6ECE8),
+                    child: Icon(Icons.broken_image_outlined),
+                  ),
+                ),
+              ),
+              if (isPrincipal)
+                const Positioned(
+                  left: 5,
+                  bottom: 5,
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: Color(0xDD2E7651),
+                      borderRadius: BorderRadius.all(Radius.circular(8)),
+                    ),
+                    child: Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                      child: Text(
+                        'Principal',
+                        style: TextStyle(color: Colors.white, fontSize: 9),
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class ReportPhotoGalleryPage extends StatelessWidget {
+  const ReportPhotoGalleryPage({super.key, required this.photos, this.headers});
+
+  final List<String> photos;
+  final Map<String, String>? headers;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text('Todas las fotos (${photos.length})'),
+        backgroundColor: const Color(0xFFDFF3E8),
+      ),
+      body: GridView.builder(
+        key: const ValueKey('read-only-report-gallery'),
+        padding: const EdgeInsets.all(10),
+        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: 3,
+          crossAxisSpacing: 7,
+          mainAxisSpacing: 7,
+        ),
+        itemCount: photos.length,
+        itemBuilder: (context, index) => _ReportPhotoThumbnail(
+          key: ValueKey('report-gallery-photo-$index'),
+          url: photos[index],
+          isPrincipal: index == 0,
+          fillCell: true,
+          headers: headers,
+          onTap: () => Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => ReportPhotoViewerPage(
+                photos: photos,
+                initialIndex: index,
+                headers: headers,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class ReportPhotoViewerPage extends StatefulWidget {
+  const ReportPhotoViewerPage({
+    super.key,
+    required this.photos,
+    required this.initialIndex,
+    this.headers,
+  });
+
+  final List<String> photos;
+  final int initialIndex;
+  final Map<String, String>? headers;
+
+  @override
+  State<ReportPhotoViewerPage> createState() => _ReportPhotoViewerPageState();
+}
+
+class _ReportPhotoViewerPageState extends State<ReportPhotoViewerPage> {
+  late final PageController _controller = PageController(
+    initialPage: widget.initialIndex,
+  );
+  late int _index = widget.initialIndex;
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      appBar: AppBar(
+        backgroundColor: Colors.black,
+        foregroundColor: Colors.white,
+        title: Text('${_index + 1} de ${widget.photos.length}'),
+      ),
+      body: PageView.builder(
+        key: const ValueKey('report-photo-viewer'),
+        controller: _controller,
+        itemCount: widget.photos.length,
+        onPageChanged: (index) => setState(() => _index = index),
+        itemBuilder: (_, index) => InteractiveViewer(
+          minScale: 0.8,
+          maxScale: 4,
+          child: Center(
+            child: Image.network(
+              widget.photos[index],
+              headers: widget.headers,
+              fit: BoxFit.contain,
+              errorBuilder: (_, _, _) => const Icon(
+                Icons.broken_image_outlined,
+                color: Colors.white,
+                size: 64,
+              ),
+            ),
+          ),
         ),
       ),
     );

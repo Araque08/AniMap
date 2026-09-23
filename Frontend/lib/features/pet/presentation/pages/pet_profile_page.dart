@@ -2,17 +2,25 @@ import 'package:flutter/material.dart';
 
 import '../../../../widgets/bottom_menu_animap.dart';
 import '../../../../widgets/top_menu_animap.dart';
+import '../../../map/presentation/pages/map_page.dart';
 import '../../data/mascotas_service.dart';
 import 'register_pet_page.dart';
+
+typedef PetProfileLoader = Future<PetProfile> Function(int mascotaId);
+typedef PetDeleteAction = Future<void> Function(int mascotaId);
 
 class PetProfilePage extends StatefulWidget {
   final int mascotaId;
   final bool mostrarAccionesDueno;
+  final PetProfileLoader? profileLoader;
+  final PetDeleteAction? deleteAction;
 
   const PetProfilePage({
     super.key,
     required this.mascotaId,
     this.mostrarAccionesDueno = true,
+    this.profileLoader,
+    this.deleteAction,
   });
 
   @override
@@ -25,8 +33,12 @@ class _PetProfilePageState extends State<PetProfilePage> {
   @override
   void initState() {
     super.initState();
-    _futurePet = _getPetProfile(widget.mascotaId);
+    _futurePet = _loadPetProfile();
   }
+
+  Future<PetProfile> _loadPetProfile() =>
+      widget.profileLoader?.call(widget.mascotaId) ??
+      _getPetProfile(widget.mascotaId);
 
   Future<PetProfile> _getPetProfile(int mascotaId) async {
     final Map<String, dynamic> mascota =
@@ -61,106 +73,47 @@ class _PetProfilePageState extends State<PetProfilePage> {
 
     if (result == true) {
       setState(() {
-        _futurePet = _getPetProfile(widget.mascotaId);
+        _futurePet = _loadPetProfile();
       });
     }
   }
 
   Future<void> _confirmDeletePet(PetProfile pet) async {
-    final TextEditingController controller = TextEditingController();
-
     final bool? confirm = await showDialog<bool>(
       context: context,
       barrierDismissible: false,
-      builder: (dialogContext) {
-        return AlertDialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(18),
-          ),
-          title: const Text(
-            'Eliminar mascota',
-            style: TextStyle(fontWeight: FontWeight.w900),
-          ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Para eliminar a ${pet.nombre}, escribe exactamente su nombre.',
-                style: const TextStyle(fontSize: 14, height: 1.25),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: controller,
-                autofocus: true,
-                decoration: InputDecoration(
-                  labelText: 'Nombre de la mascota',
-                  hintText: pet.nombre,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.of(dialogContext).pop(false);
-              },
-              child: const Text('Cancelar'),
-            ),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.red,
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
-              onPressed: () {
-                final typedName = controller.text.trim();
-                final realName = pet.nombre.trim();
-
-                if (typedName != realName) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text(
-                        'El nombre no coincide. No se inactivó la mascota.',
-                      ),
-                    ),
-                  );
-                  return;
-                }
-
-                Navigator.of(dialogContext).pop(true);
-              },
-              child: const Text('Eliminar'),
-            ),
-          ],
-        );
-      },
+      builder: (_) => _DeletePetDialog(
+        petName: pet.nombre,
+        onDelete: () => widget.deleteAction?.call(pet.id) ??
+            MascotasService.eliminarMascota(mascotaId: pet.id),
+      ),
     );
 
     if (confirm != true) return;
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Mascota eliminada correctamente')),
+    );
+    Navigator.pop(context, true);
+  }
 
-    try {
-      await MascotasService.eliminarMascota(mascotaId: pet.id);
-
-      if (!mounted) return;
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Mascota inactivada correctamente')),
-      );
-
-      Navigator.pop(context, true);
-    } catch (error) {
-      if (!mounted) return;
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error inactivando mascota: $error')),
-      );
-    }
+  void _openGallery(List<String> gallery, {int initialIndex = 0}) {
+    if (gallery.isEmpty) return;
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => initialIndex == 0
+            ? ReportPhotoGalleryPage(
+                photos: gallery,
+                headers: MascotasService.authHeaders,
+              )
+            : ReportPhotoViewerPage(
+                photos: gallery,
+                initialIndex: initialIndex,
+                headers: MascotasService.authHeaders,
+              ),
+      ),
+    );
   }
 
   String _buildImageUrl(String? value) {
@@ -253,7 +206,7 @@ class _PetProfilePageState extends State<PetProfilePage> {
                     'No se pudo cargar el perfil de la mascota\n${snapshot.error}',
                 onRetry: () {
                   setState(() {
-                    _futurePet = _getPetProfile(widget.mascotaId);
+                    _futurePet = _loadPetProfile();
                   });
                 },
               );
@@ -264,7 +217,7 @@ class _PetProfilePageState extends State<PetProfilePage> {
                 message: 'No se encontró información de la mascota',
                 onRetry: () {
                   setState(() {
-                    _futurePet = _getPetProfile(widget.mascotaId);
+                    _futurePet = _loadPetProfile();
                   });
                 },
               );
@@ -274,7 +227,11 @@ class _PetProfilePageState extends State<PetProfilePage> {
 
             final mainImage = _buildImageUrl(pet.mainPhotoUrl);
 
-            final gallery = pet.photos
+            final orderedPhotos = [
+              ...pet.photos.where((photo) => photo.esPrincipal),
+              ...pet.photos.where((photo) => !photo.esPrincipal),
+            ];
+            final gallery = orderedPhotos
                 .map((photo) => _buildImageUrl(photo.urlPreview))
                 .where((url) => url.isNotEmpty)
                 .toList();
@@ -349,7 +306,7 @@ class _PetProfilePageState extends State<PetProfilePage> {
                                         width: 132,
                                         height: 132,
                                         fit: BoxFit.cover,
-                                        errorBuilder: (_, __, ___) {
+                                        errorBuilder: (_, _, _) {
                                           return const Icon(
                                             Icons.pets,
                                             size: 70,
@@ -425,7 +382,12 @@ class _PetProfilePageState extends State<PetProfilePage> {
 
                         const SizedBox(height: 8),
 
-                        _GalleryRow(gallery: gallery),
+                        _GalleryRow(
+                          gallery: gallery,
+                          onOpenAll: () => _openGallery(gallery),
+                          onOpenPhoto: (index) =>
+                              _openGallery(gallery, initialIndex: index),
+                        ),
 
                         if (widget.mostrarAccionesDueno) ...[
                           const SizedBox(height: 20),
@@ -574,9 +536,9 @@ class PetProfile {
     if (rawPhotos is! List) return [];
 
     return rawPhotos
-        .where((item) => item is Map)
+        .whereType<Map>()
         .map(
-          (item) => PetPhoto.fromJson(Map<String, dynamic>.from(item as Map)),
+          (item) => PetPhoto.fromJson(Map<String, dynamic>.from(item)),
         )
         .toList();
   }
@@ -848,8 +810,14 @@ class _PetInfoCard extends StatelessWidget {
 
 class _GalleryRow extends StatelessWidget {
   final List<String> gallery;
+  final VoidCallback onOpenAll;
+  final ValueChanged<int> onOpenPhoto;
 
-  const _GalleryRow({required this.gallery});
+  const _GalleryRow({
+    required this.gallery,
+    required this.onOpenAll,
+    required this.onOpenPhoto,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -868,56 +836,191 @@ class _GalleryRow extends StatelessWidget {
       );
     }
 
-    final visibleImages = gallery.take(4).toList();
-    final remaining = gallery.length - visibleImages.length;
+    final hasMore = gallery.length > 4;
+    final previewCount = hasMore ? 3 : gallery.length;
+    final remaining = gallery.length - previewCount;
 
     return SizedBox(
       height: 66,
       child: Row(
         children: [
-          for (int i = 0; i < visibleImages.length; i++)
+          for (int i = 0; i < previewCount; i++)
             Expanded(
               child: Padding(
                 padding: EdgeInsets.only(
-                  right: i == visibleImages.length - 1 ? 0 : 8,
+                  right: !hasMore && i == previewCount - 1 ? 0 : 8,
                 ),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(4),
-                  child: Stack(
-                    fit: StackFit.expand,
-                    children: [
-                      Image.network(
-                        visibleImages[i],
-                        headers: MascotasService.authHeaders,
-                        fit: BoxFit.cover,
-                        errorBuilder: (_, __, ___) {
-                          return Container(
-                            color: Colors.white,
-                            child: const Icon(
-                              Icons.pets,
-                              color: Color(0xFF4D9B6A),
-                            ),
-                          );
-                        },
-                      ),
-                      if (i == visibleImages.length - 1 && remaining > 0)
-                        Container(
-                          color: Colors.white.withOpacity(0.75),
-                          alignment: Alignment.center,
-                          child: Text(
-                            '+$remaining',
-                            style: const TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.w900,
-                              color: Colors.black87,
+                child: InkWell(
+                  key: ValueKey('pet-gallery-preview-$i'),
+                  onTap: () => onOpenPhoto(i),
+                  borderRadius: BorderRadius.circular(8),
+                  child: _PetGalleryImage(url: gallery[i]),
+                ),
+              ),
+            ),
+          if (hasMore)
+            Expanded(
+              child: Semantics(
+                button: true,
+                label: 'Ver $remaining fotos más',
+                child: InkWell(
+                  key: const ValueKey('pet-gallery-more'),
+                  onTap: onOpenAll,
+                  borderRadius: BorderRadius.circular(8),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        _PetGalleryImage(url: gallery[previewCount]),
+                        ColoredBox(
+                          color: const Color(0xBFFFFFFF),
+                          child: Center(
+                            child: Text(
+                              '+$remaining',
+                              key: const ValueKey('pet-gallery-more-count'),
+                              style: const TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.w900,
+                                color: Colors.black87,
+                              ),
                             ),
                           ),
                         ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
               ),
             ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PetGalleryImage extends StatelessWidget {
+  const _PetGalleryImage({required this.url});
+
+  final String url;
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(8),
+      child: Image.network(
+        url,
+        headers: MascotasService.authHeaders,
+        fit: BoxFit.cover,
+        cacheWidth: 240,
+        errorBuilder: (_, _, _) => const ColoredBox(
+          color: Colors.white,
+          child: Icon(Icons.pets, color: Color(0xFF4D9B6A)),
+        ),
+      ),
+    );
+  }
+}
+
+class _DeletePetDialog extends StatefulWidget {
+  const _DeletePetDialog({required this.petName, required this.onDelete});
+
+  final String petName;
+  final Future<void> Function() onDelete;
+
+  @override
+  State<_DeletePetDialog> createState() => _DeletePetDialogState();
+}
+
+class _DeletePetDialogState extends State<_DeletePetDialog> {
+  bool _processing = false;
+  String? _error;
+
+  Future<void> _delete() async {
+    if (_processing) return;
+    setState(() {
+      _processing = true;
+      _error = null;
+    });
+    try {
+      await widget.onDelete();
+      if (mounted) Navigator.pop(context, true);
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _processing = false;
+        _error = 'No se pudo eliminar la mascota. Inténtalo nuevamente.';
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return PopScope(
+      canPop: !_processing,
+      child: AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+        title: const Text(
+          '¿Eliminar mascota?',
+          style: TextStyle(fontWeight: FontWeight.w900),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text.rich(
+              TextSpan(
+                style: const TextStyle(
+                  color: Color(0xFF263238),
+                  fontSize: 15,
+                  height: 1.35,
+                ),
+                children: [
+                  const TextSpan(text: 'Estás a punto de eliminar a '),
+                  TextSpan(
+                    text: widget.petName,
+                    style: const TextStyle(fontWeight: FontWeight.w900),
+                  ),
+                  const TextSpan(text: ' de tu cuenta.'),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+            const Text(
+              'Esta acción no se puede deshacer.',
+              style: TextStyle(
+                color: Color(0xFFC62828),
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            if (_error != null) ...[
+              const SizedBox(height: 12),
+              Text(_error!, style: const TextStyle(color: Colors.red)),
+            ],
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: _processing ? null : () => Navigator.pop(context, false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            key: const ValueKey('confirm-delete-pet'),
+            onPressed: _processing ? null : _delete,
+            style: FilledButton.styleFrom(
+              backgroundColor: Colors.red,
+              foregroundColor: Colors.white,
+            ),
+            child: _processing
+                ? const SizedBox.square(
+                    dimension: 18,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Colors.white,
+                    ),
+                  )
+                : const Text('Eliminar'),
+          ),
         ],
       ),
     );

@@ -1,22 +1,12 @@
 import 'dart:convert';
-import 'package:http/http.dart' as http;
-import '../../auth/data/auth_service.dart';
+import '../../auth/data/authenticated_http_client.dart';
 
 class CatalogosService {
   static const String baseUrl = 'http://10.0.2.2:3000/api/pets';
 
-  static Map<String, String> get _authHeaders {
-    final token = AuthService.accessToken;
-    if (token == null || token.isEmpty) {
-      throw StateError('No hay una sesión autenticada');
-    }
-    return {'Authorization': 'Bearer $token'};
-  }
-
   static Future<List<Map<String, dynamic>>> obtenerEspecies() async {
-    final response = await http.get(
+    final response = await AuthenticatedHttpClient.instance.get(
       Uri.parse('$baseUrl/especies'),
-      headers: _authHeaders,
     );
 
     if (response.statusCode != 200) {
@@ -33,9 +23,8 @@ class CatalogosService {
   }
 
   static Future<List<Map<String, dynamic>>> obtenerRazas(int especieId) async {
-    final response = await http.get(
+    final response = await AuthenticatedHttpClient.instance.get(
       Uri.parse('$baseUrl/razas/$especieId'),
-      headers: _authHeaders,
     );
 
     if (response.statusCode != 200) {
@@ -52,9 +41,8 @@ class CatalogosService {
   }
 
   static Future<List<Map<String, dynamic>>> obtenerSexos() async {
-    final response = await http.get(
+    final response = await AuthenticatedHttpClient.instance.get(
       Uri.parse('$baseUrl/sexos'),
-      headers: _authHeaders,
     );
 
     if (response.statusCode != 200) {

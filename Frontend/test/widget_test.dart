@@ -1,5 +1,7 @@
 import 'package:animap/app.dart';
 import 'package:animap/features/auth/data/auth_service.dart';
+import 'package:animap/features/auth/data/session_manager.dart';
+import 'package:animap/features/auth/data/session_storage.dart';
 import 'package:animap/features/auth/presentation/pages/login_page.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -9,6 +11,9 @@ class _UnverifiedAccountAuthService extends AuthService {
   String? resendEmail;
   String? verificationEmail;
   String? verificationCode;
+
+  @override
+  Future<String> getDeviceId() async => 'test-device';
 
   @override
   Future<Map<String, dynamic>> login({
@@ -47,7 +52,11 @@ void main() {
     await tester.binding.setSurfaceSize(const Size(1080, 2400));
     addTearDown(() => tester.binding.setSurfaceSize(null));
 
-    await tester.pumpWidget(const AniMapApp());
+    await tester.pumpWidget(
+      AniMapApp(
+        sessionManager: SessionManager(storage: _MemorySessionStorage()),
+      ),
+    );
     await tester.pumpAndSettle();
 
     expect(find.text('Iniciar Sesión'), findsWidgets);
@@ -103,4 +112,17 @@ void main() {
       expect(find.byType(LoginPage), findsOneWidget);
     },
   );
+}
+
+class _MemorySessionStorage implements SessionStorage {
+  final Map<String, String> values = {};
+
+  @override
+  Future<void> delete(String key) async => values.remove(key);
+
+  @override
+  Future<String?> read(String key) async => values[key];
+
+  @override
+  Future<void> write(String key, String value) async => values[key] = value;
 }
