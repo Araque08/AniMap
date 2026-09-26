@@ -82,7 +82,7 @@ class ActiveSessionData {
 }
 
 class AccountSettingsService {
-  static const String _baseUrl = 'http://172.20.8.104:3000';
+  static const String _baseUrl = 'http://192.168.0.6:3000';
 
   static Future<NotificationPreferencesData> loadPreferences() async {
     final response = await AuthenticatedHttpClient.instance.get(

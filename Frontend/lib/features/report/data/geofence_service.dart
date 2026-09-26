@@ -38,7 +38,7 @@ class GeofenceCheckResult {
 }
 
 class GeofenceService {
-  static const _url = 'http://172.20.8.104:3000/api/geofence/check';
+  static const _url = 'http://192.168.0.6:3000/api/geofence/check';
 
   static Future<GeofenceCheckResult> check(double lat, double lng) async {
     try {

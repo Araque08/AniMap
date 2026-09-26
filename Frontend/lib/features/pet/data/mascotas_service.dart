@@ -5,8 +5,8 @@ import '../../auth/data/authenticated_http_client.dart';
 import '../../auth/data/session_manager.dart';
 
 class MascotasService {
-  static const String baseUrl = 'http://172.20.8.104:3000/api/pets';
-  static const String originUrl = 'http://172.20.8.104:3000';
+  static const String baseUrl = 'http://192.168.0.6:3000/api/pets';
+  static const String originUrl = 'http://192.168.0.6:3000';
 
   static Map<String, String> get authHeaders {
     final token = SessionManager.instance.accessToken;

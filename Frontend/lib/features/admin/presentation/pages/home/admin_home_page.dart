@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../../auth/data/session_manager.dart';
 import '../../../../auth/presentation/session_navigation.dart';
 import '../faq/admin_faq_page.dart';
+import '../users/admin_users_page.dart';
 
 class AdminHomePage extends StatelessWidget {
   final SessionManager? sessionManager;
@@ -234,10 +235,19 @@ class AdminHomePage extends StatelessWidget {
               subtitle:
               'Consulta y administra los usuarios registrados en AniMap.',
               icon: Icons.people_alt_outlined,
-              iconBackground: const Color(0xFFEAF1F8),
-              iconColor: const Color(0xFF4779A8),
-              status: 'Próximamente',
-              onTap: null,
+              iconBackground:
+              const Color(0xFFEAF1F8),
+              iconColor:
+              const Color(0xFF4779A8),
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) =>
+                    const AdminUsersPage(),
+                  ),
+                );
+              },
             ),
 
             const SizedBox(height: 14),

@@ -23,6 +23,7 @@ const geofenceRoutes = require('../modules/geofence/geofence.routes');
 const geocodingRoutes = require('../modules/geocoding/geocoding.routes');
 const notificationPreferencesRoutes = require('../modules/notification-preferences/notification-preferences.routes');
 const faqRoutes = require('../modules/faq/faq.routes');
+const usersRoutes = require('../modules/users/users.routes');
 
 /*
   Aquí creo el router principal de Express.
@@ -77,6 +78,7 @@ router.use('/geofence', geofenceRoutes);
 router.use('/geocoding', geocodingRoutes);
 router.use('/notification-preferences', notificationPreferencesRoutes);
 router.use('/faqs', faqRoutes);
+router.use('/users', usersRoutes);
 
 /*
   Exporto el router principal para que app.js lo pueda montar en /api.

@@ -15,7 +15,7 @@ class ProfileException implements Exception {
 }
 
 class ProfileService {
-  static const String baseUrl = 'http://172.20.8.104:3000';
+  static const String baseUrl = 'http://192.168.0.6:3000';
 
   static Future<Map<String, dynamic>> obtenerPerfil() async {
     final url = Uri.parse('$baseUrl/api/profile');
@@ -126,7 +126,7 @@ class ProfileService {
   static String? absolutePhotoUrl(dynamic value) {
     final path = value?.toString().trim() ?? '';
     if (path.isEmpty) return null;
-    return path.startsWith('http') ? path : 'http://172.20.8.104:3000$path';
+    return path.startsWith('http') ? path : 'http://192.168.0.6:3000$path';
   }
 
   static Map<String, dynamic> _decodeResponse(http.Response response) {

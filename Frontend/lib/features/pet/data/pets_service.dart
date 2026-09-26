@@ -3,7 +3,7 @@ import '../../auth/data/authenticated_http_client.dart';
 import '../../auth/data/session_manager.dart';
 
 class PetsService {
-  static const String baseUrl = 'http://172.20.8.104:3000/api';
+  static const String baseUrl = 'http://192.168.0.6:3000/api';
 
   static Map<String, String> get authHeaders {
     final token = SessionManager.instance.accessToken;
