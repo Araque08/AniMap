@@ -144,31 +144,24 @@ async function restaurarImagenMascotaMongo(documento) {
   await collection.replaceOne({ _id: documento._id }, documento, { upsert: true });
 }
 
-async function inactivarImagenesMascotaMongo({ mascotaId, usuarioId }) {
+async function eliminarImagenesMascotaMongo({ mascotaId, usuarioId }) {
   const collection = await getCollection();
+
   const filter = {
     mascotaIdPg: Number(mascotaId),
     usuarioIdPg: Number(usuarioId),
-    estado: { $ne: 'INACTIVA' },
   };
-  const documentos = await collection.find(filter).project({ _id: 1 }).toArray();
-  const result = await collection.updateMany(filter, {
-    $set: { estado: 'INACTIVA', updatedAt: new Date() },
-  });
-  return {
-    matchedCount: result.matchedCount,
-    modifiedCount: result.modifiedCount,
-    ids: documentos.map((item) => item._id),
-  };
-}
 
-async function reactivarImagenesMascotaMongo(ids) {
-  if (!ids.length) return;
-  const collection = await getCollection();
-  await collection.updateMany(
-    { _id: { $in: ids } },
-    { $set: { estado: 'ACTIVA', updatedAt: new Date() } }
-  );
+  // Guardamos los documentos antes de eliminarlos por si ocurre
+  // un error posteriormente y necesitamos restaurarlos.
+  const documentos = await collection.find(filter).toArray();
+
+  const result = await collection.deleteMany(filter);
+
+  return {
+    deletedCount: result.deletedCount,
+    documentos,
+  };
 }
 
 module.exports = {
@@ -177,8 +170,7 @@ module.exports = {
   establecerPrincipalMongo,
   findActivePetImages,
   guardarImagenesMascota,
-  inactivarImagenesMascotaMongo,
-  reactivarImagenesMascotaMongo,
+  eliminarImagenesMascotaMongo,
   restaurarImagenMascotaMongo,
   restaurarPrincipalesMongo,
 };

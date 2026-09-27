@@ -11,8 +11,7 @@ const {
   establecerPrincipalMongo,
   findActivePetImages,
   guardarImagenesMascota,
-  inactivarImagenesMascotaMongo,
-  reactivarImagenesMascotaMongo,
+  eliminarImagenesMascotaMongo,
   restaurarImagenMascotaMongo,
   restaurarPrincipalesMongo,
 } = require('./pets.images.repository');
@@ -857,46 +856,115 @@ router.put('/:id', async (req, res) => {
   }
 });
 
-// =====================================================
-// DELETE /api/pets/:id
-// Elimina lógicamente una mascota.
-// PostgreSQL y MongoDB cambian su estado a INACTIVA.
-// =====================================================
 router.delete('/:id', async (req, res) => {
   const mascotaId = Number(req.params.id);
+
   if (!validPositiveInteger(mascotaId)) {
-    return res.status(400).json({ ok: false, message: 'ID de mascota inválido' });
+    return res.status(400).json({
+      ok: false,
+      message: 'ID de mascota inválido'
+    });
   }
+
   const client = await postgres.pool.connect();
-  let imagenesInactivadas = [];
+
+  let imagenesEliminadas = [];
+
   try {
     await client.query('BEGIN');
-    const mascota = await petBelongsToUser(client, mascotaId, req.auth.userId, true);
+
+    const mascota = await petBelongsToUser(
+      client,
+      mascotaId,
+      req.auth.userId,
+      true
+    );
+
     if (!mascota) {
       await client.query('ROLLBACK');
-      return res.status(404).json({ ok: false, message: 'Mascota no encontrada' });
+
+      return res.status(404).json({
+        ok: false,
+        message: 'Mascota no encontrada'
+      });
     }
+
     if (mascota.estado === 'INACTIVA') {
       await client.query('ROLLBACK');
-      return res.status(200).json({ ok: true, message: 'La mascota ya está inactiva' });
+
+      return res.status(200).json({
+        ok: true,
+        message: 'La mascota ya está inactiva'
+      });
     }
+
+    // =====================================================
+    // 1. Cambiar estado de la mascota en PostgreSQL
+    // =====================================================
     await client.query(
-      `UPDATE mascota SET estado='INACTIVA', actualizado_en=NOW()
-       WHERE id=$1 AND fk_usuario=$2`,
+      `
+      UPDATE mascota
+      SET estado = 'INACTIVA',
+          actualizado_en = NOW()
+      WHERE id = $1
+        AND fk_usuario = $2
+      `,
       [mascotaId, req.auth.userId]
     );
-    const mongoResult = await inactivarImagenesMascotaMongo({
+
+    // =====================================================
+    // 2. Eliminar físicamente las imágenes de MongoDB
+    // =====================================================
+    const mongoResult = await eliminarImagenesMascotaMongo({
       mascotaId,
       usuarioId: req.auth.userId,
     });
-    imagenesInactivadas = mongoResult.ids;
+
+    // Guardamos copia por si necesitamos rollback manual
+    imagenesEliminadas = mongoResult.documentos;
+
+    // =====================================================
+    // 3. Confirmar PostgreSQL
+    // =====================================================
     await client.query('COMMIT');
-    return res.status(200).json({ ok: true, message: 'Mascota eliminada correctamente' });
+
+    return res.status(200).json({
+      ok: true,
+      message: 'Mascota eliminada correctamente',
+      imagenesEliminadas: mongoResult.deletedCount,
+    });
+
   } catch (error) {
+
+    // =====================================================
+    // ROLLBACK PostgreSQL
+    // =====================================================
     await client.query('ROLLBACK').catch(() => undefined);
-    await reactivarImagenesMascotaMongo(imagenesInactivadas).catch(() => undefined);
+
+    // =====================================================
+    // Restaurar imágenes MongoDB si habían sido eliminadas
+    // =====================================================
+    if (imagenesEliminadas.length > 0) {
+      try {
+        const collection = await getCollection();
+
+        await collection.insertMany(imagenesEliminadas);
+
+      } catch (mongoRollbackError) {
+        console.error(
+          'Error restaurando imágenes de MongoDB:',
+          mongoRollbackError
+        );
+      }
+    }
+
     console.error('Error eliminando mascota:', error);
-    return res.status(500).json({ ok: false, message: 'Error eliminando la mascota' });
+
+    return res.status(500).json({
+      ok: false,
+      message: 'Error eliminando la mascota'
+    });
+
   } finally {
     client.release();
   }
