@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
+import '../../../config/api_config.dart';
 import '../../auth/data/authenticated_http_client.dart';
 import '../../auth/data/session_manager.dart';
 
@@ -15,8 +16,7 @@ class ReportsException implements Exception {
 }
 
 class ReportsService {
-  static const String originUrl = 'http://192.168.0.6:3000';
-  static const String baseUrl = '$originUrl/api/reports';
+  static String get baseUrl => '${ApiConfig.current.baseUrl}/reports';
 
   static const Map<String, String> _headers = {
     'Content-Type': 'application/json',
@@ -120,7 +120,7 @@ class ReportsService {
   static String? imageUrl(Map<String, dynamic>? photo) {
     final path = photo?['url']?.toString();
     if (path == null || path.isEmpty) return null;
-    return path.startsWith('http') ? path : '$originUrl$path';
+    return ApiConfig.current.resolveUrl(path);
   }
 
   static Map<String, dynamic> _decode(http.Response response) {

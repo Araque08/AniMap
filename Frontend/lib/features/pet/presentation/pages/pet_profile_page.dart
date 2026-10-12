@@ -119,17 +119,7 @@ class _PetProfilePageState extends State<PetProfilePage> {
   String _buildImageUrl(String? value) {
     if (value == null || value.trim().isEmpty) return '';
 
-    final cleanValue = value.trim();
-
-    if (cleanValue.startsWith('http://') || cleanValue.startsWith('https://')) {
-      return cleanValue;
-    }
-
-    if (cleanValue.startsWith('/')) {
-      return '${MascotasService.originUrl}$cleanValue';
-    }
-
-    return '${MascotasService.originUrl}/$cleanValue';
+    return MascotasService.absoluteImageUrl(value);
   }
 
   Color _statusColor(String estado) {

@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
+import '../../../config/api_config.dart';
 import '../../auth/data/authenticated_http_client.dart';
 
 class AccountSettingsException implements Exception {
@@ -82,11 +83,11 @@ class ActiveSessionData {
 }
 
 class AccountSettingsService {
-  static const String _baseUrl = 'http://192.168.0.6:3000';
+  static String get _baseUrl => ApiConfig.current.baseUrl;
 
   static Future<NotificationPreferencesData> loadPreferences() async {
     final response = await AuthenticatedHttpClient.instance.get(
-      Uri.parse('$_baseUrl/api/notification-preferences'),
+      Uri.parse('$_baseUrl/notification-preferences'),
     );
     final body = _decode(response);
     _requireSuccess(response, body, expectedStatus: 200);
@@ -97,7 +98,7 @@ class AccountSettingsService {
     NotificationPreferencesData preferences,
   ) async {
     final response = await AuthenticatedHttpClient.instance.patch(
-      Uri.parse('$_baseUrl/api/notification-preferences'),
+      Uri.parse('$_baseUrl/notification-preferences'),
       headers: const {'Content-Type': 'application/json'},
       body: jsonEncode(preferences.toJson()),
     );
@@ -108,7 +109,7 @@ class AccountSettingsService {
 
   static Future<List<ActiveSessionData>> loadSessions() async {
     final response = await AuthenticatedHttpClient.instance.get(
-      Uri.parse('$_baseUrl/api/auth/sessions'),
+      Uri.parse('$_baseUrl/auth/sessions'),
     );
     final body = _decode(response);
     _requireSuccess(response, body, expectedStatus: 200);
@@ -126,7 +127,7 @@ class AccountSettingsService {
 
   static Future<void> revokeSession(int sessionId) async {
     final response = await AuthenticatedHttpClient.instance.post(
-      Uri.parse('$_baseUrl/api/auth/sessions/$sessionId/revoke'),
+      Uri.parse('$_baseUrl/auth/sessions/$sessionId/revoke'),
     );
     final body = _decode(response);
     _requireSuccess(response, body, expectedStatus: 200);

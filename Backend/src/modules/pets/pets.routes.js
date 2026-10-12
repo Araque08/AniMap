@@ -5,6 +5,7 @@ const { ObjectId } = require('mongodb');
 const postgres = require('../../config/postgres_db');
 const { getMongoDb } = require('../../config/mongo_db');
 const authMiddleware = require('../../middleware/auth.middleware');
+const { petDeletionRecovery } = require('./pets.deletion-recovery.service');
 const {
   eliminarImagenMascotaMongo,
   eliminarImagenesMascotaMongoPorIds,
@@ -868,7 +869,10 @@ router.delete('/:id', async (req, res) => {
 
   const client = await postgres.pool.connect();
 
-  let imagenesEliminadas = [];
+  let operationId;
+  let deletedCount = 0;
+  let deletionFailed = false;
+  let discardClient = false;
 
   try {
     await client.query('BEGIN');
@@ -897,7 +901,20 @@ router.delete('/:id', async (req, res) => {
         message: 'La mascota ya está inactiva'
       });
     }
-
+    const activeReport = await client.query(
+      `SELECT 1 FROM reporte
+       WHERE fk_mascota = $1 AND estado = 'ACTIVO'
+       LIMIT 1`,
+      [mascotaId]
+    );
+    if (activeReport.rowCount > 0) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({
+        ok: false,
+        code: 'ACTIVE_REPORT_EXISTS',
+        message: 'Finaliza el reporte activo antes de eliminar la mascota',
+      });
+    }
     // =====================================================
     // 1. Cambiar estado de la mascota en PostgreSQL
     // =====================================================
@@ -918,56 +935,33 @@ router.delete('/:id', async (req, res) => {
     const mongoResult = await eliminarImagenesMascotaMongo({
       mascotaId,
       usuarioId: req.auth.userId,
+      estadoOriginal: mascota.estado,
     });
-
-    // Guardamos copia por si necesitamos rollback manual
-    imagenesEliminadas = mongoResult.documentos;
+    operationId = mongoResult.operationId;
+    deletedCount = mongoResult.deletedCount;
 
     // =====================================================
     // 3. Confirmar PostgreSQL
     // =====================================================
     await client.query('COMMIT');
 
-    return res.status(200).json({
-      ok: true,
-      message: 'Mascota eliminada correctamente',
-      imagenesEliminadas: mongoResult.deletedCount,
-    });
-
   } catch (error) {
-
-    // =====================================================
-    // ROLLBACK PostgreSQL
-    // =====================================================
-    await client.query('ROLLBACK').catch(() => undefined);
-
-    // =====================================================
-    // Restaurar imágenes MongoDB si habían sido eliminadas
-    // =====================================================
-    if (imagenesEliminadas.length > 0) {
-      try {
-        const collection = await getCollection();
-
-        await collection.insertMany(imagenesEliminadas);
-
-      } catch (mongoRollbackError) {
-        console.error(
-          'Error restaurando imágenes de MongoDB:',
-          mongoRollbackError
-        );
-      }
-    }
-
-    console.error('Error eliminando mascota:', error);
-
-    return res.status(500).json({
-      ok: false,
-      message: 'Error eliminando la mascota'
-    });
-
+    deletionFailed = true;
+    operationId ||= error.operationId;
+    await client.query('ROLLBACK').catch(() => { discardClient = true; });
+    console.error('PET_PHOTO_DELETE_FAILED', { operationId });
   } finally {
-    client.release();
+    // Recovery uses a fresh connection to observe a committed/rolled-back PG state,
+    // including ambiguous COMMIT acknowledgments. Release this client first.
+    client.release(discardClient);
   }
+  const recovery = operationId ? await petDeletionRecovery.recover(operationId) : null;
+  if (deletionFailed || !recovery?.ok || recovery.outcome !== 'DELETED') {
+    return res.status(500).json({ ok: false, message: 'Error eliminando la mascota' });
+  }
+  return res.status(200).json({
+    ok: true, message: 'Mascota eliminada correctamente', imagenesEliminadas: deletedCount,
+  });
 });
 
 module.exports = router;

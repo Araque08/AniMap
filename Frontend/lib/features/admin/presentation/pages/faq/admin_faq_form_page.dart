@@ -317,7 +317,9 @@ class _AdminFaqFormPageState extends State<AdminFaqFormPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return PopScope(
+      canPop: !_saving,
+      child: Scaffold(
       backgroundColor: background,
 
       appBar: AppBar(
@@ -346,6 +348,7 @@ class _AdminFaqFormPageState extends State<AdminFaqFormPage> {
           : _error != null
           ? _buildError()
           : _buildForm(),
+      ),
     );
   }
 
@@ -786,7 +789,10 @@ class _AdminFaqFormPageState extends State<AdminFaqFormPage> {
                 ),
               ),
 
-              child: SwitchListTile(
+              child: Material(
+                color: Colors.transparent,
+                borderRadius: BorderRadius.circular(17),
+                child: SwitchListTile(
                 contentPadding:
                 const EdgeInsets.symmetric(
                   horizontal: 16,
@@ -854,6 +860,7 @@ class _AdminFaqFormPageState extends State<AdminFaqFormPage> {
                     fontSize: 12,
                   ),
                 ),
+              ),
               ),
             ),
 

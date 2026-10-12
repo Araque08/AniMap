@@ -447,7 +447,7 @@ class _PetPhotosManagementPageState extends State<PetPhotosManagementPage> {
   Widget _photoTile(_EditablePetPhoto photo, bool highlighted) {
     final image = photo.isExisting
         ? Image.network(
-            '${MascotasService.originUrl}${photo.url}',
+            MascotasService.absoluteImageUrl(photo.url ?? ''),
             headers: MascotasService.authHeaders,
             fit: BoxFit.cover,
             errorBuilder: (_, _, _) => const ColoredBox(

@@ -1,8 +1,9 @@
 import 'dart:convert';
+import '../../../config/api_config.dart';
 import '../../auth/data/authenticated_http_client.dart';
 
 class CatalogosService {
-  static const String baseUrl = 'http://192.168.0.6:3000/api/pets';
+  static String get baseUrl => '${ApiConfig.current.baseUrl}/pets';
 
   static Future<List<Map<String, dynamic>>> obtenerEspecies() async {
     final response = await AuthenticatedHttpClient.instance.get(

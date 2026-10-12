@@ -1,12 +1,15 @@
 import 'dart:convert';
+import '../../../config/api_config.dart';
 import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
 import '../../auth/data/authenticated_http_client.dart';
 import '../../auth/data/session_manager.dart';
 
 class MascotasService {
-  static const String baseUrl = 'http://192.168.0.6:3000/api/pets';
-  static const String originUrl = 'http://192.168.0.6:3000';
+  static String get baseUrl => '${ApiConfig.current.baseUrl}/pets';
+
+  static String absoluteImageUrl(String path) =>
+      ApiConfig.current.resolveUrl(path);
 
   static Map<String, String> get authHeaders {
     final token = SessionManager.instance.accessToken;
@@ -270,7 +273,7 @@ class MascotasService {
   }
 
   static Future<List<int>> descargarFoto(String url) async {
-    final uri = Uri.parse(url.startsWith('http') ? url : '$originUrl$url');
+    final uri = Uri.parse(absoluteImageUrl(url));
     final response = await AuthenticatedHttpClient.instance.get(uri);
     if (response.statusCode != 200 ||
         !(response.headers['content-type'] ?? '').startsWith('image/')) {

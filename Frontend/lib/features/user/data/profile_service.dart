@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
+import '../../../config/api_config.dart';
 import '../../auth/data/authenticated_http_client.dart';
 import '../../auth/data/session_manager.dart';
 import '../../pet/data/pet_image_selection.dart';
@@ -15,10 +16,10 @@ class ProfileException implements Exception {
 }
 
 class ProfileService {
-  static const String baseUrl = 'http://192.168.0.6:3000';
+  static String get baseUrl => ApiConfig.current.baseUrl;
 
   static Future<Map<String, dynamic>> obtenerPerfil() async {
-    final url = Uri.parse('$baseUrl/api/profile');
+    final url = Uri.parse('$baseUrl/profile');
 
     final response = await AuthenticatedHttpClient.instance.get(url);
 
@@ -41,7 +42,7 @@ class ProfileService {
     required String nombre,
     required String telefono,
   }) async {
-    final url = Uri.parse('$baseUrl/api/profile');
+    final url = Uri.parse('$baseUrl/profile');
 
     final response = await AuthenticatedHttpClient.instance.patch(
       url,
@@ -73,7 +74,7 @@ class ProfileService {
     ) async {
       final request = http.MultipartRequest(
         'POST',
-        Uri.parse('$baseUrl/api/profile/photo'),
+        Uri.parse('$baseUrl/profile/photo'),
       )..headers['Authorization'] = 'Bearer $token';
       request.files.add(
         await http.MultipartFile.fromPath(
@@ -126,7 +127,7 @@ class ProfileService {
   static String? absolutePhotoUrl(dynamic value) {
     final path = value?.toString().trim() ?? '';
     if (path.isEmpty) return null;
-    return path.startsWith('http') ? path : 'http://192.168.0.6:3000$path';
+    return ApiConfig.current.resolveUrl(path);
   }
 
   static Map<String, dynamic> _decodeResponse(http.Response response) {

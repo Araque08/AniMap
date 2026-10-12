@@ -1,5 +1,11 @@
 require('dotenv').config();
 
+function requiredSecret(name) {
+  const value = process.env[name];
+  if (!value?.trim()) throw new Error(`Falta la configuración requerida: ${name}`);
+  return value;
+}
+
 const env = {
   NODE_ENV: process.env.NODE_ENV || 'development',
   PORT: Number(process.env.PORT || 3000),
@@ -11,8 +17,8 @@ DB_PASSWORD: process.env.DB_PASSWORD,
 DB_NAME: process.env.DB_NAME || 'animap',
 DB_SSL: process.env.DB_SSL === 'true',
 
-  JWT_ACCESS_SECRET: process.env.JWT_ACCESS_SECRET || 'access-dev-secret',
-  JWT_REFRESH_SECRET: process.env.JWT_REFRESH_SECRET || 'refresh-dev-secret',
+  JWT_ACCESS_SECRET: requiredSecret('JWT_ACCESS_SECRET'),
+  JWT_REFRESH_SECRET: requiredSecret('JWT_REFRESH_SECRET'),
   ACCESS_TOKEN_TTL: process.env.ACCESS_TOKEN_TTL || '30m',
   REFRESH_TOKEN_TTL_DAYS: Number(process.env.REFRESH_TOKEN_TTL_DAYS || 7),
 

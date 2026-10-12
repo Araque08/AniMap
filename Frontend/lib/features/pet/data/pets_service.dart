@@ -1,9 +1,10 @@
 import 'dart:convert';
+import '../../../config/api_config.dart';
 import '../../auth/data/authenticated_http_client.dart';
 import '../../auth/data/session_manager.dart';
 
 class PetsService {
-  static const String baseUrl = 'http://192.168.0.6:3000/api';
+  static String get baseUrl => ApiConfig.current.baseUrl;
 
   static Map<String, String> get authHeaders {
     final token = SessionManager.instance.accessToken;

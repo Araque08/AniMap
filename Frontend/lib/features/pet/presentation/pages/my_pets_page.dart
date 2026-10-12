@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../../../widgets/bottom_menu_animap.dart';
 import '../../data/pets_service.dart';
+import '../../data/mascotas_service.dart';
 import 'register_pet_page.dart';
 import 'pet_profile_page.dart';
 
@@ -48,7 +49,7 @@ class _MyPetsPageState extends State<MyPetsPage> {
       return '';
     }
 
-    return '${PetsService.baseUrl.replaceAll('/api', '')}$imagePath';
+    return MascotasService.absoluteImageUrl(imagePath.toString());
   }
 
   @override

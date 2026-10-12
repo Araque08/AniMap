@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:animap/features/auth/data/auth_service.dart';
@@ -353,6 +354,134 @@ void main() {
     expect(await storage.read(SessionManager.refreshTokenKey), isNull);
   });
 
+  test('refresh que responde después de logout no restaura la sesión', () async {
+    final response = Completer<http.Response>();
+    final refreshStarted = Completer<void>();
+    final storage = MemorySessionStorage();
+    final manager = SessionManager(
+      storage: storage,
+      client: MockClient((request) async {
+        if (request.url.path.endsWith('/refresh')) {
+          refreshStarted.complete();
+          return response.future;
+        }
+        return http.Response('{"ok":true}', 200);
+      }),
+    );
+    await manager.establishSession(
+      accessToken: 'access-a',
+      refreshToken: 'refresh-a',
+    );
+
+    final refreshing = manager.refreshAccessToken();
+    await refreshStarted.future;
+    await manager.logout();
+    response.complete(
+      http.Response(
+        '{"ok":true,"data":{"accessToken":"access-b","refreshToken":"refresh-b","role":"USUARIO"}}',
+        200,
+      ),
+    );
+
+    await expectLater(refreshing, throwsA(isA<SessionInvalidException>()));
+    expect(manager.status, SessionStatus.unauthenticated);
+    expect(manager.accessToken, isNull);
+    expect(await storage.read(SessionManager.refreshTokenKey), isNull);
+  });
+
+  test('refresh antiguo no invalida una sesión nueva', () async {
+    final response = Completer<http.Response>();
+    final refreshStarted = Completer<void>();
+    final storage = MemorySessionStorage();
+    final manager = SessionManager(
+      storage: storage,
+      client: MockClient((request) async {
+        refreshStarted.complete();
+        return response.future;
+      }),
+    );
+    await manager.establishSession(
+      accessToken: 'access-a',
+      refreshToken: 'refresh-a',
+    );
+
+    final refreshing = manager.refreshAccessToken();
+    await refreshStarted.future;
+    await manager.establishSession(
+      accessToken: 'access-new',
+      refreshToken: 'refresh-new',
+    );
+    response.complete(
+      http.Response(
+        '{"ok":false,"code":"SESSION_REVOKED","message":"Sesión revocada"}',
+        401,
+      ),
+    );
+
+    await expectLater(refreshing, throwsA(isA<SessionInvalidException>()));
+    expect(manager.status, SessionStatus.authenticated);
+    expect(manager.accessToken, 'access-new');
+    expect(await storage.read(SessionManager.refreshTokenKey), 'refresh-new');
+  });
+
+  test('logout invalida un refresh incluso durante escritura segura', () async {
+    final storage = DelayedRefreshStorage();
+    final manager = SessionManager(
+      storage: storage,
+      client: MockClient(
+        (_) async => http.Response(
+          '{"ok":true,"data":{"accessToken":"access-b","refreshToken":"refresh-b","role":"USUARIO"}}',
+          200,
+        ),
+      ),
+    );
+    await manager.establishSession(
+      accessToken: 'access-a',
+      refreshToken: 'refresh-a',
+    );
+
+    final refreshing = manager.refreshAccessToken();
+    await storage.refreshWriteStarted.future;
+    final loggingOut = manager.logout();
+    storage.allowRefreshWrite.complete();
+
+    await expectLater(refreshing, throwsA(isA<SessionInvalidException>()));
+    await loggingOut;
+    expect(manager.status, SessionStatus.unauthenticated);
+    expect(await storage.read(SessionManager.refreshTokenKey), isNull);
+  });
+
+  test('logout antiguo no revoca una sesión nueva', () async {
+    final storage = DelayedLogoutReadStorage();
+    var logoutCalls = 0;
+    final manager = SessionManager(
+      storage: storage,
+      client: MockClient((request) async {
+        logoutCalls++;
+        return http.Response('{"ok":true}', 200);
+      }),
+    );
+    await manager.establishSession(
+      accessToken: 'access-a',
+      refreshToken: 'refresh-a',
+    );
+
+    storage.delayNextRead = true;
+    final loggingOut = manager.logout();
+    await storage.readStarted.future;
+    await manager.establishSession(
+      accessToken: 'access-new',
+      refreshToken: 'refresh-new',
+    );
+    storage.allowRead.complete();
+
+    final result = await loggingOut;
+    expect(result.remoteRevoked, isFalse);
+    expect(logoutCalls, 0);
+    expect(manager.status, SessionStatus.authenticated);
+    expect(await storage.read(SessionManager.refreshTokenKey), 'refresh-new');
+  });
+
   test('refresh adopta el rol vigente y avisa para cambiar de panel', () async {
     final storage = MemorySessionStorage();
     final manager = SessionManager(
@@ -428,4 +557,34 @@ class MemorySessionStorage implements SessionStorage {
 
   @override
   Future<void> write(String key, String value) async => values[key] = value;
+}
+
+class DelayedRefreshStorage extends MemorySessionStorage {
+  final refreshWriteStarted = Completer<void>();
+  final allowRefreshWrite = Completer<void>();
+
+  @override
+  Future<void> write(String key, String value) async {
+    if (key == SessionManager.refreshTokenKey && value == 'refresh-b') {
+      refreshWriteStarted.complete();
+      await allowRefreshWrite.future;
+    }
+    await super.write(key, value);
+  }
+}
+
+class DelayedLogoutReadStorage extends MemorySessionStorage {
+  final readStarted = Completer<void>();
+  final allowRead = Completer<void>();
+  bool delayNextRead = false;
+
+  @override
+  Future<String?> read(String key) async {
+    if (key == SessionManager.refreshTokenKey && delayNextRead) {
+      delayNextRead = false;
+      readStarted.complete();
+      await allowRead.future;
+    }
+    return super.read(key);
+  }
 }

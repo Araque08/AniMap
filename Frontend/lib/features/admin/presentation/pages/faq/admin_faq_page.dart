@@ -1290,10 +1290,11 @@ class _AdminFaqPageState extends State<AdminFaqPage> {
             'Sin categoría';
 
     return Container(
+      key: ValueKey('faq-card-${faq['id']}'),
       decoration: BoxDecoration(
         color: active
             ? Colors.white
-            : const Color(0xFFF0F3F1),
+            : const Color(0xFFECEFF1),
 
         borderRadius: BorderRadius.circular(20),
 
@@ -1317,13 +1318,12 @@ class _AdminFaqPageState extends State<AdminFaqPage> {
               // INDICADOR
               // =================================================
 
-              Container(
-                width: 5,
-
-                color: active
-                    ? green
-                    : const Color(0xFF9CA8A1),
-              ),
+              if (!active)
+                Container(
+                  key: const ValueKey('archived-faq-indicator'),
+                  width: 4,
+                  color: const Color(0xFF90A4AE),
+                ),
 
               // =================================================
               // CONTENIDO
@@ -1394,6 +1394,7 @@ class _AdminFaqPageState extends State<AdminFaqPage> {
 
                           // ESTADO
                           Container(
+                            key: active ? null : const ValueKey('archived-faq-badge'),
                             padding:
                             const EdgeInsets.symmetric(
                               horizontal: 9,
@@ -1406,7 +1407,7 @@ class _AdminFaqPageState extends State<AdminFaqPage> {
                                 0xFFE8F5EC,
                               )
                                   : const Color(
-                                0xFFE2E6E4,
+                                0xFFCFD8DC,
                               ),
 
                               borderRadius:
@@ -1442,7 +1443,7 @@ class _AdminFaqPageState extends State<AdminFaqPage> {
                                 Text(
                                   active
                                       ? 'Activa'
-                                      : 'Archivada',
+                                      : 'ARCHIVADA',
 
                                   style: TextStyle(
                                     color: active
@@ -1530,9 +1531,9 @@ class _AdminFaqPageState extends State<AdminFaqPage> {
                             icon:
                             Icons.edit_outlined,
 
-                            color: const Color(
-                              0xFF567267,
-                            ),
+                            color: active
+                                ? const Color(0xFF567267)
+                                : const Color(0xFF7B8387),
 
                             onPressed: () {
                               _editFaq(faq);

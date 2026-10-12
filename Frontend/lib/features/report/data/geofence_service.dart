@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import '../../../config/api_config.dart';
 import '../../auth/data/authenticated_http_client.dart';
 
 const outsideAllowedAreaMessage =
@@ -38,7 +39,7 @@ class GeofenceCheckResult {
 }
 
 class GeofenceService {
-  static const _url = 'http://192.168.0.6:3000/api/geofence/check';
+  static String get _url => '${ApiConfig.current.baseUrl}/geofence/check';
 
   static Future<GeofenceCheckResult> check(double lat, double lng) async {
     try {

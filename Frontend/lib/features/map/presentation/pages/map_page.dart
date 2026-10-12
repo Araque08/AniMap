@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../../../config/api_config.dart';
 import '../../../../widgets/bottom_menu_animap.dart';
 import '../../../../widgets/top_menu_animap.dart';
 import '../../data/map_reports_client.dart';
@@ -56,11 +57,6 @@ Color markerColorForReportType(ReportType type) {
    MODELO PARA LOS REPORTES DEL MAPA
    ============================================================================ */
 
-/*
-  Este modelo representa los reportes que se muestran en el mapa.
-  Esta información se construye desde la respuesta JSON que entrega
-  el backend en /api/map/reports.
-*/
 class MapReport {
   final String id;
   final String title;
@@ -80,11 +76,7 @@ class MapReport {
   final bool isLinked;
   final int? linkedReportId;
 
-  /*
-    Aquí guardo los datos de contacto del dueño.
-    Estos datos solo se muestran cuando el backend indica que el dueño autorizó
-    mostrar contacto mediante showContact.
-  */
+  // El backend controla si el dueño autorizó mostrar contacto.
   final bool showContact;
   final bool isOwner;
   final String ownerName;
@@ -116,11 +108,6 @@ class MapReport {
     required this.ownerEmail,
   });
 
-  /*
-    Aquí convierto cada registro que llega desde el backend en un MapReport.
-    Esto permite que el mapa pinte datos reales de PostgreSQL sin cambiar
-    la estructura visual que ya teníamos funcionando.
-  */
   factory MapReport.fromJson(Map<String, dynamic> json) {
     final rawDate = json['dateText'];
     return MapReport(
@@ -154,7 +141,7 @@ class MapReport {
   static String? _imageUrl(dynamic value) {
     final path = value?.toString();
     if (path == null || path.isEmpty) return null;
-    return path.startsWith('http') ? path : 'http://10.0.2.2:3000$path';
+    return ApiConfig.current.resolveUrl(path);
   }
 
   static List<String> _imageUrls(dynamic values, dynamic principal) {
@@ -170,11 +157,6 @@ class MapReport {
     return urls;
   }
 
-  /*
-    Aquí convierto el texto que llega desde el backend al enum que usa Flutter.
-    Esto define si el marcador será de mascota perdida, avistamiento o mascota
-    encontrada.
-  */
   static ReportType _parseReportType(dynamic value) {
     switch (value?.toString()) {
       case 'lost':
@@ -188,20 +170,12 @@ class MapReport {
     }
   }
 
-  /*
-    Aquí convierto coordenadas que pueden llegar como número o como texto.
-    Si llega un valor inválido uso 0.0 para evitar que la app se rompa.
-  */
   static double _toDouble(dynamic value) {
     if (value is num) return value.toDouble();
 
     return double.tryParse(value?.toString() ?? '') ?? 0.0;
   }
 
-  /*
-    Aquí doy un formato sencillo a la fecha recibida desde PostgreSQL.
-    No agrego paquetes adicionales para no tocar dependencias del proyecto.
-  */
   static String _formatDateText(dynamic value) {
     return formatReportDateTimeInBogota(value);
   }
@@ -259,45 +233,23 @@ class _MapPageState extends State<MapPage> {
   MapStatus _status = MapStatus.loaded;
   MapReport? _selectedReport;
 
-  /*
-    Aquí guardo los íconos personalizados del mapa.
-    Estos íconos se crean por código con Canvas para no depender
-    de imágenes externas por cada marcador.
-
-    Mientras los íconos terminan de cargarse, el mapa usa los
-    marcadores normales de Google Maps como respaldo.
-  */
+  // Los marcadores nativos sirven de respaldo mientras se generan los iconos.
   BitmapDescriptor? _lostMarkerIcon;
   BitmapDescriptor? _sightingMarkerIcon;
   BitmapDescriptor? _foundMarkerIcon;
 
   static const Color backgroundColor = Color(0xFFDDEFE2);
 
-  /*
-    Aquí dejé el mapa centrado en Ciudad Salitre Occidental, Bogotá, porque
-    esa es la zona definida como alcance inicial del proyecto.
-  */
+  // Centro visual de la zona piloto; no define el perímetro del geofence.
   static const LatLng _ciudadSalitre = LatLng(4.6569, -74.1095);
 
-  /*
-    Aquí defino la URL del backend que entrega los reportes del mapa.
-
-    Para Android Emulator se usa 10.0.2.2 porque localhost dentro del emulador
-    apunta al propio emulador, no al computador donde corre el backend.
-
-    Si luego probamos en un celular físico, esta URL debe cambiarse por la IP
-    local del computador, por ejemplo: http://192.168.x.x:3000/api/map/reports.
-  */
-  static const String _mapReportsUrl = 'http://10.0.2.2:3000/api/map/reports';
+  static String get _mapReportsUrl =>
+      '${ApiConfig.current.baseUrl}/map/reports';
 
   /* --------------------------------------------------------------------------
      DATOS DEL MAPA CONSULTADOS DESDE EL BACKEND
      -------------------------------------------------------------------------- */
 
-  /*
-    Estas listas se llenan con la información real que llega desde PostgreSQL
-    por medio del backend.
-  */
   List<MapReport> _activeReports = [];
   List<MapReport> _foundReports = [];
 
@@ -305,10 +257,6 @@ class _MapPageState extends State<MapPage> {
      DATOS VISIBLES SEGÚN FILTRO
      -------------------------------------------------------------------------- */
 
-  /*
-    Aquí controlo qué reportes se muestran según el filtro seleccionado.
-    Si el estado del mapa no está cargado, no muestro marcadores.
-  */
   List<MapReport> get _visibleReports {
     if (_status != MapStatus.loaded) return [];
 
@@ -319,14 +267,6 @@ class _MapPageState extends State<MapPage> {
     return _foundReports;
   }
 
-  /*
-    Aquí convierto los reportes visibles en marcadores de Google Maps.
-    Ahora uso marcadores personalizados con forma de pin y una huellita blanca
-    en el centro.
-
-    Para no romper la carga inicial del mapa, dejo un marcador normal de Google
-    como respaldo mientras se generan los íconos personalizados.
-  */
   Set<Marker> get _markers {
     return _visibleReports.map((report) {
       BitmapDescriptor markerIcon;
@@ -350,10 +290,7 @@ class _MapPageState extends State<MapPage> {
         position: report.position,
         icon: markerIcon,
 
-        /*
-          Aquí dejé desactivado el texto nativo del marcador para que la
-          interacción principal sea la tarjeta inferior personalizada.
-        */
+        // La tarjeta inferior reemplaza la ventana nativa del marcador.
         infoWindow: InfoWindow.noText,
         onTap: () {
           setState(() {
@@ -368,11 +305,6 @@ class _MapPageState extends State<MapPage> {
      MARCADORES PERSONALIZADOS DEL MAPA
      -------------------------------------------------------------------------- */
 
-  /*
-    Aquí cargo los marcadores personalizados que se van a usar en el GoogleMap.
-    El marcador rojo se usa para mascotas perdidas y el marcador verde
-    se usa para avistamientos y mascotas encontradas.
-  */
   Future<void> _loadCustomMarkers() async {
     _lostMarkerIcon = await _createPawMarker(
       pinColor: markerColorForReportType(ReportType.lost),
@@ -386,21 +318,11 @@ class _MapPageState extends State<MapPage> {
       pinColor: markerColorForReportType(ReportType.found),
     );
 
-    /*
-      Aquí actualizo la pantalla cuando los íconos ya están listos.
-      Esto hace que los marcadores normales sean reemplazados por los pines
-      personalizados sin afectar la carga inicial del mapa.
-    */
     if (mounted) {
       setState(() {});
     }
   }
 
-  /*
-    Aquí dibujo el marcador personalizado directamente con Canvas.
-    Esto permite tener un pin con huellita blanca sin agregar archivos PNG
-    adicionales al proyecto.
-  */
   Future<BitmapDescriptor> _createPawMarker({required Color pinColor}) async {
     const int width = 120;
     const int height = 150;
@@ -420,16 +342,8 @@ class _MapPageState extends State<MapPage> {
       ..color = Colors.white
       ..style = PaintingStyle.fill;
 
-    /*
-      Aquí dibujo una sombra inferior para que el pin se vea con más profundidad
-      sobre el mapa.
-    */
     canvas.drawOval(const Rect.fromLTWH(38, 128, 44, 12), shadowPaint);
 
-    /*
-      Aquí dibujo la forma principal del pin. La punta queda hacia abajo para
-      que señale la ubicación exacta del reporte o avistamiento.
-    */
     final Path pinPath = Path()
       ..moveTo(width / 2, height - 12)
       ..cubicTo(30, 95, 18, 75, 18, 52)
@@ -441,26 +355,14 @@ class _MapPageState extends State<MapPage> {
     canvas.drawPath(pinPath, shadowPaint);
     canvas.drawPath(pinPath, pinPaint);
 
-    /*
-      Aquí agrego un brillo suave dentro del pin para que no se vea plano.
-    */
     final Paint innerPaint = Paint()
       ..color = Colors.white.withOpacity(0.10)
       ..style = PaintingStyle.fill;
 
     canvas.drawCircle(const Offset(width / 2, 52), 36, innerPaint);
 
-    /*
-      Aquí dibujo la huellita blanca del centro del marcador.
-      Ajustamos la separación entre los dedos para que la huella se entienda mejor
-      visualmente y no se vea tan compacta sobre el pin.
-    */
     canvas.drawOval(const Rect.fromLTWH(44, 57, 32, 26), pawPaint);
 
-    /*
-      Aquí separé un poco más las cuatro patitas de la huella.
-      También reduje levemente su tamaño para que cada dedo se diferencie mejor.
-    */
     canvas.drawCircle(const Offset(34, 47), 7, pawPaint);
     canvas.drawCircle(const Offset(48, 34), 7, pawPaint);
     canvas.drawCircle(const Offset(72, 34), 7, pawPaint);
@@ -481,13 +383,6 @@ class _MapPageState extends State<MapPage> {
      CONSULTA DE REPORTES DEL MAPA DESDE EL BACKEND
      -------------------------------------------------------------------------- */
 
-  /*
-    Aquí consulto el backend para traer los reportes reales del mapa.
-    La información viene desde PostgreSQL por medio de la ruta /api/map/reports.
-
-    Esta función reemplaza los datos quemados que antes estaban en _activeReports
-    y _foundReports.
-  */
   Future<void> _loadMapReports() async {
     try {
       try {
@@ -574,11 +469,6 @@ class _MapPageState extends State<MapPage> {
      ACCIONES DEL MAPA
      -------------------------------------------------------------------------- */
 
-  /*
-    Aquí cambio entre reportes activos y reportes encontrados.
-    También selecciono el primer reporte disponible para mostrar una tarjeta
-    inferior de ejemplo.
-  */
   void _toggleFilter(MapFilter filter) {
     final List<MapReport> nextReports = filter == MapFilter.active
         ? _activeReports
@@ -596,18 +486,10 @@ class _MapPageState extends State<MapPage> {
     }
   }
 
-  /*
-    Aquí reintento cargar el mapa cuando ocurra un error.
-    Ahoram el sistema vuelve a consultar el backend para traer información actualizada.
-  */
   void _retryLoad() {
     _loadMapReports();
   }
 
-  /*
-    Aquí muevo la cámara del mapa hacia un punto específico.
-    Lo uso cuando cambio de filtro o cuando quiero volver al centro principal.
-  */
   Future<void> _moveCamera(LatLng target) async {
     final controller = _mapController;
 
@@ -642,10 +524,6 @@ class _MapPageState extends State<MapPage> {
     if (target != null) _moveCamera(target);
   }
 
-  /*
-    Aquí conecté el botón + con el zoom real del GoogleMap.
-    Antes el control era visual, pero no modificaba la cámara del mapa.
-  */
   Future<void> _zoomIn() async {
     final controller = _mapController;
 
@@ -654,10 +532,6 @@ class _MapPageState extends State<MapPage> {
     await controller.animateCamera(CameraUpdate.zoomIn());
   }
 
-  /*
-    Aquí conecté el botón - con el zoom real del GoogleMap.
-    Esto permite alejar el mapa sin mostrar los controles nativos de Google.
-  */
   Future<void> _zoomOut() async {
     final controller = _mapController;
 
@@ -666,14 +540,6 @@ class _MapPageState extends State<MapPage> {
     await controller.animateCamera(CameraUpdate.zoomOut());
   }
 
-  /*
-    Aquí hice funcional el botón de ubicación.
-    Por ahora no uso la ubicación real del usuario, sino que regreso el mapa
-    al centro definido para Ciudad Salitre Occidental.
-
-    Importante: no cambio el estado del mapa a empty, porque eso ocultaría
-    los reportes que ya fueron cargados desde la base de datos.
-  */
   Future<void> _goToProjectZone() async {
     await _moveCamera(_userLocation ?? _ciudadSalitre);
 
@@ -690,18 +556,8 @@ class _MapPageState extends State<MapPage> {
   void initState() {
     super.initState();
 
-    /*
-      Aquí inicio la creación de los marcadores con huellita.
-      Se cargan al iniciar la pantalla para que el GoogleMap pueda usarlos
-      en reportes perdidos, avistamientos y encontrados.
-    */
     _loadCustomMarkers();
 
-    /*
-      Aquí consulto el backend apenas entra la pantalla.
-      Así el mapa se carga con datos reales de PostgreSQL en lugar de datos
-      quemados dentro del archivo.
-    */
     _loadMapReports();
   }
 
@@ -722,18 +578,10 @@ class _MapPageState extends State<MapPage> {
     return Scaffold(
       backgroundColor: backgroundColor,
 
-      /*
-        Aquí mantengo el nuevo menú lateral reutilizable que se agregó en el
-        proyecto. Así el mapa queda integrado con la navegación general sin
-        volver al menú hamburguesa local que teníamos antes.
-      */
       drawer: const AniMapSideMenu(),
 
       body: Column(
         children: [
-          /*
-            Aquí uso el encabezado reutilizable, el cuál es el logo del proyecto.
-          */
           const TopMenuAnimap(),
 
           MapReportFilterBar(
@@ -800,10 +648,6 @@ class _MapPageState extends State<MapPage> {
         ],
       ),
 
-      /*
-        Aquí mantengo la barra inferior nueva del proyecto para no romper los
-        cambios de navegación que agregaron tus compañeros.
-      */
       bottomNavigationBar: const BottomMenuAnimap(currentIndex: 0),
     );
   }
@@ -2224,11 +2068,7 @@ class _OwnerContactCard extends StatelessWidget {
 
   const _OwnerContactCard({required this.report});
 
-  /*
-    Aquí abro la aplicación de teléfono del dispositivo con el número del dueño.
-    No realiza la llamada automáticamente; solo dejo el número listo para que
-    el usuario decida si quiere llamar.
-  */
+  // Abre el marcador telefónico; el usuario decide si realiza la llamada.
   Future<void> _openPhoneDialer(BuildContext context) async {
     final String cleanPhone = report.ownerPhone.replaceAll(' ', '');
 

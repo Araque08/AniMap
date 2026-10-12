@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:animap/features/admin/data/faq/faq_service.dart';
 import 'package:animap/features/admin/presentation/pages/faq/admin_faq_page.dart';
+import 'package:animap/features/admin/presentation/pages/faq/admin_faq_form_page.dart';
 import 'package:animap/features/auth/data/authenticated_http_client.dart';
 import 'package:animap/features/auth/data/session_manager.dart';
 import 'package:animap/features/auth/data/session_storage.dart';
@@ -87,11 +88,13 @@ Future<void> _openForm(
     ),
   );
   await tester.pumpAndSettle();
-  await tester.tap(
-    editing ? find.byTooltip('Editar FAQ') : find.text('Agregar FAQ'),
-  );
+  final target = editing ? find.byTooltip('Editar pregunta') : find.text('Nueva pregunta');
+  await tester.scrollUntilVisible(target, 200, scrollable: find.byType(Scrollable).first);
+  await tester.tap(target);
   await tester.pumpAndSettle();
   if (!editing) {
+    await tester.scrollUntilVisible(find.widgetWithText(TextFormField, 'Pregunta'), 200,
+        scrollable: find.byType(Scrollable).first);
     await tester.enterText(
       find.widgetWithText(TextFormField, 'Pregunta'),
       'Nueva pregunta',
@@ -101,6 +104,9 @@ Future<void> _openForm(
       'Nueva respuesta',
     );
   }
+  await tester.scrollUntilVisible(find.byType(FilledButton).last, 200,
+      scrollable: find.byType(Scrollable).first);
+  await tester.pumpAndSettle();
 }
 
 void main() {
@@ -129,18 +135,18 @@ void main() {
           isNull,
         );
         expect(find.byType(CircularProgressIndicator), findsOneWidget);
-        expect(find.byType(AlertDialog), findsOneWidget);
+        expect(find.byType(AdminFaqFormPage), findsOneWidget);
         expect(tester.takeException(), isNull);
 
         await tester.binding.handlePopRoute();
         await tester.pump();
-        expect(find.byType(AlertDialog), findsOneWidget);
+        expect(find.byType(AdminFaqFormPage), findsOneWidget);
         expect(observer.pops, 0);
 
         requests.single.complete({'id': editing ? 1 : 2});
         await tester.pumpAndSettle();
         expect(observer.pops, 1);
-        expect(find.byType(AlertDialog), findsNothing);
+        expect(find.byType(AdminFaqFormPage), findsNothing);
         expect(find.byType(AdminFaqPage), findsOneWidget);
         expect(service.listCalls, 2);
         expect(tester.takeException(), isNull);
@@ -163,7 +169,7 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(observer.pops, 0);
-    expect(find.byType(AlertDialog), findsOneWidget);
+    expect(find.byType(AdminFaqFormPage), findsOneWidget);
     expect(
       find.text('Ya existe una pregunta frecuente igual en esta categoría.'),
       findsOneWidget,
@@ -196,11 +202,11 @@ void main() {
     await tester.pump();
     service.updateRequests.single.completeError(Exception('detalle interno'));
     await tester.pumpAndSettle();
-    expect(find.byType(AlertDialog), findsOneWidget);
+    expect(find.byType(AdminFaqFormPage), findsOneWidget);
     expect(observer.pops, 0);
     expect(
       find.text(
-        'No pudimos guardar la pregunta frecuente. Intenta nuevamente.',
+        'No pudimos actualizar la pregunta. Intenta nuevamente.',
       ),
       findsOneWidget,
     );

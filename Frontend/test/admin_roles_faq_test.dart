@@ -169,6 +169,16 @@ class _DeletableFaqFixture extends FaqService {
   }
 }
 
+Future<void> _show(WidgetTester tester, Finder target) async {
+  await tester.scrollUntilVisible(target, 200,
+      scrollable: find.byType(Scrollable).first);
+  await tester.pumpAndSettle();
+}
+
+Color? _faqCardColor(WidgetTester tester, int id) =>
+    (tester.widget<Container>(find.byKey(ValueKey('faq-card-$id'))).decoration
+        as BoxDecoration).color;
+
 void main() {
   for (final role in ['USUARIO', 'ADMINISTRADOR']) {
     testWidgets('Login $role dirige al destino correcto y guarda rol', (
@@ -286,7 +296,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byType(AdminHomePage), findsOneWidget);
     expect(find.text('Preguntas frecuentes'), findsOneWidget);
-    expect(find.text('Categorías FAQ'), findsOneWidget);
+    expect(find.text('Gestión de usuarios'), findsOneWidget);
     expect(find.text('Moderar contenido'), findsNothing);
     await tester.tap(find.byTooltip('Cerrar sesión'));
     await tester.pumpAndSettle();
@@ -316,47 +326,48 @@ void main() {
     addTearDown(() => tester.binding.setSurfaceSize(null));
     final service = _FaqFixture();
     final editButton = find.byWidgetPredicate(
-      (widget) => widget is IconButton && widget.tooltip == 'Editar FAQ',
+      (widget) => widget is IconButton && widget.tooltip == 'Editar pregunta',
     );
     final activateButton = find.byWidgetPredicate(
-      (widget) => widget is IconButton && widget.tooltip == 'Activar FAQ',
+      (widget) => widget is IconButton && widget.tooltip == 'Activar pregunta',
     );
     await tester.pumpWidget(MaterialApp(home: AdminFaqPage(service: service)));
     await tester.pumpAndSettle();
+    await _show(tester, find.text('FAQ real'));
     expect(find.text('FAQ real'), findsOneWidget);
-    expect(tester.widget<Card>(find.byType(Card)).color, Colors.white);
-    expect(tester.widget<Text>(find.text('FAQ real')).style?.color, isNull);
+    expect(_faqCardColor(tester, 1), Colors.white);
+    expect(tester.widget<Text>(find.text('FAQ real')).style?.color, const Color(0xFF26352E));
     expect(find.textContaining('Activa'), findsOneWidget);
     expect(find.byKey(const ValueKey('archived-faq-indicator')), findsNothing);
     expect(find.byKey(const ValueKey('archived-faq-badge')), findsNothing);
     expect(tester.widget<IconButton>(editButton).onPressed, isNotNull);
-    expect(find.byTooltip('Eliminar FAQ'), findsOneWidget);
-    await tester.tap(find.byTooltip('Archivar FAQ'));
+    expect(find.byTooltip('Eliminar pregunta'), findsOneWidget);
+    await tester.tap(find.byTooltip('Archivar pregunta'));
     await tester.pumpAndSettle();
+    await _show(tester, find.text('FAQ real'));
     expect(service.active, false);
     expect(find.text('ARCHIVADA'), findsOneWidget);
-    expect(find.byTooltip('Eliminar FAQ'), findsOneWidget);
+    expect(find.byTooltip('Eliminar pregunta'), findsOneWidget);
     expect(
-      tester.widget<Card>(find.byType(Card)).color,
+      _faqCardColor(tester, 1),
       const Color(0xFFECEFF1),
     );
-    final indicator = tester.widget<DecoratedBox>(
+    final indicator = tester.widget<Container>(
       find.byKey(const ValueKey('archived-faq-indicator')),
     );
-    final border = (indicator.decoration as BoxDecoration).border as Border;
-    expect(border.left.width, 4);
-    expect(border.left.color, const Color(0xFF90A4AE));
+    expect(indicator.constraints?.maxWidth, 4);
+    expect(indicator.color, const Color(0xFF90A4AE));
     final badge = tester.widget<Container>(
       find.byKey(const ValueKey('archived-faq-badge')),
     );
     expect((badge.decoration as BoxDecoration).color, const Color(0xFFCFD8DC));
     expect(
       tester.widget<Text>(find.text('FAQ real')).style?.color,
-      const Color(0xFF596168),
+      const Color(0xFF5F6964),
     );
     expect(
-      tester.widget<Text>(find.text('General')).style?.color,
-      const Color(0xFF6C7478),
+      tester.widget<Text>(find.text('General').last).style?.color,
+      const Color(0xFF68726D),
     );
     final edit = tester.widget<IconButton>(editButton);
     final activate = tester.widget<IconButton>(activateButton);
@@ -375,19 +386,21 @@ void main() {
       isA<Icon>().having(
         (icon) => icon.color,
         'color',
-        const Color(0xFF2E7D5B),
+        const Color(0xFF3F9568),
       ),
     );
-    await tester.tap(find.byTooltip('Editar FAQ'));
+    await tester.tap(find.byTooltip('Editar pregunta'));
     await tester.pumpAndSettle();
-    expect(find.text('Editar FAQ'), findsOneWidget);
-    await tester.tap(find.text('Cancelar'));
+    expect(find.text('Editar pregunta'), findsOneWidget);
+    await tester.pageBack();
     await tester.pumpAndSettle();
-    await tester.tap(find.byTooltip('Activar FAQ'));
+    await _show(tester, find.byTooltip('Activar pregunta'));
+    await tester.tap(find.byTooltip('Activar pregunta'));
     await tester.pumpAndSettle();
     expect(service.active, true);
-    expect(tester.widget<Card>(find.byType(Card)).color, Colors.white);
-    expect(tester.widget<Text>(find.text('FAQ real')).style?.color, isNull);
+    await _show(tester, find.text('FAQ real'));
+    expect(_faqCardColor(tester, 1), Colors.white);
+    expect(tester.widget<Text>(find.text('FAQ real')).style?.color, const Color(0xFF26352E));
     expect(find.textContaining('Activa'), findsOneWidget);
     expect(find.byKey(const ValueKey('archived-faq-indicator')), findsNothing);
     expect(find.byKey(const ValueKey('archived-faq-badge')), findsNothing);
@@ -402,7 +415,7 @@ void main() {
         MaterialApp(home: AdminFaqPage(service: service)),
       );
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Agregar FAQ'));
+      await tester.tap(find.text('Nueva pregunta'));
       await tester.pumpAndSettle();
       await tester.enterText(
         find.widgetWithText(TextFormField, 'Pregunta'),
@@ -412,17 +425,20 @@ void main() {
         find.widgetWithText(TextFormField, 'Respuesta'),
         'Nueva respuesta',
       );
-      await tester.tap(find.text('Guardar'));
+      await _show(tester, find.text('Crear pregunta').last);
+      await tester.tap(find.text('Crear pregunta').last);
       await tester.pumpAndSettle();
       expect(service.createdFaq?['pregunta'], 'Nueva pregunta');
       expect(tester.takeException(), isNull);
-      await tester.tap(find.byTooltip('Editar FAQ'));
+      await _show(tester, find.byTooltip('Editar pregunta'));
+      await tester.tap(find.byTooltip('Editar pregunta'));
       await tester.pumpAndSettle();
       await tester.enterText(
         find.widgetWithText(TextFormField, 'Pregunta'),
         'Pregunta editada',
       );
-      await tester.tap(find.text('Guardar'));
+      await _show(tester, find.text('Guardar cambios'));
+      await tester.tap(find.text('Guardar cambios'));
       await tester.pumpAndSettle();
       expect(service.updatedFaq?['pregunta'], 'Pregunta editada');
       expect(tester.takeException(), isNull);
@@ -437,23 +453,31 @@ void main() {
         MaterialApp(home: AdminFaqCategoriesPage(service: service)),
       );
       await tester.pumpAndSettle();
-      await tester.tap(find.byTooltip('Eliminar categoría').first);
+      await _show(tester, find.byTooltip('Opciones').first);
+      await tester.tap(find.byTooltip('Opciones').first);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Eliminar'));
       await tester.pumpAndSettle();
       expect(service.deletedCategory, isNull);
-      await tester.tap(find.text('Agregar categoría'));
+      await tester.scrollUntilVisible(find.text('Nueva categoría'), -200,
+          scrollable: find.byType(Scrollable).first);
+      await tester.tap(find.text('Nueva categoría'));
       await tester.pumpAndSettle();
       await tester.enterText(
-        find.widgetWithText(TextFormField, 'Nombre'),
+        find.widgetWithText(TextFormField, 'Nombre de la categoría'),
         'Nueva categoría',
       );
-      await tester.tap(find.text('Guardar'));
+      await tester.tap(find.text('Crear'));
       await tester.pumpAndSettle();
       expect(service.createdCategory, 'Nueva categoría');
       expect(tester.takeException(), isNull);
-      await tester.tap(find.byTooltip('Editar categoría').last);
+      await _show(tester, find.byTooltip('Opciones').last);
+      await tester.tap(find.byTooltip('Opciones').last);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Editar'));
       await tester.pumpAndSettle();
       await tester.enterText(
-        find.widgetWithText(TextFormField, 'Nombre'),
+        find.widgetWithText(TextFormField, 'Nombre de la categoría'),
         'Categoría editada',
       );
       await tester.tap(find.text('Guardar'));
@@ -466,22 +490,23 @@ void main() {
   testWidgets(
     'eliminar FAQ activa o archivada requiere confirmar y actualiza la lista',
     (tester) async {
-      await tester.binding.setSurfaceSize(const Size(320, 640));
+      await tester.binding.setSurfaceSize(const Size(320, 1600));
       addTearDown(() => tester.binding.setSurfaceSize(null));
       final service = _DeletableFaqFixture();
       await tester.pumpWidget(
         MaterialApp(home: AdminFaqPage(service: service)),
       );
       await tester.pumpAndSettle();
-      expect(find.byTooltip('Eliminar FAQ'), findsNWidgets(3));
+      await _show(tester, find.byTooltip('Eliminar pregunta').last);
+      expect(find.byTooltip('Eliminar pregunta'), findsNWidgets(3));
       expect(find.text('ARCHIVADA'), findsOneWidget);
 
-      await tester.tap(find.byTooltip('Eliminar FAQ').first);
+      await tester.tap(find.byTooltip('Eliminar pregunta').first);
       await tester.pumpAndSettle();
-      expect(find.text('Eliminar pregunta frecuente'), findsOneWidget);
+      expect(find.text('Eliminar pregunta'), findsOneWidget);
       expect(
         find.text(
-          '¿Seguro que deseas eliminar esta pregunta frecuente? Esta acción no se puede deshacer.',
+          '¿Seguro que deseas eliminar esta pregunta frecuente?',
         ),
         findsOneWidget,
       );
@@ -491,7 +516,7 @@ void main() {
       expect(find.text('FAQ A'), findsOneWidget);
 
       service.pauseDelete = Completer<void>();
-      await tester.tap(find.byTooltip('Eliminar FAQ').at(1));
+      await tester.tap(find.byTooltip('Eliminar pregunta').at(1));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Eliminar'));
       await tester.pump();
@@ -517,7 +542,7 @@ void main() {
       expect(service.entries.length, 2);
 
       service.pauseDelete = null;
-      await tester.tap(find.byTooltip('Eliminar FAQ').first);
+      await tester.tap(find.byTooltip('Eliminar pregunta').first);
       await tester.pumpAndSettle();
       await tester.tap(find.text('Eliminar'));
       await tester.pump();
@@ -548,7 +573,8 @@ void main() {
     final service = _DeletableFaqFixture()..failDelete = true;
     await tester.pumpWidget(MaterialApp(home: AdminFaqPage(service: service)));
     await tester.pumpAndSettle();
-    await tester.tap(find.byTooltip('Eliminar FAQ').first);
+    await _show(tester, find.byTooltip('Eliminar pregunta').first);
+    await tester.tap(find.byTooltip('Eliminar pregunta').first);
     await tester.pumpAndSettle();
     await tester.tap(find.text('Eliminar'));
     await tester.pumpAndSettle();
@@ -558,7 +584,8 @@ void main() {
       ),
       findsOneWidget,
     );
-    expect(find.text('FAQ A'), findsOneWidget);
+    expect(find.descendant(of: find.byKey(const ValueKey('faq-card-1')),
+        matching: find.text('FAQ A')), findsOneWidget);
     await tester.tap(find.text('Cancelar'));
     await tester.pumpAndSettle();
     expect(service.entries.length, 3);
@@ -594,7 +621,10 @@ void main() {
       );
       await success.deleteFaq(4);
       expect(sent?.method, 'DELETE');
-      expect(sent?.url.toString(), 'http://10.0.2.2:3000/api/faqs/4');
+      expect(
+        sent?.url.toString(),
+        '${const String.fromEnvironment('API_BASE_URL')}/faqs/4',
+      );
       expect(sent?.headers['authorization'], 'Bearer access-test');
 
       for (final entry in <(int, String, String)>[

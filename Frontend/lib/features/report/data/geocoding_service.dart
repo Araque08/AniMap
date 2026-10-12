@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import '../../../config/api_config.dart';
 import '../../auth/data/authenticated_http_client.dart';
 
 class GeocodingException implements Exception {
@@ -86,7 +87,7 @@ class AddressLocationSelection {
 }
 
 class GeocodingService {
-  static const _url = 'http://192.168.0.6:3000/api/geocoding/address';
+  static String get _url => '${ApiConfig.current.baseUrl}/geocoding/address';
 
   static Future<GeocodingResult> geocode(String address) async {
     final response = await AuthenticatedHttpClient.instance.post(

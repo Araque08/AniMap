@@ -4,6 +4,7 @@ import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
+import '../../../config/api_config.dart';
 import 'session_storage.dart';
 
 enum SessionStatus { checking, authenticated, unauthenticated, connectionError }
@@ -38,7 +39,6 @@ class LogoutResult {
 class SessionManager extends ChangeNotifier {
   static const refreshTokenKey = 'animap_refresh_token';
   static const deviceIdKey = 'animap_device_id';
-  static const _defaultBaseUrl = 'http://192.168.0.6:3000/api/auth';
   static final SessionManager instance = SessionManager();
 
   final SessionStorage storage;
@@ -49,15 +49,18 @@ class SessionManager extends ChangeNotifier {
   String? _role;
   SessionStatus _status = SessionStatus.checking;
   Future<String>? _refreshInFlight;
+  Future<void> _tokenStorageTail = Future<void>.value();
+  int _sessionEpoch = 0;
   VoidCallback? onSessionInvalid;
   void Function(String role)? onRoleChanged;
 
   SessionManager({
     SessionStorage? storage,
     http.Client? client,
-    this.authBaseUrl = _defaultBaseUrl,
+    String? authBaseUrl,
   }) : storage = storage ?? const SecureSessionStorage(),
-       _client = client ?? http.Client();
+       _client = client ?? http.Client(),
+       authBaseUrl = authBaseUrl ?? '${ApiConfig.current.baseUrl}/auth';
 
   String? get accessToken => _accessToken;
   String? get role => _role;
@@ -84,54 +87,66 @@ class SessionManager extends ChangeNotifier {
         'El servidor devolvió una sesión inválida',
       );
     }
-    await storage.write(refreshTokenKey, refreshToken);
+    final epoch = ++_sessionEpoch;
+    _refreshInFlight = null;
+    await _queueTokenStorage(() async {
+      _requireEpoch(epoch);
+      await storage.write(refreshTokenKey, refreshToken);
+      _requireEpoch(epoch);
+    });
+    _requireEpoch(epoch);
     _accessToken = accessToken;
     _role = role;
     _setStatus(SessionStatus.authenticated);
   }
 
   Future<void> bootstrap() async {
+    final epoch = _sessionEpoch;
     _setStatus(SessionStatus.checking);
     try {
       final refreshToken = await storage.read(refreshTokenKey);
+      _requireEpoch(epoch);
       if (refreshToken == null || refreshToken.isEmpty) {
         _accessToken = null;
         _role = null;
         _setStatus(SessionStatus.unauthenticated);
         return;
       }
-      await _refresh(refreshToken, notifyInvalid: false);
+      await _refresh(refreshToken, epoch, notifyInvalid: false);
     } on SessionInvalidException {
-      await clearLocalSession();
+      if (_sessionEpoch == epoch) await clearLocalSession();
     } on SessionConnectionException {
-      _setStatus(SessionStatus.connectionError);
+      if (_sessionEpoch == epoch) _setStatus(SessionStatus.connectionError);
     } catch (_) {
-      _setStatus(SessionStatus.connectionError);
+      if (_sessionEpoch == epoch) _setStatus(SessionStatus.connectionError);
     }
   }
 
   Future<String> refreshAccessToken() {
     final pending = _refreshInFlight;
     if (pending != null) return pending;
+    final epoch = _sessionEpoch;
     late final Future<String> future;
-    future = _refreshStoredToken().whenComplete(() {
+    future = _refreshStoredToken(epoch).whenComplete(() {
       if (identical(_refreshInFlight, future)) _refreshInFlight = null;
     });
     _refreshInFlight = future;
     return future;
   }
 
-  Future<String> _refreshStoredToken() async {
+  Future<String> _refreshStoredToken(int epoch) async {
     final refreshToken = await storage.read(refreshTokenKey);
+    _requireEpoch(epoch);
     if (refreshToken == null || refreshToken.isEmpty) {
       await _invalidateLocalSession();
       throw const SessionInvalidException('No existe una sesión renovable');
     }
-    return _refresh(refreshToken);
+    return _refresh(refreshToken, epoch);
   }
 
   Future<String> _refresh(
-    String refreshToken, {
+    String refreshToken,
+    int epoch, {
     bool notifyInvalid = true,
   }) async {
     http.Response response;
@@ -144,11 +159,13 @@ class SessionManager extends ChangeNotifier {
           )
           .timeout(const Duration(seconds: 15));
     } catch (_) {
+      _requireEpoch(epoch);
       throw const SessionConnectionException(
         'No fue posible conectar con el servidor. Intenta nuevamente.',
       );
     }
 
+    _requireEpoch(epoch);
     final body = _decode(response);
     if (response.statusCode == 200 && body['ok'] == true) {
       final accessToken = body['data']?['accessToken']?.toString();
@@ -169,7 +186,12 @@ class SessionManager extends ChangeNotifier {
       }
       final previousRole = _role;
       final wasAuthenticated = _status == SessionStatus.authenticated;
-      await storage.write(refreshTokenKey, nextRefreshToken);
+      await _queueTokenStorage(() async {
+        _requireEpoch(epoch);
+        await storage.write(refreshTokenKey, nextRefreshToken);
+        _requireEpoch(epoch);
+      });
+      _requireEpoch(epoch);
       _accessToken = accessToken;
       _role = nextRole;
       _setStatus(SessionStatus.authenticated);
@@ -196,10 +218,25 @@ class SessionManager extends ChangeNotifier {
   }
 
   Future<LogoutResult> logout() async {
+    final epoch = ++_sessionEpoch;
+    _refreshInFlight = null;
     bool remoteRevoked = false;
     bool hadStoredSession = false;
     try {
+      await _tokenStorageTail;
+      if (_sessionEpoch != epoch) {
+        return const LogoutResult(
+          remoteRevoked: false,
+          hadStoredSession: false,
+        );
+      }
       final refreshToken = await storage.read(refreshTokenKey);
+      if (_sessionEpoch != epoch) {
+        return const LogoutResult(
+          remoteRevoked: false,
+          hadStoredSession: false,
+        );
+      }
       hadStoredSession = refreshToken != null && refreshToken.isNotEmpty;
       if (hadStoredSession) {
         try {
@@ -217,7 +254,7 @@ class SessionManager extends ChangeNotifier {
         }
       }
     } finally {
-      await clearLocalSession();
+      if (_sessionEpoch == epoch) await clearLocalSession();
     }
     return LogoutResult(
       remoteRevoked: remoteRevoked,
@@ -226,10 +263,12 @@ class SessionManager extends ChangeNotifier {
   }
 
   Future<void> clearLocalSession() async {
+    _sessionEpoch += 1;
+    _refreshInFlight = null;
     _accessToken = null;
     _role = null;
-    await storage.delete(refreshTokenKey);
     _setStatus(SessionStatus.unauthenticated);
+    await _queueTokenStorage(() => storage.delete(refreshTokenKey));
   }
 
   Future<void> invalidateSession({String? code}) async {
@@ -244,6 +283,23 @@ class SessionManager extends ChangeNotifier {
   Future<void> _invalidateLocalSession({bool notify = true}) async {
     await clearLocalSession();
     if (notify) onSessionInvalid?.call();
+  }
+
+  void _requireEpoch(int epoch) {
+    if (_sessionEpoch != epoch) {
+      throw const SessionInvalidException(
+        'La sesión cambió durante la renovación',
+      );
+    }
+  }
+
+  Future<void> _queueTokenStorage(Future<void> Function() operation) {
+    final pending = _tokenStorageTail.then((_) => operation());
+    _tokenStorageTail = pending.then<void>(
+      (_) {},
+      onError: (Object _, StackTrace _) {},
+    );
+    return pending;
   }
 
   void _setStatus(SessionStatus value) {

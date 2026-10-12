@@ -98,6 +98,7 @@ class _RegisterPetPageState extends State<RegisterPetPage> {
       });
 
       final razasResponse = await CatalogosService.obtenerRazas(especieId);
+      if (!mounted) return;
 
       final razasFinales = List<Map<String, dynamic>>.from(razasResponse);
 
@@ -108,13 +109,10 @@ class _RegisterPetPageState extends State<RegisterPetPage> {
       setState(() {
         _razas = razasFinales;
 
-        // Aquí usas el valor que llegó desde BD
         _razaSeleccionadaId = existeRaza ? razaSeleccionadaId : null;
       });
-
-      print('RAZA QUE VIENE DE BD: $razaSeleccionadaId');
-      print('RAZA FINAL EN DROPDOWN: $_razaSeleccionadaId');
     } catch (e) {
+      if (!mounted) return;
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(const SnackBar(content: Text('Error cargando razas')));
@@ -123,8 +121,6 @@ class _RegisterPetPageState extends State<RegisterPetPage> {
 
   Future<void> _cargarDatosModoEdicion() async {
     final pet = widget.mascotaEditar!;
-
-    print('Mascota recibida para editar: $pet');
 
     setState(() {
       _isLoading = true;
@@ -140,6 +136,7 @@ class _RegisterPetPageState extends State<RegisterPetPage> {
       final razaId = pet['fk_raza']?.toString();
 
       final especiesResponse = await CatalogosService.obtenerEspecies();
+      if (!mounted) return;
 
       setState(() {
         _especies = especiesResponse;
@@ -153,14 +150,17 @@ class _RegisterPetPageState extends State<RegisterPetPage> {
           int.parse(especieId),
           razaSeleccionadaId: razaId,
         );
+        if (!mounted) return;
       }
 
       await _cargarImagenesExistentes();
+      if (!mounted) return;
 
       setState(() {
         _isLoading = false;
       });
     } catch (e) {
+      if (!mounted) return;
       setState(() {
         _isLoading = false;
       });
@@ -178,12 +178,14 @@ class _RegisterPetPageState extends State<RegisterPetPage> {
 
     try {
       final especiesResponse = await CatalogosService.obtenerEspecies();
+      if (!mounted) return;
 
       setState(() {
         _especies = especiesResponse;
         _isLoading = false;
       });
     } catch (e) {
+      if (!mounted) return;
       setState(() {
         _isLoading = false;
       });
@@ -210,6 +212,7 @@ class _RegisterPetPageState extends State<RegisterPetPage> {
       final imagenes = await MascotasService.obtenerImagenesMascota(
         mascotaId: int.parse(mascotaId.toString()),
       );
+      if (!mounted) return;
 
       setState(() {
         _imagenesExistentes = principalImageFirst(
@@ -219,8 +222,7 @@ class _RegisterPetPageState extends State<RegisterPetPage> {
         _isLoadingImages = false;
       });
     } catch (e) {
-      print('ERROR CARGANDO FOTOS DE LA MASCOTA: $e');
-
+      if (!mounted) return;
       setState(() {
         _isLoadingImages = false;
       });
@@ -368,7 +370,9 @@ class _RegisterPetPageState extends State<RegisterPetPage> {
             itemBuilder: (context, index) {
               final imagen = _imagenesExistentes[index];
 
-              final imageUrl = '${MascotasService.originUrl}${imagen['url']}';
+              final imageUrl = MascotasService.absoluteImageUrl(
+                imagen['url'].toString(),
+              );
 
               final esPrincipal =
                   imagen['esPrincipal'] == true && _fotoPrincipalIndex == null;

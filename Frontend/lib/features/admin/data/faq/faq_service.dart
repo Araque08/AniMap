@@ -2,7 +2,7 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
-import '../../../auth/data/auth_service.dart';
+import '../../../../config/api_config.dart';
 import '../../../auth/data/authenticated_http_client.dart';
 import '../../../auth/data/session_manager.dart';
 
@@ -19,7 +19,7 @@ class FaqService {
 
   FaqService({AuthenticatedHttpClient? client, String? baseUrl})
     : client = client ?? AuthenticatedHttpClient.instance,
-      baseUrl = baseUrl ?? AuthService.baseUrl;
+      baseUrl = baseUrl ?? ApiConfig.current.baseUrl;
 
   Map<String, dynamic> _decode(http.Response response) {
     try {

@@ -78,7 +78,9 @@ class AdminHomePage extends StatelessWidget {
                 ),
 
                 // BOTÓN CERRAR SESIÓN
-                Material(
+                Tooltip(
+                  message: 'Cerrar sesión',
+                  child: Material(
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(15),
                   child: InkWell(
@@ -103,6 +105,7 @@ class AdminHomePage extends StatelessWidget {
                         size: 22,
                       ),
                     ),
+                  ),
                   ),
                 ),
               ],

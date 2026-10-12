@@ -43,6 +43,7 @@ class _AdminUsersPageState
   _users = [];
 
   bool _loading = true;
+  int _loadGeneration = 0;
 
   String? _error;
 
@@ -77,6 +78,8 @@ class _AdminUsersPageState
   */
 
   Future<void> _load() async {
+    if (!mounted) return;
+    final generation = ++_loadGeneration;
     setState(() {
       _loading = true;
       _error = null;
@@ -90,14 +93,14 @@ class _AdminUsersPageState
         rol: _rol,
       );
 
-      if (!mounted) return;
+      if (!mounted || generation != _loadGeneration) return;
 
       setState(() {
         _users = result;
         _loading = false;
       });
     } catch (error) {
-      if (!mounted) return;
+      if (!mounted || generation != _loadGeneration) return;
 
       setState(() {
         _error =
@@ -154,11 +157,9 @@ class _AdminUsersPageState
 
     bool saving = false;
 
-    final result =
-    await showDialog<bool>(
+    final dialogRoute = DialogRoute<bool>(
       context: context,
-      barrierDismissible:
-      !saving,
+      barrierDismissible: true,
       builder: (dialogContext) {
         return StatefulBuilder(
           builder: (
@@ -167,6 +168,7 @@ class _AdminUsersPageState
               ) {
             Future<void> save()
             async {
+              if (saving) return;
               if (
               !formKey.currentState!
                   .validate()
@@ -250,7 +252,9 @@ class _AdminUsersPageState
               }
             }
 
-            return AlertDialog(
+            return PopScope(
+              canPop: !saving,
+              child: AlertDialog(
               backgroundColor:
               Colors.white,
               title: Text(
@@ -495,18 +499,22 @@ class _AdminUsersPageState
                   ),
                 ),
               ],
+              ),
             );
           },
         );
       },
     );
 
+    final result = await Navigator.of(context, rootNavigator: true).push(dialogRoute);
+    await dialogRoute.completed;
+
     nameController.dispose();
     emailController.dispose();
     phoneController.dispose();
     passwordController.dispose();
 
-    if (result == true) {
+    if (mounted && result == true) {
       await _load();
     }
   }
@@ -892,6 +900,7 @@ class _AdminUsersPageState
                   child:
                   DropdownButtonFormField<
                       String?>(
+                    isExpanded: true,
                     initialValue:
                     _estado,
                     decoration:
@@ -953,6 +962,7 @@ class _AdminUsersPageState
                   child:
                   DropdownButtonFormField<
                       String?>(
+                    isExpanded: true,
                     initialValue:
                     _rol,
                     decoration:
@@ -1253,7 +1263,9 @@ class _AdminUsersPageState
             height: 13,
           ),
 
-          Row(
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
             children: [
               _Badge(
                 text:
@@ -1266,10 +1278,6 @@ class _AdminUsersPageState
                 const Color(
                   0xFF4779A8,
                 ),
-              ),
-
-              const SizedBox(
-                width: 8,
               ),
 
               _Badge(
@@ -1291,10 +1299,6 @@ class _AdminUsersPageState
                     : const Color(
                   0xFFB95050,
                 ),
-              ),
-
-              const SizedBox(
-                width: 8,
               ),
 
               if (verified)

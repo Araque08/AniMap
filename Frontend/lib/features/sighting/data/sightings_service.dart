@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
 
+import '../../../config/api_config.dart';
 import '../../auth/data/authenticated_http_client.dart';
 import '../../pet/data/pet_image_selection.dart';
 
@@ -16,8 +17,7 @@ class SightingsException implements Exception {
 }
 
 class SightingsService {
-  static const String originUrl = 'http://192.168.0.6:3000';
-  static const String baseUrl = '$originUrl/api/sightings';
+  static String get baseUrl => '${ApiConfig.current.baseUrl}/sightings';
 
   static Future<List<Map<String, dynamic>>> getLinkableReports() async {
     final response = await AuthenticatedHttpClient.instance.get(
@@ -57,7 +57,7 @@ class SightingsService {
     String period = 'ALL',
   }) async {
     final uri = Uri.parse(
-      '$originUrl/api/reports/$reportId/sightings',
+      '${ApiConfig.current.baseUrl}/reports/$reportId/sightings',
     ).replace(queryParameters: {'period': period});
     final response = await AuthenticatedHttpClient.instance.get(uri);
     final body = _decode(response);
@@ -140,7 +140,7 @@ class SightingsService {
   static String? absoluteImageUrl(dynamic value) {
     final path = value?.toString().trim() ?? '';
     if (path.isEmpty) return null;
-    return path.startsWith('http') ? path : '$originUrl$path';
+    return ApiConfig.current.resolveUrl(path);
   }
 
   static http.MediaType _contentType(String name) {

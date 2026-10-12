@@ -2,15 +2,9 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
+import '../../../config/api_config.dart';
 import 'session_manager.dart';
 
-/*
-  Aquí hicimos una excepción personalizada para manejar errores
-  relacionados con autenticación.
-
-  De esta forma podemos mostrar en la interfaz los mensajes
-  enviados por el backend de AniMap.
-*/
 class AuthException implements Exception {
   final String message;
 
@@ -20,10 +14,6 @@ class AuthException implements Exception {
   String toString() => message;
 }
 
-/*
-  Servicio encargado de comunicarse con los endpoints
-  relacionados con autenticación y cuenta.
-*/
 class AuthService {
   final SessionManager sessionManager;
   final http.Client _client;
@@ -32,28 +22,10 @@ class AuthService {
     : sessionManager = sessionManager ?? SessionManager.instance,
       _client = client ?? http.Client();
 
-  /*
-    Aquí definimos la URL base del backend.
-
-    Android Emulator usa 10.0.2.2 para acceder al localhost del equipo.
-  */
-  static const String baseUrl = 'http://192.168.0.6:3000/api';
+  static String get baseUrl => ApiConfig.current.baseUrl;
 
   Future<String> getDeviceId() => sessionManager.getDeviceId();
 
-  /*
-    ============================================================
-    REGISTRO
-    ============================================================
-  */
-
-  /*
-    Aquí hicimos el método para registrar usuarios.
-
-    Envía los datos del formulario al endpoint:
-
-    POST /api/auth/register
-  */
   Future<Map<String, dynamic>> register({
     required String nombre,
     required String email,
@@ -86,25 +58,6 @@ class AuthService {
     );
   }
 
-  /*
-    ============================================================
-    INICIO DE SESIÓN
-    ============================================================
-  */
-
-  /*
-    Aquí hicimos el método para iniciar sesión.
-
-    Envía:
-
-    - correo
-    - contraseña
-    - identificador del dispositivo
-
-    al endpoint:
-
-    POST /api/auth/login
-  */
   Future<Map<String, dynamic>> login({
     required String email,
     required String password,
@@ -153,21 +106,6 @@ class AuthService {
     throw AuthException(_extractErrorMessage(data, 'Error al iniciar sesión'));
   }
 
-  /*
-    ============================================================
-    VERIFICACIÓN DE CUENTA
-    ============================================================
-  */
-
-  /*
-    Aquí hicimos el método para verificar la cuenta.
-
-    Envía el correo y el código de 6 dígitos al backend.
-
-    Endpoint:
-
-    POST /api/auth/verify-account
-  */
   Future<Map<String, dynamic>> verifyAccount({
     required String email,
     required String code,
@@ -191,20 +129,6 @@ class AuthService {
     );
   }
 
-  /*
-    ============================================================
-    REENVIAR CÓDIGO DE VERIFICACIÓN
-    ============================================================
-  */
-
-  /*
-    Este método se usa cuando el usuario no recibió
-    el código de verificación o necesita solicitar uno nuevo.
-
-    Endpoint:
-
-    POST /api/auth/resend-verification-code
-  */
   Future<Map<String, dynamic>> resendVerificationCode({
     required String email,
   }) async {
@@ -227,32 +151,6 @@ class AuthService {
     );
   }
 
-  /*
-    ============================================================
-    RECUPERACIÓN DE CONTRASEÑA
-    ============================================================
-  */
-
-  /*
-    PRIMERA ETAPA
-
-    Aquí solicitamos la recuperación de contraseña.
-
-    El usuario proporciona solamente su correo.
-
-    El backend genera un código temporal de 6 dígitos
-    y lo envía al correo registrado.
-
-    Endpoint:
-
-    POST /api/auth/forgot-password
-
-    Body:
-
-    {
-      "email": "usuario@gmail.com"
-    }
-  */
   Future<Map<String, dynamic>> forgotPassword({required String email}) async {
     final url = Uri.parse('$baseUrl/auth/forgot-password');
 
@@ -276,38 +174,6 @@ class AuthService {
     );
   }
 
-  /*
-    ============================================================
-    RESTABLECER CONTRASEÑA
-    ============================================================
-  */
-
-  /*
-    SEGUNDA ETAPA
-
-    Aquí enviamos:
-
-    - correo
-    - código recibido
-    - contraseña nueva
-    - confirmación de contraseña
-
-    El backend valida el código y, si todo está correcto,
-    reemplaza la contraseña anterior.
-
-    Endpoint:
-
-    POST /api/auth/reset-password
-
-    Body:
-
-    {
-      "email": "usuario@gmail.com",
-      "code": "123456",
-      "newPassword": "Nueva123*",
-      "confirmPassword": "Nueva123*"
-    }
-  */
   Future<Map<String, dynamic>> resetPassword({
     required String email,
     required String code,
@@ -338,21 +204,6 @@ class AuthService {
     );
   }
 
-  /*
-    ============================================================
-    DECODIFICACIÓN DE RESPUESTAS
-    ============================================================
-  */
-
-  /*
-    Aquí interpretamos la respuesta enviada por el backend.
-
-    Si recibimos JSON válido, lo convertimos en Map.
-
-    Si el backend envía una respuesta que no podemos interpretar,
-    devolvemos un mensaje controlado para evitar que la aplicación
-    falle directamente.
-  */
   Map<String, dynamic> _decodeResponse(http.Response response) {
     try {
       final decoded = jsonDecode(response.body);
