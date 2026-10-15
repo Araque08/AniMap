@@ -537,7 +537,7 @@ async function loginUser(data, { pool = db.pool } = {}) {
           NOW(),
 
           NOW()
-          + ($4 || ' days')::interval,
+          + ($4::int * INTERVAL '1 minute'),
 
           TRUE
 
@@ -551,9 +551,7 @@ async function loginUser(data, { pool = db.pool } = {}) {
 
         refreshTokenHash,
 
-        String(
-          env.REFRESH_TOKEN_TTL_DAYS
-        ),
+          env.SESSION_IDLE_TIMEOUT_MINUTES,
 
       ]
     );

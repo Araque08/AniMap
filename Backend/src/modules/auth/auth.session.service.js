@@ -103,11 +103,15 @@ function createAuthSessionService({
       const nextHash = await hashToken(nextRefreshToken);
       await client.query(
         `UPDATE device_session
-         SET refresh_token_hash = $1,
-             expira_en = NOW() + ($2 || ' days')::interval,
-             vigente = TRUE
-         WHERE id = $3`,
-        [nextHash, String(env.REFRESH_TOKEN_TTL_DAYS), session.id]
+        SET refresh_token_hash = $1,
+          expira_en = NOW() + ($2::int * INTERVAL '1 minute'),
+          vigente = TRUE
+        WHERE id = $3`,
+        [
+        nextHash,
+        env.SESSION_IDLE_TIMEOUT_MINUTES,
+        session.id,
+        ]
       );
       await client.query('COMMIT');
       return { accessToken, refreshToken: nextRefreshToken, role };

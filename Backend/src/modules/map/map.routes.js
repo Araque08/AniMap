@@ -19,12 +19,12 @@ router.get('/images/:imageId', async (req, res) => {
        INNER JOIN reporte r ON r.fk_mascota = f.fk_mascota
        INNER JOIN mascota m ON m.id = f.fk_mascota
        WHERE f.storage_ref = $1
-         AND ((r.estado = 'ACTIVO' AND m.estado = 'PERDIDA')
-           OR (r.estado = 'FINALIZADO'
-             AND m.estado <> 'INACTIVA'
-             AND r.cerrado_en >=
-               (CURRENT_TIMESTAMP AT TIME ZONE 'UTC') - INTERVAL '30 days'))
-       LIMIT 1`,
+         AND (
+          (r.estado = 'ACTIVO' AND m.estado = 'PERDIDA')
+          OR
+          (r.estado = 'FINALIZADO' AND m.estado <> 'INACTIVA')
+        )
+        LIMIT 1`,
       [imageId]
     );
     if (reference.rowCount === 0) {
@@ -125,11 +125,11 @@ router.get('/reports', optionalAuthMiddleware, async (req, res) => {
         FROM foto_mascota
         WHERE fk_mascota = m.id
       ) photos ON TRUE
-      WHERE (r.estado = 'ACTIVO' AND m.estado = 'PERDIDA')
-         OR (r.estado = 'FINALIZADO'
-           AND m.estado <> 'INACTIVA'
-           AND r.cerrado_en >=
-             (CURRENT_TIMESTAMP AT TIME ZONE 'UTC') - INTERVAL '30 days')
+      WHERE (
+        (r.estado = 'ACTIVO' AND m.estado = 'PERDIDA')
+        OR
+        (r.estado = 'FINALIZADO' AND m.estado <> 'INACTIVA')
+      )
       ORDER BY r.creado_en DESC;
     `);
 
