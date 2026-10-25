@@ -39,11 +39,11 @@ void main() {
   testWidgets('9 selector Reportar conserva barra inferior y no se apila', (
     tester,
   ) async {
-    await tester.pumpWidget(const MaterialApp(home: ReportTypeSelectorPage()));
+    await tester.pumpWidget(const MaterialApp(home: ReportarBuscarPage()));
     expect(find.byType(BottomMenuAnimap), findsOneWidget);
     await tester.tap(find.byIcon(Icons.pets_rounded));
     await tester.pump();
-    expect(find.byType(ReportTypeSelectorPage), findsOneWidget);
+    expect(find.byType(ReportarBuscarPage), findsOneWidget);
   });
 
   testWidgets('10-14 formularios tienen barra y Reportar vuelve al selector', (
@@ -64,14 +64,14 @@ void main() {
           reportsLoader: () async => [],
           geofenceChecker: allowGeofence,
         ),
-        routes: {'/create-report': (_) => const ReportTypeSelectorPage()},
+        routes: {'/create-report': (_) => const ReportarBuscarPage()},
       ),
     );
     await tester.pumpAndSettle();
     expect(find.byType(BottomMenuAnimap), findsOneWidget);
     await tester.tap(find.byIcon(Icons.pets_rounded));
     await tester.pumpAndSettle();
-    expect(find.byType(ReportTypeSelectorPage), findsOneWidget);
+    expect(find.byType(ReportarBuscarPage), findsOneWidget);
     expect(
       tester.state<NavigatorState>(find.byType(Navigator)).canPop(),
       isFalse,
@@ -83,14 +83,14 @@ void main() {
           reportsLoader: () async => [],
           geofenceChecker: allowGeofence,
         ),
-        routes: {'/create-report': (_) => const ReportTypeSelectorPage()},
+        routes: {'/create-report': (_) => const ReportarBuscarPage()},
       ),
     );
     await tester.pumpAndSettle();
     expect(find.byType(BottomMenuAnimap), findsOneWidget);
     await tester.tap(find.byIcon(Icons.pets_rounded));
     await tester.pumpAndSettle();
-    expect(find.byType(ReportTypeSelectorPage), findsOneWidget);
+    expect(find.byType(ReportarBuscarPage), findsOneWidget);
   });
 
   testWidgets('15 cambios sin guardar muestran confirmación', (tester) async {

@@ -38,11 +38,11 @@ class _PetProfilePageState extends State<PetProfilePage> {
 
   Future<PetProfile> _loadPetProfile() =>
       widget.profileLoader?.call(widget.mascotaId) ??
-      _getPetProfile(widget.mascotaId);
+          _getPetProfile(widget.mascotaId);
 
   Future<PetProfile> _getPetProfile(int mascotaId) async {
     final Map<String, dynamic> mascota =
-        await MascotasService.obtenerMascotaPorId(mascotaId: mascotaId);
+    await MascotasService.obtenerMascotaPorId(mascotaId: mascotaId);
 
     List<Map<String, dynamic>> imagenes = [];
 
@@ -104,14 +104,14 @@ class _PetProfilePageState extends State<PetProfilePage> {
       MaterialPageRoute(
         builder: (_) => initialIndex == 0
             ? ReportPhotoGalleryPage(
-                photos: gallery,
-                headers: MascotasService.authHeaders,
-              )
+          photos: gallery,
+          headers: MascotasService.authHeaders,
+        )
             : ReportPhotoViewerPage(
-                photos: gallery,
-                initialIndex: initialIndex,
-                headers: MascotasService.authHeaders,
-              ),
+          photos: gallery,
+          initialIndex: initialIndex,
+          headers: MascotasService.authHeaders,
+        ),
       ),
     );
   }
@@ -193,7 +193,7 @@ class _PetProfilePageState extends State<PetProfilePage> {
 
               return _ErrorView(
                 message:
-                    'No se pudo cargar el perfil de la mascota\n${snapshot.error}',
+                'No se pudo cargar el perfil de la mascota\n${snapshot.error}',
                 onRetry: () {
                   setState(() {
                     _futurePet = _loadPetProfile();
@@ -256,19 +256,19 @@ class _PetProfilePageState extends State<PetProfilePage> {
                             Expanded(
                               child: widget.mostrarAccionesDueno
                                   ? Align(
-                                      alignment: Alignment.centerRight,
-                                      child: IconButton(
-                                        tooltip: 'Eliminar mascota',
-                                        onPressed: () {
-                                          _confirmDeletePet(pet);
-                                        },
-                                        icon: const Icon(
-                                          Icons.delete_outline,
-                                          color: Colors.red,
-                                          size: 28,
-                                        ),
-                                      ),
-                                    )
+                                alignment: Alignment.centerRight,
+                                child: IconButton(
+                                  tooltip: 'Eliminar mascota',
+                                  onPressed: () {
+                                    _confirmDeletePet(pet);
+                                  },
+                                  icon: const Icon(
+                                    Icons.delete_outline,
+                                    color: Colors.red,
+                                    size: 28,
+                                  ),
+                                ),
+                              )
                                   : const SizedBox(),
                             ),
                           ],
@@ -286,24 +286,24 @@ class _PetProfilePageState extends State<PetProfilePage> {
                               child: ClipOval(
                                 child: mainImage.isEmpty
                                     ? const Icon(
-                                        Icons.pets,
-                                        size: 70,
-                                        color: Color(0xFF4D9B6A),
-                                      )
+                                  Icons.pets,
+                                  size: 70,
+                                  color: Color(0xFF4D9B6A),
+                                )
                                     : Image.network(
-                                        mainImage,
-                                        headers: MascotasService.authHeaders,
-                                        width: 132,
-                                        height: 132,
-                                        fit: BoxFit.cover,
-                                        errorBuilder: (_, _, _) {
-                                          return const Icon(
-                                            Icons.pets,
-                                            size: 70,
-                                            color: Color(0xFF4D9B6A),
-                                          );
-                                        },
-                                      ),
+                                  mainImage,
+                                  headers: MascotasService.authHeaders,
+                                  width: 132,
+                                  height: 132,
+                                  fit: BoxFit.cover,
+                                  errorBuilder: (_, _, _) {
+                                    return const Icon(
+                                      Icons.pets,
+                                      size: 70,
+                                      color: Color(0xFF4D9B6A),
+                                    );
+                                  },
+                                ),
                               ),
                             ),
 
@@ -529,7 +529,7 @@ class PetProfile {
         .whereType<Map>()
         .map(
           (item) => PetPhoto.fromJson(Map<String, dynamic>.from(item)),
-        )
+    )
         .toList();
   }
 
@@ -624,7 +624,7 @@ class PetPhoto {
             json['imagen_url'],
       ),
       esPrincipal:
-          json['es_principal'] == true ||
+      json['es_principal'] == true ||
           json['esPrincipal'] == true ||
           json['principal'] == true,
     );
@@ -689,7 +689,7 @@ class _PetInfoCard extends StatelessWidget {
 
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
       decoration: BoxDecoration(
         color: Colors.white.withOpacity(0.82),
         borderRadius: BorderRadius.circular(18),
@@ -704,49 +704,24 @@ class _PetInfoCard extends StatelessWidget {
       ),
       child: Column(
         children: [
-          GridView.builder(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            itemCount: items.length,
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 3,
-              mainAxisSpacing: 6,
-              crossAxisSpacing: 4,
-              mainAxisExtent: 72,
-            ),
-            itemBuilder: (context, index) {
-              final item = items[index];
-
-              return Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(item.icon, size: 28, color: const Color(0xFF4D9B6A)),
-                  const SizedBox(height: 4),
-                  Text(
-                    item.title,
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(
-                      fontSize: 12.5,
-                      fontWeight: FontWeight.w900,
-                      color: Colors.black,
-                    ),
-                  ),
-                  const SizedBox(height: 3),
-                  Text(
-                    item.value.isEmpty ? 'No registrado' : item.value,
-                    textAlign: TextAlign.center,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontSize: 12.5,
-                      color: Colors.black87,
-                      height: 1.12,
-                    ),
+          // Filas de tres características con altura determinada por el texto.
+          // Se evita un alto fijo que provoque RenderFlex overflow.
+          for (int start = 0; start < items.length; start += 3) ...[
+            if (start > 0) const SizedBox(height: 18),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                for (int offset = 0; offset < 3; offset++) ...[
+                  if (offset > 0) const SizedBox(width: 8),
+                  Expanded(
+                    child: start + offset < items.length
+                        ? _PetInfoCell(item: items[start + offset])
+                        : const SizedBox.shrink(),
                   ),
                 ],
-              );
-            },
-          ),
+              ],
+            ),
+          ],
           const SizedBox(height: 12),
           Container(
             width: double.infinity,
@@ -794,6 +769,46 @@ class _PetInfoCard extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+// Una celda puede crecer verticalmente cuando un dato ocupa varias líneas.
+class _PetInfoCell extends StatelessWidget {
+  final PetInfoItemData item;
+
+  const _PetInfoCell({required this.item});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Icon(item.icon, size: 27, color: const Color(0xFF4D9B6A)),
+        const SizedBox(height: 5),
+        Text(
+          item.title,
+          textAlign: TextAlign.center,
+          softWrap: true,
+          style: const TextStyle(
+            fontSize: 12.5,
+            fontWeight: FontWeight.w900,
+            color: Colors.black,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          item.value.trim().isEmpty ? 'No registrado' : item.value,
+          textAlign: TextAlign.center,
+          softWrap: true,
+          style: const TextStyle(
+            fontSize: 12.5,
+            color: Colors.black87,
+            height: 1.2,
+          ),
+        ),
+      ],
     );
   }
 }
@@ -1003,12 +1018,12 @@ class _DeletePetDialogState extends State<_DeletePetDialog> {
             ),
             child: _processing
                 ? const SizedBox.square(
-                    dimension: 18,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: Colors.white,
-                    ),
-                  )
+              dimension: 18,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: Colors.white,
+              ),
+            )
                 : const Text('Eliminar'),
           ),
         ],

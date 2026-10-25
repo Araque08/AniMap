@@ -285,13 +285,31 @@ function createSightingsService(
 
       if (data.reportId !== null) {
         const reportResult = await client.query(
-          `SELECT r.id, r.estado, m.estado AS mascota_estado
-           FROM reporte r
-           INNER JOIN mascota m ON m.id = r.fk_mascota
-           WHERE r.id = $1
-           FOR SHARE`,
+          `SELECT
+            r.id,
+            r.estado,
+            r.fk_usuario AS propietario_id,
+            m.estado AS mascota_estado
+          FROM reporte r
+          INNER JOIN mascota m
+            ON m.id = r.fk_mascota
+          WHERE r.id = $1
+          FOR SHARE`,
           [data.reportId]
         );
+        
+        // Impedir que el propietario registre un avistamiento
+        // vinculado a su propio reporte de mascota perdida.
+        if (
+          Number(reportResult.rows[0].propietario_id) ===
+          Number(userId)
+        ) {
+          throw createHttpError(
+            'No puedes registrar un avistamiento de tu propia mascota.',
+            403
+          );
+        }
+
         if (reportResult.rowCount === 0) {
           throw createHttpError('El reporte seleccionado no existe', 404);
         }

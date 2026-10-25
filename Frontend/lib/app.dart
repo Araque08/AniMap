@@ -78,9 +78,19 @@ class _AniMapAppState extends State<AniMapApp> {
           final name = ModalRoute.of(context)?.settings.arguments as String?;
           return MapPage(userName: name ?? '');
         },
-        '/create-report': (context) => const ReportTypeSelectorPage(),
+        '/create-report': (context) => const ReportarBuscarPage(),
         '/create-lost-report': (context) => const CreateLostReportPage(),
-        '/create-sighting': (context) => const CreateSightingPage(),
+
+        '/create-sighting': (context) {
+          final arguments =
+              ModalRoute.of(context)?.settings.arguments;
+
+          return CreateSightingPage(
+            reporteInicialId:
+            arguments is int ? arguments : null,
+          );
+        },
+
         '/profile': (context) => const ProfilePage(),
         '/faqs': (context) => const FaqScreen(),
         '/pet-list': (context) => const MyPetsPage(),
