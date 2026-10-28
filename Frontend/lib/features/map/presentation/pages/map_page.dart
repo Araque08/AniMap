@@ -11,6 +11,8 @@ import '../../../../config/api_config.dart';
 import '../../../../widgets/bottom_menu_animap.dart';
 import '../../../../widgets/top_menu_animap.dart';
 import '../../data/map_reports_client.dart';
+import '../../data/map_filter_selection.dart';
+import '../widgets/map_filters_dialog.dart';
 import '../../../report/data/report_datetime.dart';
 import '../../../report/data/device_location_service.dart';
 
@@ -62,6 +64,8 @@ class MapReport {
   final String title;
   final String petName;
   final String details;
+  final String? species;
+  final String? color;
   final String location;
   final String reference;
   final String description;
@@ -88,6 +92,8 @@ class MapReport {
     required this.title,
     required this.petName,
     required this.details,
+    this.species,
+    this.color,
     required this.location,
     required this.reference,
     required this.description,
@@ -115,6 +121,8 @@ class MapReport {
       title: json['title']?.toString() ?? 'Reporte',
       petName: json['petName']?.toString() ?? 'No identificado',
       details: json['details']?.toString() ?? '',
+      species: json['species']?.toString(),
+      color: json['color']?.toString(),
       location: json['location']?.toString() ?? 'Ubicación no disponible',
       reference: json['reference']?.toString() ?? '',
       description: json['description']?.toString() ?? 'Sin descripción',
@@ -232,6 +240,8 @@ class _MapPageState extends State<MapPage> {
   MapFilter _selectedFilter = MapFilter.active;
   MapStatus _status = MapStatus.loaded;
   MapReport? _selectedReport;
+  MapFilterSelection _filters = const MapFilterSelection();
+  int _loadGeneration = 0;
 
   // Los marcadores nativos sirven de respaldo mientras se generan los iconos.
   BitmapDescriptor? _lostMarkerIcon;
@@ -260,11 +270,52 @@ class _MapPageState extends State<MapPage> {
   List<MapReport> get _visibleReports {
     if (_status != MapStatus.loaded) return [];
 
-    if (_selectedFilter == MapFilter.active) {
-      return _activeReports;
+    return _filterReports(
+      _selectedFilter == MapFilter.active ? _activeReports : _foundReports,
+    );
+  }
+
+  List<MapReport> _filterReports(List<MapReport> reports) => reports
+      .where(
+        (report) => _filters.matches(
+          species: report.species,
+          color: report.color,
+          date: report.occurredAt,
+        ),
+      )
+      .toList();
+
+  Future<void> _openFilters() async {
+    final all = [..._activeReports, ..._foundReports];
+    List<String> options(Iterable<String?> values) {
+      final normalized = <String, String>{};
+      for (final value in values) {
+        if (value != null && value.trim().isNotEmpty) {
+          normalized.putIfAbsent(
+            value.trim().toLowerCase(),
+            () => value.trim(),
+          );
+        }
+      }
+      return normalized.values.toList()..sort();
     }
 
-    return _foundReports;
+    final selection = await showDialog<MapFilterSelection>(
+      context: context,
+      builder: (_) => MapFiltersDialog(
+        selection: _filters,
+        species: options([...all.map((r) => r.species), _filters.species]),
+        colors: options([...all.map((r) => r.color), _filters.color]),
+      ),
+    );
+    if (!mounted || selection == null) return;
+    _filters = selection;
+    _toggleFilter(_selectedFilter);
+  }
+
+  void _clearFilters() {
+    _filters = const MapFilterSelection();
+    _toggleFilter(_selectedFilter);
   }
 
   Set<Marker> get _markers {
@@ -331,7 +382,7 @@ class _MapPageState extends State<MapPage> {
     final Canvas canvas = Canvas(recorder);
 
     final Paint shadowPaint = Paint()
-      ..color = Colors.black.withOpacity(0.25)
+      ..color = Colors.black.withValues(alpha: 0.25)
       ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6);
 
     final Paint pinPaint = Paint()
@@ -356,7 +407,7 @@ class _MapPageState extends State<MapPage> {
     canvas.drawPath(pinPath, pinPaint);
 
     final Paint innerPaint = Paint()
-      ..color = Colors.white.withOpacity(0.10)
+      ..color = Colors.white.withValues(alpha: 0.10)
       ..style = PaintingStyle.fill;
 
     canvas.drawCircle(const Offset(width / 2, 52), 36, innerPaint);
@@ -376,7 +427,7 @@ class _MapPageState extends State<MapPage> {
 
     final Uint8List bytes = byteData!.buffer.asUint8List();
 
-    return BitmapDescriptor.fromBytes(bytes);
+    return BitmapDescriptor.bytes(bytes, bitmapScaling: MapBitmapScaling.none);
   }
 
   /* --------------------------------------------------------------------------
@@ -384,18 +435,23 @@ class _MapPageState extends State<MapPage> {
      -------------------------------------------------------------------------- */
 
   Future<void> _loadMapReports() async {
+    final generation = ++_loadGeneration;
     try {
+      LatLng? userLocation;
       try {
         final location =
             await (widget.locationLoader ??
                 DeviceLocationService.getCurrentLocation)();
-        _userLocation = LatLng(location.latitude, location.longitude);
+        userLocation = LatLng(location.latitude, location.longitude);
       } catch (_) {
-        _userLocation = null;
+        userLocation = null;
       }
+      if (!mounted || generation != _loadGeneration) return;
       final Uri url = Uri.parse(_mapReportsUrl);
       final response = await (widget.reportsClient ?? MapReportsClient())
           .getReports(url);
+      if (!mounted || generation != _loadGeneration) return;
+      _userLocation = userLocation;
 
       if (response.statusCode != 200) {
         if (!mounted) return;
@@ -438,11 +494,11 @@ class _MapPageState extends State<MapPage> {
           .where((report) => report.type == ReportType.found)
           .toList();
 
-      final List<MapReport> visibleReports = _selectedFilter == MapFilter.active
-          ? activeReports
-          : foundReports;
+      final List<MapReport> visibleReports = _filterReports(
+        _selectedFilter == MapFilter.active ? activeReports : foundReports,
+      );
 
-      if (!mounted) return;
+      if (!mounted || generation != _loadGeneration) return;
 
       final selected = selectNearestReport(visibleReports, _userLocation);
       setState(() {
@@ -456,7 +512,7 @@ class _MapPageState extends State<MapPage> {
         await _moveCamera(selected.position);
       }
     } catch (error) {
-      if (!mounted) return;
+      if (!mounted || generation != _loadGeneration) return;
 
       setState(() {
         _status = MapStatus.error;
@@ -470,9 +526,9 @@ class _MapPageState extends State<MapPage> {
      -------------------------------------------------------------------------- */
 
   void _toggleFilter(MapFilter filter) {
-    final List<MapReport> nextReports = filter == MapFilter.active
-        ? _activeReports
-        : _foundReports;
+    final List<MapReport> nextReports = _filterReports(
+      filter == MapFilter.active ? _activeReports : _foundReports,
+    );
 
     final selected = selectNearestReport(nextReports, _userLocation);
     setState(() {
@@ -542,7 +598,7 @@ class _MapPageState extends State<MapPage> {
 
   Future<void> _goToProjectZone() async {
     await _moveCamera(_userLocation ?? _ciudadSalitre);
-
+    if (!mounted) return;
     setState(() {
       _selectedReport = null;
     });
@@ -590,6 +646,36 @@ class _MapPageState extends State<MapPage> {
             onFoundTap: () => _toggleFilter(MapFilter.found),
           ),
 
+          Container(
+            color: Colors.white,
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    _filters.count == 0
+                        ? 'Todos los atributos'
+                        : '${_filters.count} ${_filters.count == 1 ? 'filtro activo' : 'filtros activos'}',
+                    style: const TextStyle(fontSize: 12),
+                  ),
+                ),
+                if (_filters.count > 0)
+                  TextButton(
+                    onPressed: _clearFilters,
+                    child: const Text('Limpiar filtros'),
+                  ),
+                IconButton(
+                  tooltip: 'Filtrar reportes',
+                  onPressed: _openFilters,
+                  icon: Icon(
+                    Icons.filter_list,
+                    color: _filters.count > 0 ? const Color(0xFF3F9568) : null,
+                  ),
+                ),
+              ],
+            ),
+          ),
+
           Expanded(
             child: Stack(
               children: [
@@ -614,7 +700,8 @@ class _MapPageState extends State<MapPage> {
                   child: _Legend(selectedFilter: _selectedFilter),
                 ),
 
-                if (_status == MapStatus.empty) const _EmptyStateCard(),
+                if (_status == MapStatus.empty)
+                  _EmptyStateCard(filtered: _filters.count > 0),
 
                 if (_status == MapStatus.error)
                   _ErrorStateCard(onRetry: _retryLoad),
@@ -854,10 +941,10 @@ class _Legend extends StatelessWidget {
       width: 150,
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.95),
+        color: Colors.white.withValues(alpha: 0.95),
         borderRadius: BorderRadius.circular(5),
         boxShadow: [
-          BoxShadow(color: Colors.black.withOpacity(0.12), blurRadius: 5),
+          BoxShadow(color: Colors.black.withValues(alpha: 0.12), blurRadius: 5),
         ],
       ),
       child: found
@@ -925,7 +1012,7 @@ class _ZoomControl extends StatelessWidget {
         color: Colors.white,
         borderRadius: BorderRadius.circular(14),
         boxShadow: [
-          BoxShadow(color: Colors.black.withOpacity(0.14), blurRadius: 4),
+          BoxShadow(color: Colors.black.withValues(alpha: 0.14), blurRadius: 4),
         ],
       ),
       child: Column(
@@ -1021,11 +1108,11 @@ class MapReportPreviewCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.97),
+        color: Colors.white.withValues(alpha: 0.97),
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.18),
+            color: Colors.black.withValues(alpha: 0.18),
             blurRadius: 8,
             offset: const Offset(0, 4),
           ),
@@ -1142,7 +1229,8 @@ class MapReportPreviewCard extends StatelessWidget {
    ============================================================================ */
 
 class _EmptyStateCard extends StatelessWidget {
-  const _EmptyStateCard();
+  final bool filtered;
+  const _EmptyStateCard({this.filtered = false});
 
   @override
   Widget build(BuildContext context) {
@@ -1151,28 +1239,32 @@ class _EmptyStateCard extends StatelessWidget {
         width: 295,
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 26),
         decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.95),
+          color: Colors.white.withValues(alpha: 0.95),
           borderRadius: BorderRadius.circular(12),
         ),
-        child: const Column(
+        child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.pets, size: 42, color: Color(0xFF8EB5A5)),
-            SizedBox(height: 14),
+            const Icon(Icons.pets, size: 42, color: Color(0xFF8EB5A5)),
+            const SizedBox(height: 14),
             Text(
-              'No hay reportes disponibles',
+              filtered
+                  ? 'No hay resultados con estos filtros'
+                  : 'No hay reportes disponibles',
               textAlign: TextAlign.center,
-              style: TextStyle(
+              style: const TextStyle(
                 color: Color(0xFF405466),
                 fontSize: 15,
                 fontWeight: FontWeight.bold,
               ),
             ),
-            SizedBox(height: 8),
+            const SizedBox(height: 8),
             Text(
-              'Actualmente no hay reportes de mascotas perdidas o avistadas en este mapa.',
+              filtered
+                  ? 'Cambia o limpia los filtros para ver otros reportes.'
+                  : 'Actualmente no hay reportes en esta sección del mapa.',
               textAlign: TextAlign.center,
-              style: TextStyle(color: Color(0xFF77877E), fontSize: 12),
+              style: const TextStyle(color: Color(0xFF77877E), fontSize: 12),
             ),
           ],
         ),
@@ -1197,7 +1289,7 @@ class _ErrorStateCard extends StatelessWidget {
         width: 285,
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
         decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.96),
+          color: Colors.white.withValues(alpha: 0.96),
           borderRadius: BorderRadius.circular(12),
         ),
         child: Column(
@@ -1264,7 +1356,7 @@ class _LocationBar extends StatelessWidget {
     return Container(
       height: 34,
       padding: const EdgeInsets.symmetric(horizontal: 18),
-      color: Colors.white.withOpacity(0.9),
+      color: Colors.white.withValues(alpha: 0.9),
       child: const Row(
         children: [
           Icon(Icons.home, size: 16, color: Color(0xFF4E967B)),
@@ -2137,7 +2229,7 @@ class _StatusChip extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.14),
+        color: color.withValues(alpha: 0.14),
         borderRadius: BorderRadius.circular(18),
         border: Border.all(color: color),
       ),

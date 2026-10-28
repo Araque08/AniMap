@@ -93,6 +93,8 @@ test('el mapa público solo expone el teléfono cuando fue autorizado', async (t
   assert.equal(authorized.ownerEmail, '');
   assert.equal(authorized.location, 'Punto marcado en el mapa');
   assert.equal(authorized.reference, 'Ubicación de prueba');
+  assert.equal(authorized.species, 'Perro');
+  assert.equal(authorized.color, 'Café');
 
   const sighting = body.data.find((item) => item.id === 'sighting_3');
   assert.equal(sighting.petName, 'Sin reporte vinculado');
@@ -100,6 +102,8 @@ test('el mapa público solo expone el teléfono cuando fue autorizado', async (t
   assert.equal('ownerName' in sighting, false);
   assert.equal('ownerPhone' in sighting, false);
   assert.equal('ownerEmail' in sighting, false);
+  assert.equal(sighting.species, null);
+  assert.equal(sighting.color, null);
 });
 
 test('el mapa publica todas las fotos con la principal primero', async (t) => {
@@ -169,6 +173,7 @@ test('un reporte finalizado se publica como encontrado sin contacto', async (t) 
   const body = await response.json();
   assert.equal(response.status, 200);
   assert.equal(body.data[0].type, 'found');
+  assert.equal(body.data[0].title, 'Mascota encontrada');
   assert.equal(body.data[0].dateText, '2026-09-12T15:00:00.000-05:00');
   assert.equal(body.data[0].showContact, false);
   assert.equal(body.data[0].ownerPhone, '');
