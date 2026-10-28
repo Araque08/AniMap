@@ -4,6 +4,7 @@ const { once } = require('node:events');
 
 const app = require('../src/app');
 const { signAccessToken } = require('../src/utils/jwt');
+require('../test-support/auth-fixture.cjs').installAuthFixture({ 7: 'USUARIO' });
 const { createSightingsService } = require('../src/modules/sightings/sightings.service');
 
 function historyRow({

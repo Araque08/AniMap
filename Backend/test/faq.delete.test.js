@@ -5,6 +5,7 @@ const { createFaqService, faqService } = require('../src/modules/faq/faq.service
 const faqRoutes = require('../src/modules/faq/faq.routes');
 const errorMiddleware = require('../src/middleware/error.middleware');
 const { signAccessToken } = require('../src/utils/jwt');
+require('../test-support/auth-fixture.cjs').installAuthFixture({ 8: 'USUARIO', 7: 'ADMINISTRADOR' });
 
 function fakeFaqPool({ failAudit = false } = {}) {
   const state = {

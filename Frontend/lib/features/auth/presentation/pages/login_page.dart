@@ -6,8 +6,14 @@ import 'verify_account_page.dart';
 
 class LoginPage extends StatefulWidget {
   final AuthService? authService;
+  // SessionGate already replaces this page when authentication changes.
+  final bool navigateOnSuccess;
 
-  const LoginPage({super.key, this.authService});
+  const LoginPage({
+    super.key,
+    this.authService,
+    this.navigateOnSuccess = true,
+  });
 
   @override
   State<LoginPage> createState() => _LoginPageState();
@@ -66,7 +72,7 @@ class _LoginPageState extends State<LoginPage> {
       final nombre = user?['nombre']?.toString() ?? 'usuario';
       final role = _authService.sessionManager.role;
 
-      if (!mounted) return;
+      if (!mounted || !widget.navigateOnSuccess) return;
 
       Navigator.pushNamedAndRemoveUntil(
         context,
@@ -153,14 +159,13 @@ class _LoginPageState extends State<LoginPage> {
     return Scaffold(
       /* Fondo de la pagina*/
       backgroundColor: backgroundColor,
-      /* Evita redimensionar la pagina cada vez que se abre el teclado*/
-      resizeToAvoidBottomInset: false,
+      resizeToAvoidBottomInset: true,
 
       body: Stack(
         children: [
           const Positioned(left: 0, right: 0, bottom: 0, child: _BottomWaves()),
           SafeArea(
-            child: Padding(
+            child: SingleChildScrollView(
               padding: const EdgeInsets.symmetric(horizontal: 35, vertical: 5),
               child: Form(
                 key: _formKey,
@@ -247,7 +252,7 @@ class _LoginPageState extends State<LoginPage> {
 
                     const SizedBox(height: 22),
                     const Row(
-                      children: const [
+                      children: [
                         Expanded(
                           child: Divider(color: Colors.black54, thickness: 1),
                         ),
@@ -348,8 +353,8 @@ class _LoginPageState extends State<LoginPage> {
                       ),
                     ),
                     /* se crea el enlace si el usuario olvido la cotraseña */
-                    Transform.translate(
-                      offset: const Offset(0, -15),
+                    Padding(
+                      padding: const EdgeInsets.only(top: 8),
                       child: Align(
                         alignment: Alignment.centerRight,
                         child: GestureDetector(
@@ -419,8 +424,8 @@ class _LoginPageState extends State<LoginPage> {
                         style: ElevatedButton.styleFrom(
                           backgroundColor: primaryGreen,
                           foregroundColor: Colors.white,
-                          disabledBackgroundColor: primaryGreen.withOpacity(
-                            0.55,
+                          disabledBackgroundColor: primaryGreen.withValues(
+                            alpha: 0.55,
                           ),
                           elevation: 0,
                           shape: RoundedRectangleBorder(
@@ -448,8 +453,8 @@ class _LoginPageState extends State<LoginPage> {
 
                     const SizedBox(height: 7),
                     /* Este crea la confirmacion de si el usuario tiene una cuenta  */
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
+                    Wrap(
+                      alignment: WrapAlignment.center,
                       children: [
                         const Text(
                           '¿No tienes cuenta? ',

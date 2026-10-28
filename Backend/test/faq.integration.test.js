@@ -5,6 +5,7 @@ const { createFaqService, faqService } = require('../src/modules/faq/faq.service
 const faqRoutes = require('../src/modules/faq/faq.routes');
 const errorMiddleware = require('../src/middleware/error.middleware');
 const { signAccessToken } = require('../src/utils/jwt');
+require('../test-support/auth-fixture.cjs').installAuthFixture({ 2: 'USUARIO', 3: 'ADMINISTRADOR' });
 
 test('FAQ pública lista solo activas y detalle archivado responde 404', async () => {
   const queries = [];

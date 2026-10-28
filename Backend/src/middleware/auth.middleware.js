@@ -166,7 +166,7 @@ async function authMiddleware(req, res, next) {
       Renovamos la expiración de la sesión porque el usuario
       acaba de realizar actividad válida.
     */
-    await db.query(
+    const renewed = await db.query(
       `
         UPDATE device_session
         SET expira_en =
@@ -174,9 +174,17 @@ async function authMiddleware(req, res, next) {
         WHERE
           id = $1
           AND vigente = TRUE
+          AND expira_en > LOCALTIMESTAMP
       `,
       [session.session_id, idleMinutes]
     );
+    if (renewed.rowCount !== 1) {
+      return res.status(401).json({
+        ok: false,
+        code: 'SESSION_REVOKED',
+        message: 'La sesión no está activa',
+      });
+    }
 
     req.auth = {
       userId,

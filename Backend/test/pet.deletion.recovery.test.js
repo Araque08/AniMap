@@ -10,6 +10,7 @@ const { BSON, ObjectId, MongoClient } = require('mongodb');
 process.env.MONGO_URI = 'mongodb://127.0.0.1:9/isolated-pet-recovery';
 MongoClient.prototype.connect = async () => { throw new Error('Real MongoDB access disabled'); };
 const postgres = require('../src/config/postgres_db');
+require('../test-support/auth-fixture.cjs').installAuthFixture({ 3: 'USUARIO' });
 postgres.pool.query = async () => { throw new Error('Real PostgreSQL access disabled'); };
 let current;
 require('../src/config/mongo_db').getMongoDb = async () => current.mongo;
@@ -132,7 +133,7 @@ async function remove(f) {
   try {
     await once(server, 'listening');
     const response = await fetch(`http://127.0.0.1:${server.address().port}/api/pets/7`, {
-      method: 'DELETE', headers: { Authorization: `Bearer ${signAccessToken({ sub: 3, role: 'USUARIO' })}` },
+      method: 'DELETE', headers: { Authorization: `Bearer ${signAccessToken({ sub: 3, role: 'USUARIO', deviceId: 'test-device' })}` },
     });
     return { status: response.status, body: await response.json() };
   } finally { console.error = originalError; await new Promise(resolve => server.close(resolve)); }

@@ -73,6 +73,7 @@ class AuthenticatedHttpClient {
       token = await sessionManager.refreshAccessToken();
     }
     var response = await send(token);
+    await _handleTerminalSession(response, token);
     if (!_requiresRefresh(response)) return response;
     final currentToken = sessionManager.accessToken;
     token =
@@ -80,6 +81,7 @@ class AuthenticatedHttpClient {
         ? currentToken
         : await sessionManager.refreshAccessToken();
     response = await send(token);
+    await _handleTerminalSession(response, token);
     if (_requiresRefresh(response)) {
       await sessionManager.invalidateSession(code: _authCode(response));
     }
@@ -99,6 +101,7 @@ class AuthenticatedHttpClient {
           ? const {}
           : {'Authorization': 'Bearer $token'},
     );
+    await _handleTerminalSession(response, token);
     if (!_requiresRefresh(response) ||
         (optionalAuthentication && (token == null || token.isEmpty))) {
       return response;
@@ -109,6 +112,7 @@ class AuthenticatedHttpClient {
         ? currentToken
         : await sessionManager.refreshAccessToken();
     response = await operation({'Authorization': 'Bearer $token'});
+    await _handleTerminalSession(response, token);
     if (_requiresRefresh(response)) {
       await sessionManager.invalidateSession(code: _authCode(response));
     }
@@ -126,6 +130,26 @@ class AuthenticatedHttpClient {
           code == 'ACCESS_TOKEN_REQUIRED';
     } catch (_) {
       return true;
+    }
+  }
+
+  Future<void> _handleTerminalSession(
+    http.Response response,
+    String? token,
+  ) async {
+    if (token == null ||
+        sessionManager.accessToken != token ||
+        (response.statusCode != 401 && response.statusCode != 403)) {
+      return;
+    }
+    final code = _authCode(response);
+    if (const {
+      'SESSION_REVOKED',
+      'SESSION_EXPIRED',
+      'ACCOUNT_INVALID',
+      'ACCOUNT_ROLE_INVALID',
+    }.contains(code)) {
+      await sessionManager.invalidateSession(code: code);
     }
   }
 
