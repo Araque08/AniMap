@@ -4,14 +4,41 @@ import '../../../../auth/data/session_manager.dart';
 import '../../../../auth/presentation/session_navigation.dart';
 import '../faq/admin_faq_page.dart';
 import '../users/admin_users_page.dart';
+import '../bitacora/admin_bitacora_page.dart';
+import '../../../../auth/data/auth_service.dart';
 
 class AdminHomePage extends StatelessWidget {
   final SessionManager? sessionManager;
+  final String? bitacoraBaseUrl;
+  final String? bitacoraToken;
 
   const AdminHomePage({
     super.key,
     this.sessionManager,
+    this.bitacoraBaseUrl,
+    this.bitacoraToken,
   });
+
+  // Permite adaptar la lectura del token a versiones del gestor de sesión.
+  // No almacena ni imprime credenciales.
+  Future<String?> _tokenDeSesion() async {
+    if (bitacoraToken?.trim().isNotEmpty == true) return bitacoraToken!.trim();
+    final dynamic sesion = sessionManager;
+    if (sesion == null) return null;
+
+    Future<String?> probar(Future<dynamic> Function() lector) async {
+      try {
+        final value = await lector();
+        if (value is String && value.trim().isNotEmpty) return value.trim();
+      } catch (_) { /* API no disponible en esta versión */ }
+      return null;
+    }
+
+    return await probar(() async => sesion.accessToken) ??
+        await probar(() async => sesion.token) ??
+        await probar(() async => sesion.getAccessToken()) ??
+        await probar(() async => sesion.getToken());
+  }
 
   // =========================================================
   // COLORES PRINCIPALES
@@ -81,31 +108,31 @@ class AdminHomePage extends StatelessWidget {
                 Tooltip(
                   message: 'Cerrar sesión',
                   child: Material(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(15),
-                  child: InkWell(
+                    color: Colors.white,
                     borderRadius: BorderRadius.circular(15),
-                    onTap: () {
-                      confirmLogoutAndNavigate(
-                        context,
-                        sessionManager: sessionManager,
-                      );
-                    },
-                    child: Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(15),
-                        border: Border.all(
-                          color: const Color(0xFFE5ECE8),
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(15),
+                      onTap: () {
+                        confirmLogoutAndNavigate(
+                          context,
+                          sessionManager: sessionManager,
+                        );
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(15),
+                          border: Border.all(
+                            color: const Color(0xFFE5ECE8),
+                          ),
+                        ),
+                        child: const Icon(
+                          Icons.logout_rounded,
+                          color: Color(0xFFB95050),
+                          size: 22,
                         ),
                       ),
-                      child: const Icon(
-                        Icons.logout_rounded,
-                        color: Color(0xFFB95050),
-                        size: 22,
-                      ),
                     ),
-                  ),
                   ),
                 ),
               ],
@@ -248,6 +275,35 @@ class AdminHomePage extends StatelessWidget {
                   MaterialPageRoute(
                     builder: (_) =>
                     const AdminUsersPage(),
+                  ),
+                );
+              },
+            ),
+
+            const SizedBox(height: 14),
+
+            // =================================================
+            // BITÁCORA ADMINISTRATIVA
+            // =================================================
+
+            _AdminLink(
+              title: 'Bitácora administrativa',
+              subtitle:
+              'Consulta el historial de acciones realizadas por los administradores.',
+              icon: Icons.history_rounded,
+              iconBackground: const Color(0xFFEDEAF8),
+              iconColor: const Color(0xFF7565AC),
+              onTap: () async {
+                final url = (bitacoraBaseUrl ?? AuthService.baseUrl).trim();
+                final token = await _tokenDeSesion();
+                if (!context.mounted) return;
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => AdminBitacoraPage(
+                      baseUrl: url,
+                      token: token ?? '',
+                    ),
                   ),
                 );
               },

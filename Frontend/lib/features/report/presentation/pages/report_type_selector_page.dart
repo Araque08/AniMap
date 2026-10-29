@@ -46,7 +46,10 @@ class _ReportarBuscarPageState
 
   bool _cargando = true;
   bool _mostrarAvistamientos = false;
-  String _filtro = 'Todos';
+  String _especieFiltro = '';
+  String _razaFiltro = '';
+  String _colorFiltro = '';
+  DateTime? _fechaFiltro;
   String? _error;
 
   @override
@@ -97,80 +100,378 @@ class _ReportarBuscarPageState
   // BUSQUEDA Y FILTROS
   // =====================================================
 
+
+  List<String> _separarDetalles(MascotaReporte mascota) {
+    return mascota.detalles
+        .split('·')
+        .map((parte) => parte.trim())
+        .toList();
+  }
+
+  String _obtenerCampo(
+      MascotaReporte mascota,
+      int posicion,
+      ) {
+    final partes = _separarDetalles(mascota);
+
+    if (posicion >= partes.length) return '';
+
+    // El tercer campo puede contener un color compuesto.
+    if (posicion == 2) {
+      return partes.skip(2).join(' · ').trim();
+    }
+
+    return partes[posicion];
+  }
+
   List<MascotaReporte> get _resultados {
-    final texto = _busqueda.text.trim().toLowerCase();
+    final busqueda = _busqueda.text.trim().toLowerCase();
 
     return _reportes.where((mascota) {
+      // Separar perdidas de avistamientos.
       if (_mostrarAvistamientos) {
         if (!mascota.esAvistamiento) return false;
       } else {
         if (!mascota.estaPerdida) return false;
       }
 
-      final detalles = mascota.detalles.toLowerCase();
+      final especie = _obtenerCampo(mascota, 0);
+      final raza = _obtenerCampo(mascota, 1);
+      final color = _obtenerCampo(mascota, 2);
 
-      if (_filtro == 'Perros' &&
-          !detalles.contains('perro')) {
+      if (_especieFiltro.isNotEmpty &&
+          especie.toLowerCase() !=
+              _especieFiltro.toLowerCase()) {
         return false;
       }
 
-      if (_filtro == 'Gatos' &&
-          !detalles.contains('gato')) {
+      if (_razaFiltro.isNotEmpty &&
+          raza.toLowerCase() !=
+              _razaFiltro.toLowerCase()) {
         return false;
       }
 
-      final contenido = [
-        mascota.nombre,
-        mascota.detalles,
-        mascota.ubicacion,
-        mascota.referencia,
-        mascota.descripcion,
-      ].join(' ').toLowerCase();
+      if (_colorFiltro.isNotEmpty &&
+          !color.toLowerCase().contains(
+            _colorFiltro.toLowerCase(),
+          )) {
+        return false;
+      }
 
-      return contenido.contains(texto);
+      // Comparar únicamente día, mes y año.
+      if (_fechaFiltro != null) {
+        final fecha = mascota.fecha?.toLocal();
+
+        if (fecha == null ||
+            fecha.year != _fechaFiltro!.year ||
+            fecha.month != _fechaFiltro!.month ||
+            fecha.day != _fechaFiltro!.day) {
+          return false;
+        }
+      }
+
+      // Búsqueda libre en la información del reporte.
+      if (busqueda.isNotEmpty) {
+        final contenido = [
+          mascota.nombre,
+          especie,
+          raza,
+          color,
+          mascota.ubicacion,
+          mascota.referencia,
+          mascota.descripcion,
+        ].join(' ').toLowerCase();
+
+        if (!contenido.contains(busqueda)) {
+          return false;
+        }
+      }
+
+      return true;
     }).toList();
   }
 
+
+
   void _abrirFiltros() {
+    String especieTemporal = _especieFiltro;
+    String razaTemporal = _razaFiltro;
+    String colorTemporal = _colorFiltro;
+    DateTime? fechaTemporal = _fechaFiltro;
+
+    final reportesDisponibles = _reportes.where((mascota) {
+      return _mostrarAvistamientos
+          ? mascota.esAvistamiento
+          : mascota.estaPerdida;
+    }).toList();
+
+    List<String> opcionesCampo(int posicion) {
+      final opciones = reportesDisponibles
+          .map((mascota) => _obtenerCampo(mascota, posicion))
+          .where((valor) => valor.isNotEmpty)
+          .toSet()
+          .toList();
+
+      opciones.sort();
+      return opciones;
+    }
+
+    final especies = opcionesCampo(0);
+    final razas = opcionesCampo(1);
+    final colores = opcionesCampo(2);
+
     showModalBottomSheet(
       context: context,
+      isScrollControlled: true,
       showDragHandle: true,
-      builder: (context) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'Filtrar por especie',
-                style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
+      builder: (modalContext) {
+        return StatefulBuilder(
+          builder: (context, actualizarModal) {
+            Widget selector({
+              required String titulo,
+              required String valor,
+              required List<String> opciones,
+              required ValueChanged<String> onChanged,
+            }) {
+              final valores = <String>{
+                ...opciones,
+                if (valor.isNotEmpty) valor,
+              }.toList()..sort();
+
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    titulo,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 14,
+                    ),
+                  ),
+                  const SizedBox(height: 7),
+                  DropdownButtonFormField<String>(
+                    value: valor,
+                    isExpanded: true,
+                    decoration: InputDecoration(
+                      filled: true,
+                      fillColor: const Color(0xFFF4F8F5),
+                      border: OutlineInputBorder(
+                        borderRadius:
+                        BorderRadius.circular(12),
+                      ),
+                      contentPadding:
+                      const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 12,
+                      ),
+                    ),
+                    items: [
+                      const DropdownMenuItem(
+                        value: '',
+                        child: Text('Todas'),
+                      ),
+                      ...valores.map(
+                            (opcion) => DropdownMenuItem(
+                          value: opcion,
+                          child: Text(
+                            opcion,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ),
+                    ],
+                    onChanged: (nuevoValor) {
+                      if (nuevoValor != null) {
+                        onChanged(nuevoValor);
+                      }
+                    },
+                  ),
+                  const SizedBox(height: 16),
+                ],
+              );
+            }
+
+            String fechaTexto() {
+              if (fechaTemporal == null) {
+                return 'Seleccionar fecha';
+              }
+
+              final f = fechaTemporal!;
+              final dia = f.day.toString().padLeft(2, '0');
+              final mes = f.month.toString().padLeft(2, '0');
+
+              return '$dia/$mes/${f.year}';
+            }
+
+            return SafeArea(
+              child: Padding(
+                padding: EdgeInsets.fromLTRB(
+                  20,
+                  10,
+                  20,
+                  MediaQuery.of(context).viewInsets.bottom + 20,
+                ),
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment:
+                    CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Filtrar reportes',
+                        style: TextStyle(
+                          fontSize: 22,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+
+                      const SizedBox(height: 20),
+
+                      selector(
+                        titulo: 'Especie',
+                        valor: especieTemporal,
+                        opciones: especies,
+                        onChanged: (valor) {
+                          actualizarModal(() {
+                            especieTemporal = valor;
+                          });
+                        },
+                      ),
+
+                      selector(
+                        titulo: 'Raza',
+                        valor: razaTemporal,
+                        opciones: razas,
+                        onChanged: (valor) {
+                          actualizarModal(() {
+                            razaTemporal = valor;
+                          });
+                        },
+                      ),
+
+                      selector(
+                        titulo: 'Color',
+                        valor: colorTemporal,
+                        opciones: colores,
+                        onChanged: (valor) {
+                          actualizarModal(() {
+                            colorTemporal = valor;
+                          });
+                        },
+                      ),
+
+                      const Text(
+                        'Fecha del reporte',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 14,
+                        ),
+                      ),
+
+                      const SizedBox(height: 8),
+
+                      OutlinedButton.icon(
+                        onPressed: () async {
+                          final ahora = DateTime.now();
+
+                          final seleccion = await showDatePicker(
+                            context: context,
+                            initialDate:
+                            fechaTemporal ?? ahora,
+                            firstDate: DateTime(2020),
+                            lastDate: ahora,
+                            helpText:
+                            'Selecciona la fecha del reporte',
+                          );
+
+                          if (seleccion != null &&
+                              modalContext.mounted) {
+                            actualizarModal(() {
+                              fechaTemporal = seleccion;
+                            });
+                          }
+                        },
+                        icon: const Icon(
+                          Icons.calendar_month_outlined,
+                        ),
+                        label: Text(fechaTexto()),
+                      ),
+
+                      if (fechaTemporal != null)
+                        TextButton(
+                          onPressed: () {
+                            actualizarModal(() {
+                              fechaTemporal = null;
+                            });
+                          },
+                          child: const Text('Quitar fecha'),
+                        ),
+
+                      const SizedBox(height: 20),
+
+                      SizedBox(
+                        width: double.infinity,
+                        child: FilledButton.icon(
+                          onPressed: () {
+                            setState(() {
+                              _especieFiltro =
+                                  especieTemporal;
+                              _razaFiltro = razaTemporal;
+                              _colorFiltro = colorTemporal;
+                              _fechaFiltro = fechaTemporal;
+                            });
+
+                            Navigator.pop(modalContext);
+                          },
+                          icon: const Icon(Icons.search),
+                          label: const Text(
+                            'Aplicar filtros',
+                          ),
+                          style: FilledButton.styleFrom(
+                            backgroundColor:
+                            const Color(0xFF21986A),
+                            padding:
+                            const EdgeInsets.symmetric(
+                              vertical: 15,
+                            ),
+                          ),
+                        ),
+                      ),
+
+                      const SizedBox(height: 8),
+
+                      SizedBox(
+                        width: double.infinity,
+                        child: TextButton.icon(
+                          onPressed: () {
+                            setState(() {
+                              _especieFiltro = '';
+                              _razaFiltro = '';
+                              _colorFiltro = '';
+                              _fechaFiltro = null;
+                            });
+
+                            Navigator.pop(modalContext);
+                          },
+                          icon: const Icon(
+                            Icons.filter_alt_off_outlined,
+                          ),
+                          label: const Text(
+                            'Limpiar filtros',
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
-              const SizedBox(height: 12),
-              ...['Todos', 'Perros', 'Gatos'].map(
-                    (tipo) => ListTile(
-                  title: Text(tipo),
-                  trailing: _filtro == tipo
-                      ? const Icon(
-                    Icons.check_circle,
-                    color: verde,
-                  )
-                      : null,
-                  onTap: () {
-                    setState(() => _filtro = tipo);
-                    Navigator.pop(context);
-                  },
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
+            );
+          },
+        );
+      },
     );
   }
+
 
   // =====================================================
   // CAMARA Y GALERIA
@@ -1071,7 +1372,7 @@ class _ReportarBuscarPageState
                                         decoration:
                                         InputDecoration(
                                           hintText:
-                                          'Nombre, raza o zona...',
+                                          'Buscar mascota o reporte...',
                                           hintStyle:
                                           const TextStyle(
                                             fontSize: 11,

@@ -24,6 +24,7 @@ const geocodingRoutes = require('../modules/geocoding/geocoding.routes');
 const notificationPreferencesRoutes = require('../modules/notification-preferences/notification-preferences.routes');
 const faqRoutes = require('../modules/faq/faq.routes');
 const usersRoutes = require('../modules/users/users.routes');
+const bitacoraRoutes = require('../modules/admin-bitacora/bitacora.routes');
 
 /*
   Aquí creo el router principal de Express.
@@ -63,6 +64,12 @@ router.use('/catalogos', catalogosRoutes);
 */
 router.use('/pets', mascotasRoutes);
 router.use('/pets', petsRoutes);
+
+/*
+  Bitácora administrativa.
+  Consulta protegida para administradores.
+*/
+router.use('/admin/bitacora', bitacoraRoutes);
 
 /*
   Aquí conecto el nuevo módulo del mapa.
