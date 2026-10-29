@@ -7,6 +7,8 @@ import '../users/admin_users_page.dart';
 import '../bitacora/admin_bitacora_page.dart';
 import '../../../../auth/data/auth_service.dart';
 
+import '../reports/admin_reports_page.dart';
+
 class AdminHomePage extends StatelessWidget {
   final SessionManager? sessionManager;
   final String? bitacoraBaseUrl;
@@ -319,16 +321,24 @@ class AdminHomePage extends StatelessWidget {
             // Después se conectará con su página correspondiente.
             // =================================================
 
+
             _AdminLink(
               title: 'Reportes',
               subtitle:
-              'Consulta los reportes y novedades registradas en la plataforma.',
+              'Consulta, busca y administra los reportes registrados en AniMap.',
               icon: Icons.flag_outlined,
               iconBackground: const Color(0xFFFFF2E4),
               iconColor: const Color(0xFFD68738),
-              status: 'Próximamente',
-              onTap: null,
+              onTap: () {
+                Navigator.push(
+                context,
+                  MaterialPageRoute(
+                  builder: (_) => const AdminReportsPage(),
+                  ),
+                );
+              },
             ),
+
 
             const SizedBox(height: 30),
 
