@@ -570,6 +570,868 @@ class _AdminReportsPageState extends State<AdminReportsPage> {
     );
   }
 
+
+  // ========================================================
+  // SECCIÓN DE POSIBLES REPORTES DUPLICADOS
+  // ========================================================
+
+  Widget _duplicatesSection() {
+    return FutureBuilder<Map<String, dynamic>>(
+      future: _service.getPossibleDuplicates(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Padding(
+            padding: EdgeInsets.all(20),
+            child: Center(
+              child: CircularProgressIndicator(color: green),
+            ),
+          );
+        }
+
+        if (snapshot.hasError) {
+          return Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Text(
+                'No se pudieron consultar los duplicados: '
+                    '${snapshot.error}',
+              ),
+            ),
+          );
+        }
+
+        final data = snapshot.data;
+
+        if (data == null) {
+          return const SizedBox.shrink();
+        }
+
+        final duplicates =
+            (data['duplicados'] as List?) ?? [];
+
+        final total =
+            (data['total'] as num?)?.toInt() ?? 0;
+
+        final high =
+            (data['prioridadAlta'] as num?)?.toInt() ?? 0;
+
+        final medium =
+            (data['prioridadMedia'] as num?)?.toInt() ?? 0;
+
+        return Container(
+          margin: const EdgeInsets.only(bottom: 22),
+          padding: const EdgeInsets.all(17),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(
+              color: const Color(0xFFE4EBE7),
+            ),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  const Icon(
+                    Icons.warning_amber_rounded,
+                    color: Color(0xFFD68738),
+                    size: 27,
+                  ),
+                  const SizedBox(width: 10),
+                  const Expanded(
+                    child: Text(
+                      'Posibles reportes duplicados',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w800,
+                        color: textPrimary,
+                      ),
+                    ),
+                  ),
+                  CircleAvatar(
+                    radius: 17,
+                    backgroundColor:
+                    const Color(0xFFFFF2E4),
+                    child: Text(
+                      '$total',
+                      style: const TextStyle(
+                        color: Color(0xFFB66A23),
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+
+              const SizedBox(height: 9),
+
+              const Text(
+                'El sistema identifica reportes con '
+                    'características similares para su revisión.',
+                style: TextStyle(
+                  color: textSecondary,
+                  fontSize: 13,
+                ),
+              ),
+
+              const SizedBox(height: 14),
+
+              Wrap(
+                spacing: 9,
+                runSpacing: 8,
+                children: [
+                  Chip(
+                    avatar: const Icon(
+                      Icons.priority_high,
+                      size: 17,
+                      color: Colors.redAccent,
+                    ),
+                    label: Text('Prioridad alta: $high'),
+                  ),
+                  Chip(
+                    avatar: const Icon(
+                      Icons.info_outline,
+                      size: 17,
+                      color: Colors.orange,
+                    ),
+                    label: Text('Prioridad media: $medium'),
+                  ),
+                ],
+              ),
+
+              const SizedBox(height: 12),
+
+              if (duplicates.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 14),
+                  child: Center(
+                    child: Text(
+                      'No se encontraron posibles duplicados.',
+                      style: TextStyle(
+                        color: textSecondary,
+                      ),
+                    ),
+                  ),
+                )
+              else
+                ...duplicates.map((item) {
+                  final duplicate =
+                  Map<String, dynamic>.from(item as Map);
+
+                  final report1 =
+                  (duplicate['report1Id'] as num).toInt();
+
+                  final report2 =
+                  (duplicate['report2Id'] as num).toInt();
+
+                  final score =
+                      duplicate['coincidencia'] ?? 0;
+
+                  final priority =
+                      duplicate['prioridad']?.toString() ?? 'MEDIA';
+
+                  final highPriority = priority == 'ALTA';
+
+                  return Container(
+                    margin: const EdgeInsets.only(top: 11),
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: background,
+                      borderRadius: BorderRadius.circular(15),
+                      border: Border.all(
+                        color: const Color(0xFFE4EBE7),
+                      ),
+                    ),
+                    child: Column(
+                      crossAxisAlignment:
+                      CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                _value(
+                                  duplicate['mascotaNombre'],
+                                ),
+                                style: const TextStyle(
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w800,
+                                  color: textPrimary,
+                                ),
+                              ),
+                            ),
+                            Text(
+                              '$score%',
+                              style: TextStyle(
+                                fontWeight: FontWeight.w800,
+                                color: highPriority
+                                    ? Colors.redAccent
+                                    : const Color(0xFFD68738),
+                              ),
+                            ),
+                          ],
+                        ),
+
+                        const SizedBox(height: 7),
+
+                        Text(
+                          'Reportes #$report1 y #$report2',
+                          style: const TextStyle(
+                            color: textSecondary,
+                            fontSize: 12,
+                          ),
+                        ),
+
+                        const SizedBox(height: 8),
+
+                        Text(
+                          'Tiempo: ${duplicate['diferenciaMinutos']} min',
+                        ),
+
+                        Text(
+                          'Distancia: ${duplicate['distanciaMetros']} m',
+                        ),
+
+                        Text(
+                          'Similitud de descripción: '
+                              '${duplicate['similitudDescripcion']}%',
+                        ),
+
+                        const SizedBox(height: 10),
+
+
+                        const SizedBox(height: 12),
+
+                        SizedBox(
+                          width: double.infinity,
+                          child: FilledButton.icon(
+                            style: FilledButton.styleFrom(
+                              backgroundColor: green,
+                              padding: const EdgeInsets.symmetric(vertical: 13),
+                            ),
+                            onPressed: () => _compareDuplicates(duplicate),
+                            icon: const Icon(Icons.compare_arrows_rounded),
+                            label: const Text('Comparar registros'),
+                          ),
+                        ),
+
+                        const SizedBox(height: 10),
+
+
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: [
+                            if (duplicate['tipo'] == 'REPORTE') ...[
+                              OutlinedButton.icon(
+                                onPressed: () => _openReport(report1),
+                                icon: const Icon(Icons.visibility_outlined),
+                                label: Text('Ver reporte #$report1'),
+                              ),
+                              OutlinedButton.icon(
+                                onPressed: () => _openReport(report2),
+                                icon: const Icon(Icons.visibility_outlined),
+                                label: Text('Ver reporte #$report2'),
+                              ),
+                            ] else if (duplicate['tipo'] == 'AVISTAMIENTO') ...[
+                              OutlinedButton.icon(
+                                onPressed: () => _showSightingDetails(
+                                  duplicate,
+                                  first: true,
+                                ),
+                                icon: const Icon(Icons.remove_red_eye_outlined),
+                                label: Text('Ver avistamiento #$report1'),
+                              ),
+                              OutlinedButton.icon(
+                                onPressed: () => _showSightingDetails(
+                                  duplicate,
+                                  first: false,
+                                ),
+                                icon: const Icon(Icons.remove_red_eye_outlined),
+                                label: Text('Ver avistamiento #$report2'),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ],
+                    ),
+                  );
+                }),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _showSightingDetails(
+      Map<String, dynamic> duplicate, {
+        required bool first,
+      }) async {
+    final suffix = first ? '1' : '2';
+
+    final id = duplicate[
+    first ? 'report1Id' : 'report2Id'
+    ];
+
+    final description = duplicate['descripcion$suffix'];
+    final created = duplicate['creadoEn$suffix'];
+
+    final location = duplicate['ubicacion$suffix'];
+
+    final coordinates = location is Map
+        ? Map<String, dynamic>.from(location)
+        : <String, dynamic>{};
+
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          backgroundColor: Colors.white,
+          title: Text(
+            'Avistamiento #$id',
+            style: const TextStyle(
+              fontWeight: FontWeight.w800,
+              color: textPrimary,
+            ),
+          ),
+          content: SizedBox(
+            width: 430,
+            child: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _detail(
+                    'Descripción',
+                    description,
+                  ),
+                  _detail(
+                    'Fecha de registro',
+                    _date(created),
+                  ),
+                  _detail(
+                    'Latitud',
+                    coordinates['lat'],
+                  ),
+                  _detail(
+                    'Longitud',
+                    coordinates['lng'],
+                  ),
+                  _detail(
+                    'Usuario creador',
+                    duplicate[
+                    first ? 'usuario1Id' : 'usuario2Id'
+                    ],
+                  ),
+                  _detail(
+                    'Reporte de pérdida vinculado',
+                    duplicate[
+                    first
+                        ? 'reporteVinculado1'
+                        : 'reporteVinculado2'
+                    ],
+                  ),
+                  const Divider(height: 25),
+                  _detail(
+                    'Diferencia de tiempo',
+                    '${duplicate['diferenciaMinutos']} minutos',
+                  ),
+                  _detail(
+                    'Distancia entre avistamientos',
+                    '${duplicate['distanciaMetros']} metros',
+                  ),
+                  _detail(
+                    'Similitud de descripción',
+                    '${duplicate['similitudDescripcion']}%',
+                  ),
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Cerrar'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+
+  // =========================================================
+  // COMPARAR POSIBLES REPORTES DUPLICADOS
+  // =========================================================
+
+  Future<void> _compareDuplicates(
+      Map<String, dynamic> duplicate,
+      ) async {
+    final tipo = duplicate['tipo']?.toString() ?? 'REPORTE';
+
+    final id1 = duplicate['report1Id'];
+    final id2 = duplicate['report2Id'];
+
+    final ubicacion1 = duplicate['ubicacion1'] is Map
+        ? Map<String, dynamic>.from(duplicate['ubicacion1'] as Map)
+        : <String, dynamic>{};
+
+    final ubicacion2 = duplicate['ubicacion2'] is Map
+        ? Map<String, dynamic>.from(duplicate['ubicacion2'] as Map)
+        : <String, dynamic>{};
+
+    Widget comparisonCard({
+      required dynamic id,
+      required dynamic descripcion,
+      required dynamic fecha,
+      required Map<String, dynamic> ubicacion,
+      required dynamic usuarioId,
+    }) {
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: const Color(0xFFF5F8F6),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: const Color(0xFFE4EBE7),
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '$tipo #$id',
+              style: const TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w800,
+                color: textPrimary,
+              ),
+            ),
+            const SizedBox(height: 12),
+            _detail('Descripción', descripcion),
+            _detail('Fecha', _date(fecha)),
+            _detail('Usuario ID', usuarioId),
+            _detail('Latitud', ubicacion['lat']),
+            _detail('Longitud', ubicacion['lng']),
+          ],
+        ),
+      );
+    }
+
+    if (!mounted) return;
+
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          backgroundColor: Colors.white,
+          insetPadding: const EdgeInsets.symmetric(
+            horizontal: 16,
+            vertical: 24,
+          ),
+          title: const Text(
+            'Comparar posibles duplicados',
+            style: TextStyle(
+              fontWeight: FontWeight.w800,
+              color: textPrimary,
+            ),
+          ),
+          content: SizedBox(
+            width: 550,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  LayoutBuilder(
+                    builder: (context, constraints) {
+                      final wide = constraints.maxWidth >= 450;
+
+                      final firstCard = comparisonCard(
+                        id: id1,
+                        descripcion: duplicate['descripcion1'],
+                        fecha: duplicate['creadoEn1'],
+                        ubicacion: ubicacion1,
+                        usuarioId: duplicate['usuario1Id'],
+                      );
+
+                      final secondCard = comparisonCard(
+                        id: id2,
+                        descripcion: duplicate['descripcion2'],
+                        fecha: duplicate['creadoEn2'],
+                        ubicacion: ubicacion2,
+                        usuarioId: duplicate['usuario2Id'],
+                      );
+
+                      if (wide) {
+                        return Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(child: firstCard),
+                            const SizedBox(width: 12),
+                            Expanded(child: secondCard),
+                          ],
+                        );
+                      }
+
+                      return Column(
+                        children: [
+                          firstCard,
+                          const SizedBox(height: 12),
+                          secondCard,
+                        ],
+                      );
+                    },
+                  ),
+
+                  const SizedBox(height: 20),
+
+                  const Text(
+                    'Resultado del análisis',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w800,
+                      fontSize: 16,
+                      color: textPrimary,
+                    ),
+                  ),
+
+                  const SizedBox(height: 12),
+
+                  _detail(
+                    'Coincidencia estimada',
+                    '${duplicate['coincidencia']}%',
+                  ),
+
+                  _detail(
+                    'Diferencia de tiempo',
+                    '${duplicate['diferenciaMinutos']} minutos',
+                  ),
+
+                  _detail(
+                    'Distancia entre ubicaciones',
+                    '${duplicate['distanciaMetros']} metros',
+                  ),
+
+                  _detail(
+                    'Similitud de descripción',
+                    '${duplicate['similitudDescripcion']}%',
+                  ),
+
+                  const Divider(height: 24),
+
+                  const Text(
+                    'Motivos de coincidencia',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w700,
+                      color: textPrimary,
+                    ),
+                  ),
+
+                  const SizedBox(height: 8),
+
+                  ...(duplicate['motivos'] as List? ?? [])
+                      .map(
+                        (motivo) => Padding(
+                      padding: const EdgeInsets.only(bottom: 6),
+                      child: Row(
+                        crossAxisAlignment:
+                        CrossAxisAlignment.start,
+                        children: [
+                          const Icon(
+                            Icons.check_circle_outline,
+                            color: green,
+                            size: 17,
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              motivo.toString(),
+                              style: const TextStyle(
+                                fontSize: 13,
+                                color: textSecondary,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.pop(dialogContext);
+              },
+              child: const Text('Cerrar'),
+            ),
+
+            if (duplicate['tipo'] == 'AVISTAMIENTO')
+              FilledButton.icon(
+                style: FilledButton.styleFrom(
+                  backgroundColor: const Color(0xFFD65A5A),
+                ),
+                onPressed: () {
+                  // Cerrar la comparación antes de abrir
+                  // el formulario de confirmación.
+                  Navigator.pop(dialogContext);
+
+                  _confirmDuplicate(duplicate);
+                },
+                icon: const Icon(Icons.rule_rounded),
+                label: const Text('Resolver duplicado'),
+              ),
+          ],
+
+        );
+      },
+    );
+  }
+
+
+  // =========================================================
+  // HU-047: CONFIRMAR DUPLICADO DE AVISTAMIENTOS
+  // =========================================================
+
+  Future<void> _confirmDuplicate(
+      Map<String, dynamic> duplicate,
+      ) async {
+    if (duplicate['tipo'] != 'AVISTAMIENTO') {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Esta operación solo está disponible para avistamientos.',
+          ),
+        ),
+      );
+      return;
+    }
+
+    final firstId = (duplicate['report1Id'] as num).toInt();
+    final secondId = (duplicate['report2Id'] as num).toInt();
+
+    int keepId = firstId;
+    bool saving = false;
+
+    final reasonController = TextEditingController();
+    final formKey = GlobalKey<FormState>();
+
+    try {
+      final changed = await showDialog<bool>(
+        context: context,
+        barrierDismissible: false,
+        builder: (dialogContext) {
+          return StatefulBuilder(
+            builder: (context, setDialogState) {
+              Future<void> submit() async {
+                if (saving ||
+                    formKey.currentState?.validate() != true) {
+                  return;
+                }
+
+                final deleteId =
+                keepId == firstId ? secondId : firstId;
+
+                final confirmed = await showDialog<bool>(
+                  context: dialogContext,
+                  builder: (confirmContext) => AlertDialog(
+                    title: const Text('Confirmar eliminación'),
+                    content: Text(
+                      'Se conservará el avistamiento #$keepId '
+                          'y se retirará el avistamiento #$deleteId.\n\n'
+                          'También se notificará al usuario creador '
+                          'del registro retirado.\n\n'
+                          '¿Deseas continuar?',
+                    ),
+                    actions: [
+                      TextButton(
+                        onPressed: () =>
+                            Navigator.pop(confirmContext, false),
+                        child: const Text('Cancelar'),
+                      ),
+                      FilledButton(
+                        style: FilledButton.styleFrom(
+                          backgroundColor: Colors.redAccent,
+                        ),
+                        onPressed: () =>
+                            Navigator.pop(confirmContext, true),
+                        child: const Text('Confirmar'),
+                      ),
+                    ],
+                  ),
+                );
+
+                if (confirmed != true || !dialogContext.mounted) {
+                  return;
+                }
+
+                setDialogState(() => saving = true);
+
+                try {
+                  await _service.confirmSightingDuplicate(
+                    registro1Id: firstId,
+                    registro2Id: secondId,
+                    conservarId: keepId,
+                    motivo: reasonController.text,
+                  );
+
+                  if (!dialogContext.mounted) return;
+
+                  Navigator.pop(dialogContext, true);
+                } catch (error) {
+                  if (!dialogContext.mounted) return;
+
+                  setDialogState(() => saving = false);
+
+                  ScaffoldMessenger.of(dialogContext).showSnackBar(
+                    SnackBar(content: Text(error.toString())),
+                  );
+                }
+              }
+
+              return PopScope(
+                canPop: !saving,
+                child: AlertDialog(
+                  backgroundColor: Colors.white,
+                  title: const Text(
+                    'Resolver posible duplicado',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w800,
+                      color: textPrimary,
+                    ),
+                  ),
+                  content: SizedBox(
+                    width: 430,
+                    child: SingleChildScrollView(
+                      child: Form(
+                        key: formKey,
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'Selecciona cuál avistamiento conservar.',
+                            ),
+                            const SizedBox(height: 14),
+
+                            RadioGroup<int>(
+                              groupValue: keepId,
+                              onChanged: (value) {
+                                if (value == null || saving) return;
+                                setDialogState(() => keepId = value);
+                              },
+                              child: Column(
+                                children: [
+                                  RadioListTile<int>(
+                                    title: Text('Conservar #$firstId'),
+                                    subtitle: Text(
+                                      _value(duplicate['descripcion1']),
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                    value: firstId,
+                                  ),
+                                  RadioListTile<int>(
+                                    title: Text('Conservar #$secondId'),
+                                    subtitle: Text(
+                                      _value(duplicate['descripcion2']),
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                    value: secondId,
+                                  ),
+                                ],
+                              ),
+                            ),
+
+                            const SizedBox(height: 14),
+
+                            Text(
+                              'Se eliminará el avistamiento '
+                                  '#${keepId == firstId ? secondId : firstId}.',
+                              style: const TextStyle(
+                                color: Colors.redAccent,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+
+                            const SizedBox(height: 15),
+
+                            TextFormField(
+                              controller: reasonController,
+                              enabled: !saving,
+                              maxLines: 3,
+                              maxLength: 500,
+                              decoration: const InputDecoration(
+                                labelText: 'Motivo de eliminación',
+                                hintText:
+                                'Explica por qué consideras que es duplicado',
+                                border: OutlineInputBorder(),
+                              ),
+                              validator: (value) {
+                                final length = value?.trim().length ?? 0;
+                                if (length < 10) {
+                                  return 'Escribe mínimo 10 caracteres';
+                                }
+                                return null;
+                              },
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                  actions: [
+                    TextButton(
+                      onPressed: saving
+                          ? null
+                          : () => Navigator.pop(dialogContext, false),
+                      child: const Text('Cancelar'),
+                    ),
+                    FilledButton.icon(
+                      onPressed: saving ? null : submit,
+                      icon: const Icon(Icons.delete_outline),
+                      label: Text(
+                        saving ? 'Procesando...' : 'Eliminar duplicado',
+                      ),
+                      style: FilledButton.styleFrom(
+                        backgroundColor: Colors.redAccent,
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
+          );
+        },
+      );
+
+      if (!mounted) return;
+
+      if (changed == true) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Duplicado retirado y notificación registrada.',
+            ),
+            backgroundColor: green,
+          ),
+        );
+
+        await _loadReports();
+      }
+    } finally {
+      reasonController.dispose();
+    }
+  }
+
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -650,7 +1512,7 @@ class _AdminReportsPageState extends State<AdminReportsPage> {
             ),
 
             const SizedBox(height: 20),
-
+            _duplicatesSection(),
             if (_loading)
               const Center(
                 child: Padding(

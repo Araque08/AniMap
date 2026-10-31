@@ -33,6 +33,38 @@ router.get(
   controller.listReports
 );
 
+
+/*
+  ============================================================
+  DETECCIÓN DE POSIBLES REPORTES DUPLICADOS
+  Solo disponible para administradores
+  ============================================================
+*/
+
+router.get(
+  '/duplicates',
+  controller.getPossibleDuplicates
+);
+
+
+/*
+  ============================================================
+  HU-047: CONFIRMAR AVISTAMIENTO DUPLICADO
+  ============================================================
+
+  El administrador selecciona qué registro conservar.
+
+  El backend realizará la eliminación lógica del duplicado,
+  registrará la decisión y creará una notificación.
+*/
+
+router.post(
+  '/duplicates/confirm',
+  controller.confirmDuplicate
+);
+
+
+
 // ==========================================================
 // OBTENER DETALLE DE UN REPORTE
 // ==========================================================

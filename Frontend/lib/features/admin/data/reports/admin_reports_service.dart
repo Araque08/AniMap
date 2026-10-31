@@ -269,4 +269,134 @@ class AdminReportsService {
     }
   }
 
+
+  // ========================================================
+  // CONSULTAR POSIBLES REPORTES DUPLICADOS
+  // ========================================================
+
+  Future<Map<String, dynamic>> getPossibleDuplicates() async {
+    try {
+      final response = await client.get(
+        Uri.parse('$baseUrl/duplicates'),
+      );
+
+      final data = _decode(response);
+
+      final duplicates = data['duplicados'];
+
+      if (duplicates is! List) {
+        throw const AdminReportsException(
+          'La lista de posibles duplicados no es válida.',
+        );
+      }
+
+      return {
+        'total': (data['total'] as num?)?.toInt() ?? 0,
+        'prioridadAlta':
+        (data['prioridadAlta'] as num?)?.toInt() ?? 0,
+        'prioridadMedia':
+        (data['prioridadMedia'] as num?)?.toInt() ?? 0,
+        'duplicados': duplicates
+            .map(
+              (item) => Map<String, dynamic>.from(item as Map),
+        )
+            .toList(),
+      };
+    } on AdminReportsException {
+      rethrow;
+    } on SessionInvalidException {
+      throw const AdminReportsException(
+        'Tu sesión expiró. Inicia sesión nuevamente.',
+      );
+    } on SessionConnectionException {
+      throw const AdminReportsException(
+        'No hay conexión con el servidor.',
+      );
+    } catch (_) {
+      throw const AdminReportsException(
+        'No fue posible analizar los reportes duplicados.',
+      );
+    }
+  }
+
+
+  // ========================================================
+  // HU-047: CONFIRMAR ELIMINACIÓN DE AVISTAMIENTO DUPLICADO
+  // ========================================================
+
+  Future<Map<String, dynamic>> confirmSightingDuplicate({
+    required int registro1Id,
+    required int registro2Id,
+    required int conservarId,
+    required String motivo,
+  }) async {
+    try {
+      // Validar los identificadores.
+      if (registro1Id <= 0 ||
+          registro2Id <= 0 ||
+          registro1Id == registro2Id) {
+        throw const AdminReportsException(
+          'Debes seleccionar dos avistamientos diferentes.',
+        );
+      }
+
+      if (conservarId != registro1Id &&
+          conservarId != registro2Id) {
+        throw const AdminReportsException(
+          'Selecciona cuál avistamiento deseas conservar.',
+        );
+      }
+
+      // El motivo es obligatorio.
+      final reason = motivo.trim();
+
+      if (reason.length < 10 || reason.length > 500) {
+        throw const AdminReportsException(
+          'El motivo debe tener entre 10 y 500 caracteres.',
+        );
+      }
+
+      // Enviar la decisión al backend.
+      final response = await client.post(
+        Uri.parse('$baseUrl/duplicates/confirm'),
+        headers: const {
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode({
+          'registro1Id': registro1Id,
+          'registro2Id': registro2Id,
+          'conservarId': conservarId,
+          'motivo': reason,
+        }),
+      );
+
+      final data = _decode(response);
+
+      if (data['data'] is! Map) {
+        throw const AdminReportsException(
+          'La respuesta de eliminación no es válida.',
+        );
+      }
+
+      return Map<String, dynamic>.from(
+        data['data'] as Map,
+      );
+    } on AdminReportsException {
+      rethrow;
+    } on SessionInvalidException {
+      throw const AdminReportsException(
+        'Tu sesión expiró. Inicia sesión nuevamente.',
+      );
+    } on SessionConnectionException {
+      throw const AdminReportsException(
+        'No hay conexión con el servidor.',
+      );
+    } catch (_) {
+      throw const AdminReportsException(
+        'No fue posible confirmar el duplicado.',
+      );
+    }
+  }
+
+
 }

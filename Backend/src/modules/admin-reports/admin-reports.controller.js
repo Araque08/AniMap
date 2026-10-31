@@ -1,7 +1,9 @@
 
-const {
-  adminReportsService,
-} = require('./admin-reports.service');
+const {adminReportsService,} = require('./admin-reports.service');
+
+const {duplicateReportsService,} = require('./admin-reports.duplicates.service');
+
+const {confirmSightingDuplicate,} = require('./admin-reports.deletion.service');
 
 // ==========================================================
 // LISTAR Y BUSCAR REPORTES
@@ -95,6 +97,67 @@ async function updateReportStatus(req, res, next) {
 }
 
 
+/*
+  ============================================================
+  DETECTAR POSIBLES REPORTES DUPLICADOS
+  ============================================================
+*/
+
+async function getPossibleDuplicates(req, res, next) {
+  try {
+    const result =
+      await duplicateReportsService.findPossibleDuplicates();
+
+    return res.status(200).json({
+      ok: true,
+      message: 'Análisis de duplicados completado',
+      total: result.total,
+      prioridadAlta: result.prioridadAlta,
+      prioridadMedia: result.prioridadMedia,
+      duplicados: result.duplicados,
+    });
+
+  } catch (error) {
+    return next(error);
+  }
+}
+
+
+/*
+  ============================================================
+  HU-047: CONFIRMAR Y RETIRAR AVISTAMIENTO DUPLICADO
+  ============================================================
+*/
+
+async function confirmDuplicate(req, res, next) {
+  try {
+    const {
+      registro1Id,
+      registro2Id,
+      conservarId,
+      motivo,
+    } = req.body || {};
+
+    const result = await confirmSightingDuplicate({
+      registro1Id,
+      registro2Id,
+      conservarId,
+      motivo,
+      adminId: req.auth.userId,
+    });
+
+    return res.status(200).json({
+      ok: true,
+      message: 'Duplicado revisado correctamente',
+      data: result,
+    });
+  } catch (error) {
+    return next(error);
+  }
+}
+
+
+
 // ==========================================================
 // EXPORTAR CONTROLADORES
 // ==========================================================
@@ -103,4 +166,6 @@ module.exports = {
   listReports,
   getReport,
   updateReportStatus,
+  getPossibleDuplicates,
+  confirmDuplicate,
 };

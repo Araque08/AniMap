@@ -73,7 +73,11 @@ function createSightingsService(
 ) {
   async function querySighting(queryable, sightingId) {
     const result = await queryable.query(
-      `${SIGHTING_SELECT} WHERE a.id = $1`,
+      
+    `${SIGHTING_SELECT}
+    WHERE a.id = $1
+    AND a.estado IS DISTINCT FROM 'ELIMINADO'`,
+
       [sightingId]
     );
     if (result.rowCount === 0) {
@@ -153,8 +157,11 @@ function createSightingsService(
         fp.storage_ref AS mascota_foto_storage_ref,
         fp.url_preview AS mascota_foto_url_preview,
         (SELECT COUNT(*)::int
-         FROM avistamiento total_a
-         WHERE total_a.fk_reporte_perdida = r.id) AS total_avistamientos,
+        FROM avistamiento total_a
+        WHERE total_a.fk_reporte_perdida = r.id
+          AND total_a.estado IS DISTINCT FROM 'ELIMINADO'
+        ) AS total_avistamientos,
+        AS total_avistamientos,
         a.id AS avistamiento_id, a.descripcion AS avistamiento_descripcion,
         to_char(a.fecha_hora, 'YYYY-MM-DD"T"HH24:MI:SS.MS') || 'Z'
           AS avistamiento_fecha_hora,
@@ -177,8 +184,10 @@ function createSightingsService(
          ORDER BY id
          LIMIT 1
        ) fp ON TRUE
-       LEFT JOIN avistamiento a
-         ON a.fk_reporte_perdida = r.id ${periodCondition}
+        LEFT JOIN avistamiento a
+        ON a.fk_reporte_perdida = r.id
+        AND a.estado IS DISTINCT FROM 'ELIMINADO'
+        ${periodCondition}
        LEFT JOIN ubicacion ua ON ua.fk_avistamiento = a.id
        LEFT JOIN LATERAL (
          SELECT storage_ref, url_preview
@@ -187,7 +196,9 @@ function createSightingsService(
          ORDER BY id
          LIMIT 1
        ) fa ON TRUE
-       WHERE r.id = $1 AND r.fk_usuario = $2
+       WHERE r.id = $1
+        AND r.fk_usuario = $2
+        AND r.estado <> 'ELIMINADO'
        ORDER BY a.fecha_hora DESC NULLS LAST, a.id DESC NULLS LAST`,
       [reportId, userId]
     );
@@ -257,24 +268,64 @@ function createSightingsService(
     };
   }
 
-  async function getPublicImage(imageId) {
-    const reference = await pool.query(
-      `SELECT 1 FROM foto_avistamiento WHERE storage_ref = $1 LIMIT 1`,
-      [imageId]
+  
+async function getPublicImage(imageId) {
+
+  // ========================================================
+  // COMPROBAR QUE LA IMAGEN PERTENECE A UN AVISTAMIENTO VISIBLE
+  // ========================================================
+
+  const reference = await pool.query(
+    `
+      SELECT
+        fa.id
+      FROM foto_avistamiento fa
+
+      INNER JOIN avistamiento a
+        ON a.id = fa.fk_avistamiento
+
+      WHERE fa.storage_ref = $1
+        AND a.estado IS DISTINCT FROM 'ELIMINADO'
+
+      LIMIT 1
+    `,
+    [imageId]
+  );
+
+  if (reference.rowCount === 0) {
+    throw createHttpError(
+      'Foto de avistamiento no encontrada',
+      404
     );
-    if (reference.rowCount === 0) {
-      throw createHttpError('Foto de avistamiento no encontrada', 404);
-    }
-    const image = await images.findPublicSightingImage(imageId);
-    const content = image?.imagen || image?.buffer;
-    const buffer = Buffer.isBuffer(content)
-      ? content
-      : content?.buffer
-        ? Buffer.from(content.buffer)
-        : null;
-    if (!buffer) throw createHttpError('Foto de avistamiento no encontrada', 404);
-    return { buffer, mimeType: image.mimeType || 'application/octet-stream' };
   }
+
+  // ========================================================
+  // RECUPERAR IMAGEN DE MONGODB
+  // ========================================================
+
+  const image = await images.findPublicSightingImage(imageId);
+
+  const content = image?.imagen || image?.buffer;
+
+  const buffer = Buffer.isBuffer(content)
+    ? content
+    : content?.buffer
+      ? Buffer.from(content.buffer)
+      : null;
+
+  if (!buffer) {
+    throw createHttpError(
+      'Foto de avistamiento no encontrada',
+      404
+    );
+  }
+
+  return {
+    buffer,
+    mimeType: image.mimeType || 'application/octet-stream',
+  };
+}
+
 
   async function createSighting(userId, data, file) {
     allowedArea.validateAllowedArea(data.lat, data.lng);

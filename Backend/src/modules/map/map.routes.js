@@ -171,6 +171,8 @@ router.get('/reports', optionalAuthMiddleware, async (req, res) => {
         ORDER BY id
         LIMIT 1
       ) fa ON TRUE
+      
+      WHERE a.estado IS DISTINCT FROM 'ELIMINADO'
       ORDER BY a.fecha_hora DESC;
     `);
 
