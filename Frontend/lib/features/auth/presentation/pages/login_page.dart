@@ -154,7 +154,7 @@ class _LoginPageState extends State<LoginPage> {
       /* Fondo de la pagina*/
       backgroundColor: backgroundColor,
       /* Evita redimensionar la pagina cada vez que se abre el teclado*/
-      resizeToAvoidBottomInset: false,
+      resizeToAvoidBottomInset: true,
 
       body: Stack(
         children: [
@@ -164,8 +164,10 @@ class _LoginPageState extends State<LoginPage> {
               padding: const EdgeInsets.symmetric(horizontal: 35, vertical: 5),
               child: Form(
                 key: _formKey,
-                child: Column(
-                  children: [
+                child: SingleChildScrollView(
+                  keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+                  child: Column(
+                    children: [
                     const SizedBox(height: 20),
                     Image.asset(
                       'assets/images/Logo_Principal_AniMap.png',
@@ -477,6 +479,7 @@ class _LoginPageState extends State<LoginPage> {
                     const SizedBox(height: 30),
                   ],
                 ),
+              ),
               ),
             ),
           ),

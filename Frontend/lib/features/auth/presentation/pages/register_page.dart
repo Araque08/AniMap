@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'login_page.dart';
 import 'verify_account_page.dart';
 import '../../data/auth_service.dart';
+import 'legal_documents_pages.dart';
 
 class RegisterPage extends StatefulWidget {
   const RegisterPage({super.key});
@@ -386,33 +387,71 @@ class _RegisterPageState extends State<RegisterPage> {
                           ),
                         ),
                         Expanded(
-                          child: RichText(
-                            text: const TextSpan(
-                              style: TextStyle(
-                                color: Color(0xFF7F8D81),
-                                fontSize: 14,
-                                height: 1.25,
-                                fontWeight: FontWeight.w600,
+                          child: Wrap(
+                            crossAxisAlignment: WrapCrossAlignment.center,
+                            spacing: 4,
+                            runSpacing: 2,
+                            children: [
+                              const Text(
+                                'He leído y acepto los',
+                                style: TextStyle(
+                                  color: Color(0xFF7F8D81),
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w600,
+                                ),
                               ),
-                              children: [
-                                TextSpan(text: 'He leído y acepto los '),
-                                TextSpan(
-                                  text: 'Términos y Condiciones',
+
+                              // Abrir términos y condiciones.
+                              InkWell(
+                                onTap: () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (context) => const TermsConditionsPage(),
+                                    ),
+                                  );
+                                },
+                                child: const Text(
+                                  'Términos y Condiciones',
                                   style: TextStyle(
                                     color: accentGreen,
+                                    fontSize: 14,
                                     fontWeight: FontWeight.w700,
+                                    decoration: TextDecoration.underline,
                                   ),
                                 ),
-                                TextSpan(text: ' y '),
-                                TextSpan(
-                                  text: 'Política de Privacidad.',
+                              ),
+
+                              const Text(
+                                'y',
+                                style: TextStyle(
+                                  color: Color(0xFF7F8D81),
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+
+                              // Abrir política de privacidad.
+                              InkWell(
+                                onTap: () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (context) => const PrivacyPolicyPage(),
+                                    ),
+                                  );
+                                },
+                                child: const Text(
+                                  'Política de Privacidad',
                                   style: TextStyle(
                                     color: accentGreen,
+                                    fontSize: 14,
                                     fontWeight: FontWeight.w700,
+                                    decoration: TextDecoration.underline,
                                   ),
                                 ),
-                              ],
-                            ),
+                              ),
+                            ],
                           ),
                         ),
                       ],
