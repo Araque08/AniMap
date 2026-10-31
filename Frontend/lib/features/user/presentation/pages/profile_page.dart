@@ -132,6 +132,150 @@ class _ProfilePageState extends State<ProfilePage> {
     }
   }
 
+
+  Future<void> _confirmarEliminacionCuenta() async {
+    String password = '';
+    String? errorMessage;
+    bool eliminando = false;
+
+    final eliminado = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (dialogContext, actualizarDialogo) {
+            return AlertDialog(
+              title: const Text('Eliminar cuenta'),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      '¿Estás seguro de que deseas eliminar tu cuenta de AniMap?',
+                    ),
+                    const SizedBox(height: 12),
+                    const Text(
+                      'Esta acción es permanente. Se eliminarán tus datos personales, mascotas, reportes e imágenes asociados.',
+                      style: TextStyle(color: Colors.red),
+                    ),
+                    const SizedBox(height: 18),
+                    const Text(
+                      'Confirma tu contraseña para continuar:',
+                    ),
+                    const SizedBox(height: 8),
+                    TextField(
+                      obscureText: true,
+                      enabled: !eliminando,
+                      decoration: const InputDecoration(
+                        border: OutlineInputBorder(),
+                        labelText: 'Contraseña',
+                        prefixIcon: Icon(Icons.lock_outline),
+                      ),
+                      onChanged: (value) {
+                        actualizarDialogo(() {
+                          password = value;
+                          errorMessage = null;
+                        });
+                      },
+                    ),
+                    if (errorMessage != null) ...[
+                      const SizedBox(height: 12),
+                      Text(
+                        errorMessage!,
+                        style: const TextStyle(color: Colors.red),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: eliminando
+                      ? null
+                      : () => Navigator.pop(dialogContext, false),
+                  child: const Text('Cancelar'),
+                ),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.red,
+                    foregroundColor: Colors.white,
+                  ),
+                  onPressed: eliminando || password.trim().isEmpty
+                      ? null
+                      : () async {
+                    actualizarDialogo(() {
+                      eliminando = true;
+                      errorMessage = null;
+                    });
+
+                    try {
+                      await ProfileService.eliminarMiCuenta(
+                        password,
+                      );
+
+                      if (!dialogContext.mounted) return;
+
+                      Navigator.pop(dialogContext, true);
+                    } catch (error) {
+                      if (!dialogContext.mounted) return;
+
+                      actualizarDialogo(() {
+                        eliminando = false;
+                        errorMessage = error is ProfileException
+                            ? error.message
+                            : 'No se pudo eliminar la cuenta';
+                      });
+                    }
+                  },
+                  child: eliminando
+                      ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Colors.white,
+                    ),
+                  )
+                      : const Text('Eliminar definitivamente'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    if (!mounted || eliminado != true) return;
+
+    // Guardamos las referencias antes de limpiar la sesión.
+    final navigator = Navigator.of(context);
+    final messenger = ScaffoldMessenger.of(context);
+
+    try {
+      // Borramos la sesión guardada en el dispositivo.
+      await (widget.sessionManager ?? SessionManager.instance)
+          .clearLocalSession();
+    } catch (_) {
+      // La cuenta ya fue eliminada en el servidor.
+      // Intentamos igualmente regresar al login.
+    }
+
+    if (!navigator.mounted) return;
+
+    navigator.pushNamedAndRemoveUntil(
+      '/login',
+          (route) => false,
+    );
+
+    messenger.showSnackBar(
+      const SnackBar(
+        content: Text('Tu cuenta fue eliminada correctamente'),
+        backgroundColor: Color(0xFF3F9B67),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return FutureBuilder<Map<String, dynamic>>(
@@ -293,36 +437,14 @@ class _ProfilePageState extends State<ProfilePage> {
                         },
                       ),
                       const Divider(height: 1, indent: 58),
+
                       _ProfileOption(
                         icon: Icons.person_remove,
                         text: 'Eliminar cuenta',
                         isDanger: true,
-                        onTap: () {
-                          _showConfirmDialog(
-                            context: context,
-                            title: 'Eliminar cuenta',
-                            message:
-                                'Esta acción eliminará tu cuenta y la información asociada. ¿Deseas continuar?',
-                            confirmText: 'Eliminar',
-                            isDanger: true,
-                            onConfirm: () {
-                              Navigator.pop(context);
-
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                  content: Text(
-                                    'Solicitud de eliminación de cuenta realizada',
-                                  ),
-                                ),
-                              );
-
-                              if (widget.onDeleteAccount != null) {
-                                widget.onDeleteAccount!();
-                              }
-                            },
-                          );
-                        },
+                        onTap: _confirmarEliminacionCuenta,
                       ),
+
                     ],
                   ),
                   const SizedBox(height: 18),
