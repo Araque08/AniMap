@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-
 import '../../../../widgets/bottom_menu_animap.dart';
 
 class ReportTypeSelectorPage extends StatelessWidget {
@@ -78,7 +77,6 @@ class _ReportOption extends StatelessWidget {
     required this.subtitle,
     required this.onTap,
   });
-
   final IconData icon;
   final String title;
   final String subtitle;

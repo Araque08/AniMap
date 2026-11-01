@@ -89,6 +89,7 @@ router.use('/admin/reports', adminReportsRoutes);
 router.use('/map', mapRoutes);
 router.use('/profile', profileRoutes);
 router.use('/reports', reportsRoutes);
+router.use('/admin-reports', adminReportsRoutes);
 router.use('/sightings', sightingsRoutes);
 router.use('/geofence', geofenceRoutes);
 router.use('/geocoding', geocodingRoutes);
