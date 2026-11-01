@@ -101,6 +101,28 @@ async function listSessions(req, res, next) {
   }
 }
 
+async function setFcmRegistration(req, res, next) {
+  try {
+    const result = await authSessionService.setFcmRegistration(
+      req.auth, req.validatedBody.registrationId
+    );
+    return res.status(200).json({ ok: true, data: result });
+  } catch (error) {
+    return next(error);
+  }
+}
+
+async function removeFcmRegistration(req, res, next) {
+  try {
+    const result = await authSessionService.removeFcmRegistration(
+      req.auth, req.validatedBody.registrationId
+    );
+    return res.status(200).json({ ok: true, data: result });
+  } catch (error) {
+    return next(error);
+  }
+}
+
 async function revokeSession(req, res, next) {
   try {
     const result = await authSessionService.revokeSession(
@@ -307,6 +329,8 @@ module.exports = {
   logout,
 
   listSessions,
+  setFcmRegistration,
+  removeFcmRegistration,
 
   revokeSession,
 

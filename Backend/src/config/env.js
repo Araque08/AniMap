@@ -28,6 +28,10 @@ DB_SSL: process.env.DB_SSL === 'true',
   CORS_ORIGIN: process.env.CORS_ORIGIN || '*',
   GEOFENCE_MODE: process.env.GEOFENCE_MODE,
   GOOGLE_GEOCODING_API_KEY: process.env.GOOGLE_GEOCODING_API_KEY,
+  FCM_PUSH_ENABLED: process.env.FCM_PUSH_ENABLED === 'true',
+  FCM_TEST_MODE: process.env.FCM_TEST_MODE ?? 'false',
+  FCM_TEST_OWNER_ID: process.env.FCM_TEST_OWNER_ID,
+  FCM_TEST_REPORT_ID: process.env.FCM_TEST_REPORT_ID,
 };
 
 module.exports = env;

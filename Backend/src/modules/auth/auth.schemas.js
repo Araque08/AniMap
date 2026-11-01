@@ -238,6 +238,10 @@ const resetPasswordSchema = z
   en las rutas del módulo de autenticación.
 */
 module.exports = {
+  fcmRegistrationSchema: z.object({
+    registrationId: z.string().trim().min(1).max(255)
+      .regex(/^[A-Za-z0-9_:-]+$/, 'Identificador FCM no válido'),
+  }).strict(),
   registerSchema,
   loginSchema,
   refreshSchema: sessionTokenSchema,

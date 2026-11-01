@@ -15,6 +15,7 @@ const {
   resendVerificationCodeSchema,
   forgotPasswordSchema,
   resetPasswordSchema,
+  fcmRegistrationSchema,
 } = require('./auth.schemas');
 
 const router = express.Router();
@@ -114,6 +115,10 @@ router.post(
 );
 
 router.get('/sessions', authMiddleware, authController.listSessions);
+router.put('/fcm-registration', authMiddleware, requireJson,
+  validateBody(fcmRegistrationSchema), authController.setFcmRegistration);
+router.delete('/fcm-registration', authMiddleware, requireJson,
+  validateBody(fcmRegistrationSchema), authController.removeFcmRegistration);
 router.post(
   '/sessions/:id/revoke',
   authMiddleware,

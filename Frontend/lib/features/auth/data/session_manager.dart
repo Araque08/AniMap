@@ -51,6 +51,7 @@ class SessionManager extends ChangeNotifier {
   Future<String>? _refreshInFlight;
   Future<void> _tokenStorageTail = Future<void>.value();
   int _sessionEpoch = 0;
+  int? _authenticatedEpoch;
   VoidCallback? onSessionInvalid;
   void Function(String role)? onRoleChanged;
 
@@ -66,6 +67,10 @@ class SessionManager extends ChangeNotifier {
   String? get role => _role;
   SessionStatus get status => _status;
   bool get isAuthenticated => _status == SessionStatus.authenticated;
+  int? get authenticatedSessionGeneration =>
+      isAuthenticated && _authenticatedEpoch == _sessionEpoch
+      ? _sessionEpoch
+      : null;
 
   Future<String> getDeviceId() async {
     final stored = await storage.read(deviceIdKey);
@@ -97,7 +102,8 @@ class SessionManager extends ChangeNotifier {
     _requireEpoch(epoch);
     _accessToken = accessToken;
     _role = role;
-    _setStatus(SessionStatus.authenticated);
+    _authenticatedEpoch = epoch;
+    _setStatus(SessionStatus.authenticated, forceNotify: true);
   }
 
   Future<void> bootstrap() async {
@@ -194,7 +200,8 @@ class SessionManager extends ChangeNotifier {
       _requireEpoch(epoch);
       _accessToken = accessToken;
       _role = nextRole;
-      _setStatus(SessionStatus.authenticated);
+      _authenticatedEpoch = epoch;
+      _setStatus(SessionStatus.authenticated, forceNotify: true);
       if (previousRole != _role && wasAuthenticated) {
         notifyListeners();
         onRoleChanged?.call(_role!);
@@ -220,6 +227,7 @@ class SessionManager extends ChangeNotifier {
   Future<LogoutResult> logout() async {
     final epoch = ++_sessionEpoch;
     _refreshInFlight = null;
+    notifyListeners();
     bool remoteRevoked = false;
     bool hadStoredSession = false;
     try {
@@ -264,6 +272,7 @@ class SessionManager extends ChangeNotifier {
 
   Future<void> clearLocalSession() async {
     _sessionEpoch += 1;
+    _authenticatedEpoch = null;
     _refreshInFlight = null;
     _accessToken = null;
     _role = null;
@@ -302,8 +311,8 @@ class SessionManager extends ChangeNotifier {
     return pending;
   }
 
-  void _setStatus(SessionStatus value) {
-    if (_status == value) return;
+  void _setStatus(SessionStatus value, {bool forceNotify = false}) {
+    if (_status == value && !forceNotify) return;
     _status = value;
     notifyListeners();
   }

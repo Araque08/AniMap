@@ -1,6 +1,6 @@
 # AniMap — API REST
 
-**66 operaciones**, agrupadas por módulo. Las rutas incluyen `/api`, sin `/v1`. Configuración y arquitectura: [README](../README.md).
+**69 operaciones**, agrupadas por módulo. Las rutas incluyen `/api`, sin `/v1`. Configuración y arquitectura: [README](../README.md).
 
 ## Uso general
 
@@ -49,7 +49,7 @@ En Reportes van dentro de `ubicacion`; en Avistamientos, como campos multipart:
 
 DIRECCION guarda una dirección geocodificada. En GPS/MAPA, `direccion` es referencia adicional: no reemplaza las coordenadas ni se geocodifica.
 
-## Autenticación y sesiones (10)
+## Autenticación y sesiones (12)
 
 [Rutas y validaciones](../src/modules/auth/auth.routes.js).
 
@@ -61,12 +61,16 @@ DIRECCION guarda una dirección geocodificada. En GPS/MAPA, `direccion` es refer
 | POST | /api/auth/logout | Revocar sesión | Refresh token | refreshToken | data={revoked:true} | 401 si ya no es válida |
 | GET | /api/auth/sessions | Listar sesiones propias | Sesión | — | data=[sesión] | Comunes |
 | POST | /api/auth/sessions/:id/revoke | Revocar otra sesión propia | Sesión | :id; sin cuerpo requerido | data={revoked:true} | 404 SESSION_NOT_FOUND; 409 CURRENT_SESSION |
+| PUT | /api/auth/fcm-registration | Asociar o actualizar FCM de la sesión actual | Sesión | registrationId | data={registered:true} | 409 FCM_SESSION_SUPERSEDED; 503 FCM_REGISTRATION_UNAVAILABLE |
+| DELETE | /api/auth/fcm-registration | Retirar esa asociación, si aún coincide | Sesión | registrationId | data={registered:false} | 503 FCM_REGISTRATION_UNAVAILABLE |
 | POST | /api/auth/verify-account | Verificar cuenta | Público | email, code | data=usuario verificado | 400 código/ya verificada; 403; 404 |
 | POST | /api/auth/resend-verification-code | Reenviar código | Público | email | data={email,sent} | 400 ya verificada; 403; 404 |
 | POST | /api/auth/forgot-password | Solicitar recuperación | Público | email | data={email,sent} | 403; 404 |
 | POST | /api/auth/reset-password | Cambiar contraseña con código | Público | email, code, newPassword, confirmPassword | data={email,passwordReset:true} | 400 código/contraseñas; 403; 404 |
 
-Todas incluyen `message`, excepto el listado de sesiones.
+Todas incluyen `message`, excepto el listado de sesiones y las dos operaciones FCM.
+
+FCM recibe el FID de `firebase_messaging` 17 (`register`/`onRegistered`): string con trim de 1–255 caracteres, letras ASCII, números, `_`, `:` o `-`. El cuerpo rechaza campos extra, incluidos userId y sessionId. La identidad sale del JWT; las respuestas y el listado de sesiones no devuelven el identificador. Una sesión más antigua no puede recuperar la asociación de otra más reciente. Logout revoca la sesión: cualquier envío futuro debe exigir `vigente=true` y una sesión no vencida. Requiere aplicar por separado [la migración incremental](../database/migrations/20261031_fcm_session_registration.sql). Estos endpoints no envían notificaciones.
 
 | Datos | Validación |
 |---|---|
@@ -127,7 +131,7 @@ Mascota conserva nombres SQL; listado añade fotoPrincipal={id,url} o null. Foto
 
 Eliminar conserva mascota/foto_mascota, marca INACTIVA y elimina imágenes; reporte ACTIVO lo bloquea. Recuperación incompleta: 500. Ver [recuperación](../src/modules/pets/README.deletion-recovery.md).
 
-## Perfil (4)
+## Perfil (5)
 
 [Rutas](../src/modules/profile/profile.routes.js). Solo perfil propio.
 
@@ -135,10 +139,13 @@ Eliminar conserva mascota/foto_mascota, marca INACTIVA y elimina imágenes; repo
 |---|---|---|---|---|---|---|
 | GET | /api/profile | Consultar perfil | Sesión | — | data=Perfil | 404 |
 | PATCH | /api/profile | Editar perfil | Sesión | JSON {nombre?,telefono?} | message, data=Perfil | 400; 404; 415 |
+| DELETE | /api/profile | Eliminar la cuenta propia (HU-006) | Sesión | JSON {password} | message, data={deleted:true} | 400 contraseña requerida; 403 incorrecta; 404 cuenta; 409 auditoría/conflicto; 415; 503 eliminación fallida o estado incierto |
 | POST | /api/profile/photo | Reemplazar foto | Sesión | Multipart: un archivo foto | message, data=Perfil | 400; 404 |
 | GET | /api/profile/photo/:imageId | Consultar foto actual | Sesión | :imageId propio y vigente | Bytes; caché private, no-store | 404 |
 
 Perfil: id, nombre, email, telefono, foto_url nullable, notificaciones_activas. PATCH: al menos un editable, sin extras ni email; nombre/teléfono según registro. Foto JPG/JPEG/PNG/WEBP, extensión/MIME/firma válidos, hasta 5 MiB; reemplaza anterior.
+
+DELETE comprueba la contraseña y elimina la cuenta, los datos relacionados por cascada y sus imágenes. Un historial de auditoría administrativa bloquea la operación. PostgreSQL y MongoDB no comparten transacción; un 503 puede requerir comprobar el estado antes de reintentar. Ver [servicio de eliminación](../src/modules/profile/account-deletion.service.js).
 
 ## Reportes e historial (7)
 
@@ -238,7 +245,7 @@ Sin clave/URL secreta/respuesta cruda. Buscar no guarda. DIRECCION exige direcci
 
 Siempre los cinco campos, sin extras: notificacionesActivas/soloMiZona boolean; especieFiltro Perro/Gato/null; tipoEvento PERDIDA/AVISTAMIENTO/ENCONTRADO/null; radioKm 1/2/5. PATCH no es parcial.
 
-Lee notificaciones_activas del perfil; sin preferencias: radio 2, filtros null, soloMiZona=false. Guarda perfil/preferencias juntos; sin push.
+Lee notificaciones_activas del perfil; sin preferencias: radio 2, filtros null, soloMiZona=false. Guarda perfil/preferencias juntos. Para alertas de avistamientos vinculados, «Solo mi zona» usa provisionalmente el punto original de pérdida como centro del radio, no la posición actual del usuario.
 
 ## FAQ y categorías (11)
 
@@ -296,4 +303,4 @@ Códigos: 400 INVALID_USER_ID, INVALID_USER_INPUT, INVALID_EMAIL, INVALID_PHONE,
 
 No reintentar indefinidamente una sesión inválida ni reutilizar refresh tokens anteriores. Algunos 409 solo incluyen message; no exigir siempre code.
 
-Pendientes: push, filtro geográfico del historial, reconocimiento y coincidencia manual. Sin edición/eliminación de avistamientos ni recuperación de fotos por HTTP. Scripts y HEAD/OPTIONS implícitos no cuentan entre las 66 operaciones.
+El envío push al dueño por avistamientos vinculados está implementado y deshabilitado por defecto; requiere una migración adicional, ADC y autorización de prueba real. Ver [configuración y límites](../src/modules/notifications/README.md). Quedan pendientes la recepción real, las alertas generales de pérdidas, el filtro geográfico del historial, reconocimiento y coincidencia manual. Sin edición/eliminación de avistamientos ni recuperación de fotos por HTTP. Scripts y HEAD/OPTIONS implícitos no cuentan entre las 69 operaciones.

@@ -218,7 +218,77 @@ function createAuthSessionService({
     throw createHttpError('Sesión no encontrada', 404, 'SESSION_NOT_FOUND');
   }
 
-  return { listSessions, logoutSession, refreshSession, revokeSession };
+  // Registration uses the current JWT session. No FCM credentials or sends here.
+  async function setFcmRegistration({ userId, sessionId, deviceId }, registrationId) {
+    let client;
+    try {
+      client = await pool.connect();
+      await client.query('BEGIN');
+      // Serialize these rare transfers across backend instances sharing this DB.
+      await client.query("SELECT pg_advisory_xact_lock(hashtext('animap:fcm:session'))");
+      const session = await client.query(
+        `SELECT id FROM device_session
+         WHERE id = $1 AND fk_usuario = $2 AND device_id = $3
+           AND vigente = TRUE AND expira_en > LOCALTIMESTAMP
+         FOR UPDATE`, [sessionId, userId, deviceId]
+      );
+      if (session.rowCount !== 1) {
+        throw createHttpError('La sesión ya no está activa', 401, 'SESSION_REVOKED');
+      }
+      const newer = await client.query(
+        `SELECT 1 FROM device_session
+         WHERE id > $1 AND (device_id = $2 OR fcm_registration_id = $3)
+         LIMIT 1`, [sessionId, deviceId, registrationId]
+      );
+      if (newer.rowCount > 0) {
+        throw createHttpError('Existe una sesión más reciente del dispositivo',
+          409, 'FCM_SESSION_SUPERSEDED');
+      }
+      await client.query(
+        `UPDATE device_session SET fcm_registration_id = NULL,
+           fcm_registration_updated_at = CURRENT_TIMESTAMP AT TIME ZONE 'UTC'
+         WHERE fcm_registration_id = $1 AND id <> $2`, [registrationId, sessionId]
+      );
+      const updated = await client.query(
+        `UPDATE device_session SET fcm_registration_id = $1,
+           fcm_registration_updated_at = CURRENT_TIMESTAMP AT TIME ZONE 'UTC'
+         WHERE id = $2 AND fk_usuario = $3 AND device_id = $4
+           AND vigente = TRUE AND expira_en > LOCALTIMESTAMP`,
+        [registrationId, sessionId, userId, deviceId]
+      );
+      if (updated.rowCount !== 1) {
+        throw createHttpError('La sesión ya no está activa', 401, 'SESSION_REVOKED');
+      }
+      await client.query('COMMIT');
+      return { registered: true };
+    } catch (error) {
+      await client?.query('ROLLBACK').catch(() => undefined);
+      if (error.statusCode) throw error;
+      // Driver errors can contain parameter values; never forward or log them.
+      throw createHttpError('No se pudo asociar el dispositivo de notificaciones',
+        503, 'FCM_REGISTRATION_UNAVAILABLE');
+    } finally {
+      client?.release();
+    }
+  }
+
+  async function removeFcmRegistration({ userId, sessionId, deviceId }, registrationId) {
+    try {
+      await pool.query(
+        `UPDATE device_session SET fcm_registration_id = NULL,
+           fcm_registration_updated_at = CURRENT_TIMESTAMP AT TIME ZONE 'UTC'
+         WHERE id = $1 AND fk_usuario = $2 AND device_id = $3
+           AND fcm_registration_id = $4`, [sessionId, userId, deviceId, registrationId]
+      );
+      return { registered: false };
+    } catch (_) {
+      throw createHttpError('No se pudo retirar el dispositivo de notificaciones',
+        503, 'FCM_REGISTRATION_UNAVAILABLE');
+    }
+  }
+
+  return { listSessions, logoutSession, refreshSession, revokeSession,
+    setFcmRegistration, removeFcmRegistration };
 }
 
 module.exports = {

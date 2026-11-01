@@ -1,6 +1,7 @@
 const postgres = require('../../config/postgres_db');
 const defaultImages = require('./sightings.images.repository');
 const geofence = require('../geofence/geofence.service');
+const { notificationsService } = require('../notifications/notifications.service');
 
 function createHttpError(message, statusCode) {
   const error = new Error(message);
@@ -69,7 +70,8 @@ function normalizeSighting(row) {
 function createSightingsService(
   pool = postgres.pool,
   images = defaultImages,
-  allowedArea = geofence
+  allowedArea = geofence,
+  notifications = notificationsService
 ) {
   async function querySighting(queryable, sightingId) {
     const result = await queryable.query(
@@ -280,6 +282,7 @@ function createSightingsService(
     allowedArea.validateAllowedArea(data.lat, data.lng);
     const client = await pool.connect();
     let mongoImage = null;
+    let sighting;
     try {
       await client.query('BEGIN');
 
@@ -342,11 +345,9 @@ function createSightingsService(
         );
       }
 
-      const sighting = await querySighting(client, sightingId);
+      await notifications.recordIntent(client, sightingId);
+      sighting = await querySighting(client, sightingId);
       await client.query('COMMIT');
-      // RF-0016: una futura notificación de un avistamiento vinculado debe
-      // despacharse desde este punto, únicamente después del COMMIT exitoso.
-      return sighting;
     } catch (error) {
       await client.query('ROLLBACK').catch(() => undefined);
       if (mongoImage) {
@@ -356,6 +357,9 @@ function createSightingsService(
     } finally {
       client.release();
     }
+    // Confirmed sightings and their images never enter compensation on push errors.
+    try { Promise.resolve(notifications.wake()).catch(() => undefined); } catch (_) {}
+    return sighting;
   }
 
   return {

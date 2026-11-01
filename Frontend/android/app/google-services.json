@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "67809054665",
+    "project_id": "animapbd",
+    "storage_bucket": "animapbd.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:67809054665:android:0079e4dc0a5a9408812218",
+        "android_client_info": {
+          "package_name": "com.example.animap"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBRetm16YRKPDOs5jAm9FTr2Jw8aYe_FbA"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
