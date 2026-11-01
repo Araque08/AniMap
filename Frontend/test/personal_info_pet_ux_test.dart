@@ -47,11 +47,22 @@ Future<void> pumpPersonalInfo(
   VoidCallback? onUpdated,
   ValueChanged<Map<String, dynamic>>? onProfileUpdated,
   String? photo,
+  String? name,
+  double textScale = 1,
 }) async {
   await tester.pumpWidget(
     MaterialApp(
+      builder: (context, child) => MediaQuery(
+        data: MediaQuery.of(
+          context,
+        ).copyWith(textScaler: TextScaler.linear(textScale)),
+        child: child!,
+      ),
       home: PersonalInfoPage(
-        profile: userProfile(photo: photo),
+        profile: {
+          ...userProfile(photo: photo),
+          'nombre': ?name,
+        },
         onUpdated: onUpdated ?? () {},
         onProfileUpdated: onProfileUpdated,
         profileUpdater: updater,
@@ -63,15 +74,157 @@ Future<void> pumpPersonalInfo(
 
 void main() {
   group('Información Personal', () {
+    Future<void> tapSave(WidgetTester tester) async {
+      final button = find.widgetWithText(ElevatedButton, 'Guardar cambios');
+      await tester.ensureVisible(button);
+      await tester.pumpAndSettle();
+      await tester.tap(button);
+    }
+
+    testWidgets('retrato con título sobre la foto y formulario continuo', (
+      tester,
+    ) async {
+      await pumpPersonalInfo(tester);
+      final header = find.byKey(const ValueKey('personal-info-header'));
+      expect(header, findsOneWidget);
+      expect(tester.getSize(header).height, greaterThanOrEqualTo(280));
+      expect(
+        tester.getSize(header).width,
+        tester.view.physicalSize.width / tester.view.devicePixelRatio,
+      );
+      expect(
+        find.descendant(
+          of: header,
+          matching: find.text('Información personal'),
+        ),
+        findsOneWidget,
+      );
+      final edge = tester.widget<DecoratedBox>(
+        find.byKey(const ValueKey('personal-info-form-edge')),
+      );
+      final decoration = edge.decoration as BoxDecoration;
+      expect(decoration.color, Colors.white);
+      expect(
+        decoration.borderRadius,
+        const BorderRadius.vertical(top: Radius.circular(28)),
+      );
+      expect(find.text('Mi cuenta de AniMap'), findsNothing);
+      expect(
+        find.descendant(
+          of: header,
+          matching: find.text('felipe@example.invalid'),
+        ),
+        findsNothing,
+      );
+      for (final label in ['Nombre', 'Correo', 'Teléfono']) {
+        expect(
+          tester.getBottomLeft(find.text(label)).dy,
+          lessThanOrEqualTo(
+            tester
+                .getTopLeft(find.byKey(ValueKey('personal-info-field-$label')))
+                .dy,
+          ),
+        );
+      }
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('correo bloqueado permite seleccionar y copiar a 320 px', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(320, 700);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      await pumpPersonalInfo(tester);
+
+      final email = find.descendant(
+        of: find.byKey(const ValueKey('personal-info-field-Correo')),
+        matching: find.byType(TextField),
+      );
+      await tester.ensureVisible(email);
+      final field = tester.widget<TextField>(email);
+      expect(field.controller?.text, 'felipe@example.invalid');
+      expect(field.readOnly, isTrue);
+      expect(field.enabled, isTrue);
+      expect(field.enableInteractiveSelection, isTrue);
+      expect(
+        find.descendant(of: email, matching: find.byIcon(Icons.lock_outline)),
+        findsOneWidget,
+      );
+      expect(field.decoration?.fillColor, const Color(0xFFE7F1EB));
+      expect(field.style?.color, const Color(0xFF38545A));
+      expect(field.decoration?.prefixIcon, isA<Icon>());
+      expect((field.decoration!.prefixIcon! as Icon).icon, Icons.lock_outline);
+
+      await tester.tap(email);
+      await tester.pumpAndSettle();
+      expect(tester.testTextInput.isVisible, isFalse);
+      await tester.longPress(email);
+      await tester.pumpAndSettle();
+      expect(field.controller?.selection.isCollapsed, isFalse);
+      final copyLabel = MaterialLocalizations.of(
+        tester.element(email),
+      ).copyButtonLabel;
+      expect(find.text(copyLabel), findsOneWidget);
+      expect(field.controller?.text, 'felipe@example.invalid');
+      expect(tester.takeException(), isNull);
+    });
+
     testWidgets('muestra la misma foto autenticada del perfil', (tester) async {
       const path = '/api/profile/photo/507f1f77bcf86cd799439011';
       await pumpPersonalInfo(tester, photo: path);
 
-      final avatar = tester.widget<CircleAvatar>(
-        find.byKey(const ValueKey('personal-info-avatar')),
+      final photo = tester.widget<Image>(
+        find.byKey(const ValueKey('personal-info-photo')),
       );
-      expect(avatar.backgroundImage, isA<NetworkImage>());
-      expect((avatar.backgroundImage! as NetworkImage).url, endsWith(path));
+      expect(photo.image, isA<NetworkImage>());
+      expect((photo.image as NetworkImage).url, endsWith(path));
+      expect(photo.fit, BoxFit.cover);
+      expect(photo.errorBuilder, isNotNull);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('sin foto conserva el formulario y el respaldo visual', (
+      tester,
+    ) async {
+      await pumpPersonalInfo(tester);
+      expect(
+        find.byKey(const ValueKey('personal-info-photo-fallback')),
+        findsOneWidget,
+      );
+      expect(find.byKey(const ValueKey('personal-info-photo')), findsNothing);
+      await tapSave(tester);
+      await tester.pumpAndSettle();
+      expect(find.text('No realizaste cambios.'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('320 px con teclado permite editar y alcanzar Guardar', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(320, 700);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      addTearDown(tester.view.resetViewInsets);
+      var patches = 0;
+      await pumpPersonalInfo(
+        tester,
+        updater: ({required nombre, required telefono}) async {
+          patches++;
+          return {...userProfile(), 'nombre': nombre, 'telefono': telefono};
+        },
+      );
+      tester.view.viewInsets = const FakeViewPadding(bottom: 260);
+      await tester.pump();
+      await tester.enterText(find.byType(TextFormField).at(0), 'Felipe Prueba');
+      await tester.enterText(find.byType(TextFormField).at(2), '311 111 2233');
+      await tapSave(tester);
+      await tester.pumpAndSettle();
+      expect(patches, 1);
+      expect(find.text('Perfil actualizado correctamente'), findsOneWidget);
+      expect(tester.takeException(), isNull);
     });
 
     testWidgets('guardar sin cambios y whitespace equivalente hacen 0 PATCH', (
@@ -86,21 +239,19 @@ void main() {
         },
       );
 
-      await tester.ensureVisible(find.text('Guardar información'));
-      await tester.ensureVisible(find.text('Guardar información'));
-      await tester.tap(find.text('Guardar información'));
+      await tapSave(tester);
       await tester.pump(const Duration(seconds: 5));
       await tester.pumpAndSettle();
       expect(patches, 0);
       expect(find.text('No realizaste cambios.'), findsOneWidget);
 
       await tester.enterText(find.byType(TextFormField).at(0), '  Felipe  ');
-      await tester.tap(find.text('Guardar información'));
+      await tapSave(tester);
       await tester.pump();
       expect(patches, 0);
     });
 
-    testWidgets('un cambio real actualiza cabecera, teléfono y conserva foto', (
+    testWidgets('un cambio real actualiza nombre, teléfono y conserva foto', (
       tester,
     ) async {
       const photoPath = '/api/profile/photo/507f1f77bcf86cd799439011';
@@ -124,8 +275,7 @@ void main() {
 
       await tester.enterText(find.byType(TextFormField).at(0), 'Felipe AniMap');
       await tester.enterText(find.byType(TextFormField).at(2), '311 222 3344');
-      await tester.ensureVisible(find.text('Guardar información'));
-      await tester.tap(find.text('Guardar información'));
+      await tapSave(tester);
       await tester.pumpAndSettle();
       expect(patches, 1);
       expect(updates, 1);
@@ -133,10 +283,9 @@ void main() {
       expect(propagatedProfile?['telefono'], '311 222 3344');
       expect(
         tester
-            .widget<Text>(
-              find.byKey(const ValueKey('personal-info-header-name')),
-            )
-            .data,
+            .widget<TextFormField>(find.byType(TextFormField).at(0))
+            .controller
+            ?.text,
         'Felipe AniMap',
       );
       expect(
@@ -146,16 +295,12 @@ void main() {
             ?.text,
         '311 222 3344',
       );
-      final avatar = tester.widget<CircleAvatar>(
-        find.byKey(const ValueKey('personal-info-avatar')),
+      final photo = tester.widget<Image>(
+        find.byKey(const ValueKey('personal-info-photo')),
       );
-      expect(
-        (avatar.backgroundImage! as NetworkImage).url,
-        endsWith(photoPath),
-      );
+      expect((photo.image as NetworkImage).url, endsWith(photoPath));
 
-      await tester.ensureVisible(find.text('Guardar información'));
-      await tester.tap(find.text('Guardar información'));
+      await tapSave(tester);
       await tester.pump(const Duration(seconds: 5));
       await tester.pumpAndSettle();
       expect(patches, 1);
@@ -186,11 +331,12 @@ void main() {
       await tester.tap(find.text('Información Personal'));
       await tester.pumpAndSettle();
       await tester.enterText(find.byType(TextFormField).at(0), 'Nombre Nuevo');
-      await tester.ensureVisible(find.text('Guardar información'));
-      await tester.tap(find.text('Guardar información'));
+      await tapSave(tester);
       await tester.pumpAndSettle();
       expect(patches, 1);
 
+      await tester.ensureVisible(find.byIcon(Icons.arrow_back));
+      await tester.pumpAndSettle();
       await tester.pageBack();
       await tester.pumpAndSettle();
       expect(
@@ -202,6 +348,42 @@ void main() {
       expect(patches, 1);
     });
 
+    for (final textScale in [1.0, 1.6, 2.0]) {
+      testWidgets('320 px con nombre largo y texto $textScale', (tester) async {
+        tester.view.physicalSize = const Size(320, 700);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+        const longName =
+            'María Fernanda Rodríguez González con un nombre y apellidos extensos';
+        await pumpPersonalInfo(tester, name: longName, textScale: textScale);
+        expect(
+          tester
+              .widget<TextFormField>(find.byType(TextFormField).first)
+              .controller
+              ?.text,
+          longName,
+        );
+        expect(tester.takeException(), isNull);
+        await tester.scrollUntilVisible(
+          find.text('Guardar cambios'),
+          250,
+          scrollable: find.byType(Scrollable).first,
+        );
+        final saveButton = find.widgetWithText(
+          ElevatedButton,
+          'Guardar cambios',
+        );
+        await tester.ensureVisible(saveButton);
+        await tester.pumpAndSettle();
+        expect(saveButton.hitTestable(), findsOneWidget);
+        await tester.tap(saveButton);
+        await tester.pumpAndSettle();
+        expect(find.text('No realizaste cambios.'), findsOneWidget);
+        expect(tester.takeException(), isNull);
+      });
+    }
+
     testWidgets('es responsive a 320 px sin overflow', (tester) async {
       tester.view.physicalSize = const Size(320, 700);
       tester.view.devicePixelRatio = 1;
@@ -209,7 +391,7 @@ void main() {
       addTearDown(tester.view.resetDevicePixelRatio);
       await pumpPersonalInfo(tester);
       await tester.scrollUntilVisible(
-        find.text('Guardar información'),
+        find.text('Guardar cambios'),
         250,
         scrollable: find.byType(Scrollable).first,
       );

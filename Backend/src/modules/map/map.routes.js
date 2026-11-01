@@ -3,6 +3,7 @@ const { ObjectId } = require('mongodb');
 const pool = require('../../config/postgres_db');
 const { getMongoDb } = require('../../config/mongo_db');
 const optionalAuthMiddleware = require('../../middleware/optional-auth.middleware');
+const { mapFiltersSchema, mapFilterSql } = require('./map.filters');
 
 const router = express.Router();
 
@@ -22,7 +23,9 @@ router.get('/images/:imageId', async (req, res) => {
          AND (
           (r.estado = 'ACTIVO' AND m.estado = 'PERDIDA')
           OR
-          (r.estado = 'FINALIZADO' AND m.estado <> 'INACTIVA')
+          (r.estado = 'FINALIZADO' AND m.estado <> 'INACTIVA'
+            AND r.cerrado_en >=
+              (CURRENT_TIMESTAMP AT TIME ZONE 'UTC') - INTERVAL '30 days')
         )
         LIMIT 1`,
       [imageId]
@@ -48,7 +51,8 @@ router.get('/images/:imageId', async (req, res) => {
     }
 
     res.set('Content-Type', image.mimeType || 'application/octet-stream');
-    res.set('Cache-Control', 'public, max-age=3600');
+    // Revalidate visibility on each request, including after the 30-day boundary.
+    res.set('Cache-Control', 'no-store');
     return res.send(payload);
   } catch (error) {
     console.error('Error consultando imagen pública del reporte:', error);
@@ -59,14 +63,20 @@ router.get('/images/:imageId', async (req, res) => {
 /*
   GET /api/map/reports
 
-  Esta ruta entrega al mapa los datos que antes estaban quemados en Flutter.
-  Por ahora consulta PostgreSQL y arma una respuesta lista para pintar:
+  Datos públicos del mapa:
   - Mascotas perdidas: vienen de reporte + mascota + ubicación.
   - Avistamientos: vienen de avistamiento + ubicación.
 
-  Más adelante se puede ampliar para filtros por radio, especie, raza o fecha.
+  Filtros opcionales: species, color, from/to (días de Bogotá), status.
 */
 router.get('/reports', optionalAuthMiddleware, async (req, res) => {
+  const parsed = mapFiltersSchema.safeParse(req.query);
+  if (!parsed.success) {
+    return res.status(400).json({ ok: false, code: 'INVALID_MAP_FILTERS', message: 'Filtros del mapa inválidos' });
+  }
+  const filters = parsed.data;
+  const reportFilter = mapFilterSql(filters);
+  const sightingFilter = mapFilterSql(filters, true);
   try {
     /*
       Reportes activos de mascotas perdidas.
@@ -128,10 +138,12 @@ router.get('/reports', optionalAuthMiddleware, async (req, res) => {
       WHERE (
         (r.estado = 'ACTIVO' AND m.estado = 'PERDIDA')
         OR
-        (r.estado = 'FINALIZADO' AND m.estado <> 'INACTIVA')
-      )
+        (r.estado = 'FINALIZADO' AND m.estado <> 'INACTIVA'
+          AND r.cerrado_en >=
+            (CURRENT_TIMESTAMP AT TIME ZONE 'UTC') - INTERVAL '30 days')
+      ) ${reportFilter.sql}
       ORDER BY r.creado_en DESC;
-    `);
+    `, reportFilter.values);
 
     /*
       Avistamientos reportados por usuarios.
@@ -140,7 +152,7 @@ router.get('/reports', optionalAuthMiddleware, async (req, res) => {
       No dependen necesariamente de una mascota registrada, porque pueden ser
       reportes comunitarios de animales vistos en la zona.
     */
-    const avistamientosResult = await pool.query(`
+    const avistamientosResult = filters.status === 'found' ? { rows: [] } : await pool.query(`
       SELECT
         a.id AS avistamiento_id,
         a.descripcion,
@@ -153,6 +165,7 @@ router.get('/reports', optionalAuthMiddleware, async (req, res) => {
         ub.direccion,
         r.id AS reporte_id,
         m.nombre AS mascota_nombre,
+        m.color AS mascota_color,
         e.nombre AS especie_nombre,
         raza.nombre AS raza_nombre,
         fa.storage_ref AS foto_storage_ref,
@@ -171,8 +184,9 @@ router.get('/reports', optionalAuthMiddleware, async (req, res) => {
         ORDER BY id
         LIMIT 1
       ) fa ON TRUE
+      WHERE TRUE ${sightingFilter.sql}
       ORDER BY a.fecha_hora DESC;
-    `);
+    `, sightingFilter.values);
 
     const reportes = reportesResult.rows.map((row) => {
       const isOwner =
@@ -184,8 +198,10 @@ router.get('/reports', optionalAuthMiddleware, async (req, res) => {
 
       return {
         id: `lost_${row.reporte_id}`,
-        title: 'Mascota perdida',
+        title: isActive ? 'Mascota perdida' : 'Mascota encontrada',
         petName: row.mascota_nombre,
+        species: row.especie_nombre || null,
+        color: row.mascota_color || null,
         details: [
           row.especie_nombre,
           row.raza_nombre,
@@ -230,6 +246,8 @@ router.get('/reports', optionalAuthMiddleware, async (req, res) => {
         id: `sighting_${row.avistamiento_id}`,
         title: 'Avistamiento',
         petName: linked ? row.mascota_nombre : 'Sin reporte vinculado',
+        species: linked ? (row.especie_nombre || null) : null,
+        color: linked ? (row.mascota_color || null) : null,
         details: linked
           ? [row.especie_nombre, row.raza_nombre].filter(Boolean).join(' · ')
           : 'Avistamiento independiente',

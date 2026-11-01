@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../map/presentation/pages/map_page.dart';
 import '../../admin/presentation/pages/home/admin_home_page.dart';
 import '../data/session_manager.dart';
+import '../data/auth_service.dart';
 import 'pages/login_page.dart';
 
 class SessionGate extends StatefulWidget {
@@ -43,7 +44,10 @@ class _SessionGateState extends State<SessionGate> {
                     : const LoginPage());
           case SessionStatus.unauthenticated:
             return widget.unauthenticatedBuilder?.call(context) ??
-                const LoginPage();
+                LoginPage(
+                  authService: AuthService(sessionManager: widget.sessionManager),
+                  navigateOnSuccess: false,
+                );
           case SessionStatus.connectionError:
             return Scaffold(
               body: Center(

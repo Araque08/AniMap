@@ -4,6 +4,7 @@ const { once } = require('node:events');
 
 const app = require('../src/app');
 const { signAccessToken } = require('../src/utils/jwt');
+require('../test-support/auth-fixture.cjs').installAuthFixture({ 7: 'USUARIO' });
 const geofence = require('../src/modules/geofence/geofence.service');
 const { createReportsService } = require('../src/modules/reports/reports.service');
 const { createSightingsService } = require('../src/modules/sightings/sightings.service');

@@ -1,6 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { signAccessToken } = require('../src/utils/jwt');
+require('../test-support/auth-fixture.cjs').installAuthFixture({ 7: 'USUARIO' });
 const authController = require('../src/modules/auth/auth.controller');
 
 // Aislamos los controladores antes de montar las rutas: no se consulta Cloud SQL.

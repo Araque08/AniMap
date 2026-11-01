@@ -11,6 +11,49 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
 void main() {
+  for (final code in [
+    'SESSION_REVOKED',
+    'SESSION_EXPIRED',
+    'ACCOUNT_INVALID',
+  ]) {
+    test(
+      'respuesta privada $code limpia sesión sin intentar refresh',
+      () async {
+        var refreshes = 0;
+        final storage = MemorySessionStorage();
+        final manager = SessionManager(
+          storage: storage,
+          client: MockClient((_) async {
+            refreshes++;
+            throw Exception('No debe refrescar una sesión terminal');
+          }),
+        );
+        await manager.establishSession(
+          accessToken: 'access',
+          refreshToken: 'refresh',
+        );
+        var invalidations = 0;
+        manager.onSessionInvalid = () => invalidations++;
+        final client = AuthenticatedHttpClient(
+          sessionManager: manager,
+          client: MockClient(
+            (_) async => http.Response(
+              jsonEncode({'code': code}),
+              code == 'ACCOUNT_INVALID' ? 403 : 401,
+            ),
+          ),
+        );
+        await expectLater(
+          client.get(Uri.parse('http://example.invalid/api/profile')),
+          throwsA(isA<SessionInvalidException>()),
+        );
+        expect(manager.status, SessionStatus.unauthenticated);
+        expect(await storage.read(SessionManager.refreshTokenKey), isNull);
+        expect(invalidations, 1);
+        expect(refreshes, 0);
+      },
+    );
+  }
   test(
     'login normal guarda access en memoria y refresh en almacenamiento seguro',
     () async {

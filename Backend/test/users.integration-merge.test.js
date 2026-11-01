@@ -4,6 +4,7 @@ const { once } = require('node:events');
 const express = require('express');
 const { createUsersService, usersService } = require('../src/modules/users/users.service');
 const { signAccessToken } = require('../src/utils/jwt');
+require('../test-support/auth-fixture.cjs').installAuthFixture({ 1: 'ADMINISTRADOR', 2: 'USUARIO' });
 
 test('todas las operaciones administrativas exigen JWT y ADMINISTRADOR', async () => {
   let serviceCalls = 0;
@@ -20,10 +21,10 @@ test('todas las operaciones administrativas exigen JWT y ADMINISTRADOR', async (
     for (const [method, suffix] of [['GET', ''], ['GET', '/10'], ['POST', ''], ['PUT', '/10'], ['PATCH', '/10/status'], ['DELETE', '/10']]) {
       const url = `http://127.0.0.1:${server.address().port}/api/users${suffix}`;
       assert.equal((await fetch(url, { method })).status, 401);
-      assert.equal((await fetch(url, { method, headers: { Authorization: `Bearer ${signAccessToken({ sub: 2, role: 'USUARIO' })}` } })).status, 403);
+      assert.equal((await fetch(url, { method, headers: { Authorization: `Bearer ${signAccessToken({ sub: 2, role: 'USUARIO', deviceId: 'test-device' })}` } })).status, 403);
       assert.equal(serviceCalls, 0);
       const response = await fetch(url, { method,
-        headers: { Authorization: `Bearer ${signAccessToken({ sub: 1, role: 'ADMINISTRADOR' })}`, 'Content-Type': 'application/json' },
+        headers: { Authorization: `Bearer ${signAccessToken({ sub: 1, role: 'ADMINISTRADOR', deviceId: 'test-device' })}`, 'Content-Type': 'application/json' },
         ...(['POST', 'PUT', 'PATCH'].includes(method) ? { body: JSON.stringify({ estado: 'SUSPENDIDO' }) } : {}),
       });
       assert.equal(response.status, method === 'POST' ? 201 : 200);

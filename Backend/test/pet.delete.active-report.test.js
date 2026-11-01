@@ -4,6 +4,7 @@ const { once } = require('node:events');
 const express = require('express');
 
 const postgres = require('../src/config/postgres_db');
+require('../test-support/auth-fixture.cjs').installAuthFixture({ 3: 'USUARIO' });
 const images = require('../src/modules/pets/pets.images.repository');
 let mongoCalls = 0;
 let recoveryCalls = 0;
@@ -59,7 +60,7 @@ async function requestDeletion(activeReport, failCommit = false) {
     const response = await fetch(`http://127.0.0.1:${server.address().port}/api/pets/7`, {
       method: 'DELETE',
       headers: {
-        Authorization: `Bearer ${signAccessToken({ sub: 3, role: 'USUARIO' })}`,
+        Authorization: `Bearer ${signAccessToken({ sub: 3, role: 'USUARIO', deviceId: 'test-device' })}`,
       },
     });
     return { response, body: await response.json(), queries };

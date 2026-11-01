@@ -39,7 +39,7 @@ class _PersonalInfoPageState extends State<PersonalInfoPage> {
   late String _originalPhone;
   bool _isSaving = false;
 
-  static const Color darkGreen = Color(0xFF3F9B67);
+  static const Color darkGreen = Color(0xFF2F996F);
 
   @override
   void initState() {
@@ -137,181 +137,226 @@ class _PersonalInfoPageState extends State<PersonalInfoPage> {
     final photoUrl = ProfileService.absolutePhotoUrl(
       _currentProfile['foto_url'],
     );
-    final hasPhoto = photoUrl != null;
-    final name = _normalizeName(_currentProfile['nombre']?.toString() ?? '');
     final email = _currentProfile['email']?.toString().trim() ?? '';
-
-    return Scaffold(
-      backgroundColor: const Color(0xFFF3F7F4),
-      appBar: AppBar(
-        title: const Text('Información Personal'),
-        backgroundColor: const Color(0xFFF3F7F4),
-        foregroundColor: const Color(0xFF263238),
-        elevation: 0,
+    final media = MediaQuery.of(context);
+    final headerHeight = (media.size.height * 0.52).clamp(300.0, 460.0);
+    const photoFallback = ColoredBox(
+      key: ValueKey('personal-info-photo-fallback'),
+      color: Color(0xFFABCAB8),
+      child: Center(
+        child: Icon(
+          Icons.person_outline_rounded,
+          size: 100,
+          color: Colors.white,
+        ),
       ),
-      body: Form(
-        key: _formKey,
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 28),
-          children: [
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.fromLTRB(18, 22, 18, 20),
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [Color(0xFF4AAA70), Color(0xFF75C990)],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-                borderRadius: BorderRadius.circular(22),
-              ),
-              child: Column(
-                children: [
-                  CircleAvatar(
-                    key: const ValueKey('personal-info-avatar'),
-                    radius: 52,
-                    backgroundColor: const Color(0xFFD8E7DD),
-                    backgroundImage: hasPhoto
-                        ? NetworkImage(
-                            photoUrl,
-                            headers: ProfileService.imageHeaders,
-                          )
-                        : null,
-                    onBackgroundImageError: hasPhoto ? (_, _) {} : null,
-                    child: hasPhoto
-                        ? null
-                        : const Icon(
-                            Icons.person_rounded,
-                            size: 58,
-                            color: Colors.white,
-                          ),
-                  ),
-                  const SizedBox(height: 12),
-                  Text(
-                    name.isEmpty ? 'Usuario AniMap' : name,
-                    key: const ValueKey('personal-info-header-name'),
-                    textAlign: TextAlign.center,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 20,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                  if (email.isNotEmpty) ...[
-                    const SizedBox(height: 4),
-                    Text(
-                      email,
-                      textAlign: TextAlign.center,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(color: Color(0xFFEAF7EE)),
-                    ),
-                  ],
-                ],
-              ),
-            ),
-            const SizedBox(height: 18),
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(20),
-                boxShadow: const [
-                  BoxShadow(
-                    color: Color(0x16000000),
-                    blurRadius: 12,
-                    offset: Offset(0, 5),
-                  ),
-                ],
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  const Text(
-                    'Datos de tu cuenta',
-                    style: TextStyle(
-                      color: Color(0xFF33483E),
-                      fontSize: 17,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  _ProfileField(
-                    label: 'Nombre',
-                    controller: _nameController,
-                    icon: Icons.person_outline,
-                    enabled: !_isSaving,
-                    validator: (value) {
-                      final normalized = _normalizeName(value ?? '');
-                      if (normalized.length < 3) {
-                        return 'El nombre es muy corto';
-                      }
-                      if (normalized.length > 120) {
-                        return 'El nombre es demasiado largo';
-                      }
-                      return null;
-                    },
-                  ),
-                  const SizedBox(height: 14),
-                  _ProfileField(
-                    label: 'Correo',
-                    initialValue: email,
-                    icon: Icons.email_outlined,
-                    readOnly: true,
-                  ),
-                  const SizedBox(height: 14),
-                  _ProfileField(
-                    label: 'Teléfono',
-                    controller: _phoneController,
-                    icon: Icons.phone_outlined,
-                    enabled: !_isSaving,
-                    keyboardType: TextInputType.phone,
-                    inputFormatters: [
-                      FilteringTextInputFormatter.allow(
-                        RegExp(r'[0-9+\-\s()]'),
-                      ),
-                      LengthLimitingTextInputFormatter(20),
-                    ],
-                    validator: (value) {
-                      final phone = _normalizePhone(value ?? '');
-                      if (phone.length < 10 ||
-                          phone.length > 20 ||
-                          !RegExp(r'^[0-9+\-\s()]+$').hasMatch(phone)) {
-                        return 'Número de teléfono no válido';
-                      }
-                      return null;
-                    },
-                  ),
-                  const SizedBox(height: 22),
-                  SizedBox(
-                    height: 50,
-                    child: ElevatedButton.icon(
-                      onPressed: _isSaving ? null : _saveProfile,
-                      icon: _isSaving
-                          ? const SizedBox.square(
-                              dimension: 18,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: Colors.white,
-                              ),
-                            )
-                          : const Icon(Icons.save_outlined),
-                      label: const Text('Guardar información'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: darkGreen,
-                        foregroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(14),
+    );
+
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: SystemUiOverlayStyle.light.copyWith(
+        statusBarColor: Colors.transparent,
+      ),
+      child: Scaffold(
+        backgroundColor: Colors.white,
+        body: Form(
+          key: _formKey,
+          child: ListView(
+            padding: EdgeInsets.zero,
+            children: [
+              SizedBox(
+                key: const ValueKey('personal-info-header'),
+                height: headerHeight,
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    if (photoUrl != null)
+                      Image(
+                        key: const ValueKey('personal-info-photo'),
+                        image: NetworkImage(
+                          photoUrl,
+                          headers: ProfileService.imageHeaders,
+                        ),
+                        fit: BoxFit.cover,
+                        alignment: Alignment.topCenter,
+                        semanticLabel: 'Foto de perfil',
+                        errorBuilder: (_, _, _) => photoFallback,
+                      )
+                    else
+                      photoFallback,
+                    const DecoratedBox(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: [
+                            Color(0x33000000),
+                            Colors.transparent,
+                            Color(0xAA000000),
+                          ],
+                          stops: [0, 0.45, 1],
                         ),
                       ),
                     ),
-                  ),
-                ],
+                    Positioned(
+                      top: 0,
+                      left: 12,
+                      right: 24,
+                      child: SafeArea(
+                        bottom: false,
+                        minimum: const EdgeInsets.only(top: 12),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            IconButton(
+                              tooltip: MaterialLocalizations.of(
+                                context,
+                              ).backButtonTooltip,
+                              onPressed: () => Navigator.of(context).maybePop(),
+                              icon: const Icon(
+                                Icons.arrow_back,
+                                color: Colors.white,
+                                size: 28,
+                              ),
+                            ),
+                            Image.asset(
+                              'assets/images/logo_animap.png',
+                              width: 36,
+                              height: 48,
+                              semanticLabel: 'AniMap',
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const Positioned(
+                      left: 24,
+                      right: 24,
+                      bottom: 46,
+                      child: Text(
+                        'Información personal',
+                        maxLines: 2,
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 24,
+                          fontWeight: FontWeight.w700,
+                          height: 1.15,
+                        ),
+                      ),
+                    ),
+                    const Positioned(
+                      left: 0,
+                      right: 0,
+                      bottom: 0,
+                      height: 28,
+                      child: DecoratedBox(
+                        key: ValueKey('personal-info-form-edge'),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.vertical(
+                            top: Radius.circular(28),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            ),
-          ],
+              Padding(
+                padding: EdgeInsets.fromLTRB(
+                  24,
+                  4,
+                  24,
+                  24 + media.padding.bottom,
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    _ProfileField(
+                      label: 'Nombre',
+                      controller: _nameController,
+                      enabled: !_isSaving,
+                      validator: (value) {
+                        final normalized = _normalizeName(value ?? '');
+                        if (normalized.length < 3) {
+                          return 'El nombre es muy corto';
+                        }
+                        if (normalized.length > 120) {
+                          return 'El nombre es demasiado largo';
+                        }
+                        return null;
+                      },
+                    ),
+                    const SizedBox(height: 22),
+                    _ProfileField(
+                      label: 'Correo',
+                      initialValue: email,
+                      readOnly: true,
+                    ),
+                    const SizedBox(height: 22),
+                    _ProfileField(
+                      label: 'Teléfono',
+                      controller: _phoneController,
+                      enabled: !_isSaving,
+                      keyboardType: TextInputType.phone,
+                      inputFormatters: [
+                        FilteringTextInputFormatter.allow(
+                          RegExp(r'[0-9+\-\s()]'),
+                        ),
+                        LengthLimitingTextInputFormatter(20),
+                      ],
+                      validator: (value) {
+                        final phone = _normalizePhone(value ?? '');
+                        if (phone.length < 10 ||
+                            phone.length > 20 ||
+                            !RegExp(r'^[0-9+\-\s()]+$').hasMatch(phone)) {
+                          return 'Número de teléfono no válido';
+                        }
+                        return null;
+                      },
+                    ),
+                    const SizedBox(height: 32),
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton.icon(
+                        onPressed: _isSaving ? null : _saveProfile,
+                        icon: _isSaving
+                            ? const SizedBox.square(
+                                dimension: 18,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
+                              )
+                            : null,
+                        label: const Text(
+                          'Guardar cambios',
+                          textAlign: TextAlign.center,
+                        ),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: darkGreen,
+                          foregroundColor: Colors.white,
+                          minimumSize: const Size.fromHeight(52),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 14,
+                          ),
+                          elevation: 0,
+                          textStyle: Theme.of(context).textTheme.labelLarge
+                              ?.copyWith(
+                                fontSize: 17,
+                                fontWeight: FontWeight.w700,
+                              ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -866,7 +911,6 @@ class _LoadError extends StatelessWidget {
 class _ProfileField extends StatelessWidget {
   const _ProfileField({
     required this.label,
-    required this.icon,
     this.controller,
     this.initialValue,
     this.readOnly = false,
@@ -877,7 +921,6 @@ class _ProfileField extends StatelessWidget {
   });
 
   final String label;
-  final IconData icon;
   final TextEditingController? controller;
   final String? initialValue;
   final bool readOnly;
@@ -888,25 +931,71 @@ class _ProfileField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return TextFormField(
-      controller: controller,
-      initialValue: controller == null ? initialValue : null,
-      readOnly: readOnly,
-      enabled: enabled,
-      validator: validator,
-      keyboardType: keyboardType,
-      inputFormatters: inputFormatters,
-      decoration: InputDecoration(
-        labelText: label,
-        prefixIcon: Icon(icon),
-        filled: true,
-        fillColor: const Color(0xFFF5F8F6),
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
-          borderSide: const BorderSide(color: Color(0xFFE0E0E0)),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(
+          label,
+          style: const TextStyle(
+            color: Color(0xFF1D3D48),
+            fontSize: 15,
+            fontWeight: FontWeight.w600,
+          ),
         ),
-      ),
+        const SizedBox(height: 8),
+        Semantics(
+          label: label,
+          child: TextFormField(
+            key: ValueKey('personal-info-field-$label'),
+            controller: controller,
+            initialValue: controller == null ? initialValue : null,
+            readOnly: readOnly,
+            enabled: enabled,
+            style: TextStyle(
+              fontSize: 15,
+              color: readOnly
+                  ? const Color(0xFF38545A)
+                  : const Color(0xFF1D3D48),
+            ),
+            validator: validator,
+            keyboardType: keyboardType,
+            inputFormatters: inputFormatters,
+            decoration: InputDecoration(
+              prefixIcon: readOnly
+                  ? const Icon(
+                      Icons.lock_outline,
+                      size: 20,
+                      color: Color(0xFF38545A),
+                    )
+                  : null,
+              filled: true,
+              fillColor: readOnly ? const Color(0xFFE7F1EB) : Colors.white,
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 14,
+                vertical: 13,
+              ),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(8),
+                borderSide: BorderSide(
+                  color: readOnly
+                      ? const Color(0xFFE7F1EB)
+                      : const Color(0xFFBFCFD3),
+                ),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(8),
+                borderSide: const BorderSide(
+                  color: Color(0xFF3F9B67),
+                  width: 1.4,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
