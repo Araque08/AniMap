@@ -48,6 +48,7 @@ typedef SightingAddressPicker =
 class CreateSightingPage extends StatefulWidget {
   const CreateSightingPage({
     super.key,
+    this.reporteInicialId,
     this.reportsLoader,
     this.sightingCreator,
     this.locationLoader,
@@ -58,6 +59,7 @@ class CreateSightingPage extends StatefulWidget {
     this.addressPicker,
   });
 
+  final int? reporteInicialId;
   final LinkableReportsLoader? reportsLoader;
   final SightingCreator? sightingCreator;
   final Future<DeviceLocation> Function()? locationLoader;
@@ -108,17 +110,43 @@ class _CreateSightingPageState extends State<CreateSightingPage> {
     super.dispose();
   }
 
+
   Future<void> _loadReports() async {
     try {
       final reports =
-          await (widget.reportsLoader ?? SightingsService.getLinkableReports)();
-      if (mounted) setState(() => _reports = reports);
+      await (widget.reportsLoader ??
+          SightingsService.getLinkableReports)();
+
+      if (!mounted) return;
+
+      final reporteInicial = widget.reporteInicialId;
+
+      final existeReporte = reporteInicial != null &&
+          reports.any(
+                (reporte) =>
+            int.tryParse(reporte['id'].toString()) ==
+                reporteInicial,
+          );
+
+      setState(() {
+        _reports = reports;
+
+        if (existeReporte) {
+          _linked = true;
+          _selectedReportId = reporteInicial;
+        }
+      });
     } catch (error) {
-      if (mounted) _showMessage(error.toString());
+      if (mounted) {
+        _showMessage(error.toString());
+      }
     } finally {
-      if (mounted) setState(() => _loadingReports = false);
+      if (mounted) {
+        setState(() => _loadingReports = false);
+      }
     }
   }
+
 
   AddressLocationSelection? get _currentAddressSelection {
     final location = _selectedLocation;

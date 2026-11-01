@@ -183,33 +183,87 @@ function createFaqService(pool = db.pool) {
     });
   }
 
+  
   async function createCategory(data, adminId) {
     const name = requiredText(data.nombre, 'Nombre', 100);
-    const description = data.descripcion == null || String(data.descripcion).trim() === ''
-      ? null : requiredText(data.descripcion, 'Descripción', 255);
+
+    const description =
+      data.descripcion == null || String(data.descripcion).trim() === ''
+        ? null
+        : requiredText(data.descripcion, 'Descripción', 255);
+
     return transact(adminId, 'CREAR', 'categoria_faq', async (client) => {
-      const result = await client.query(
-        'INSERT INTO categoria_faq (nombre, descripcion) VALUES ($1, $2) RETURNING id, nombre, descripcion',
-        [name, description]
-      );
-      return { value: result.rows[0], id: result.rows[0].id };
+      try {
+        const result = await client.query(
+          `INSERT INTO categoria_faq (nombre, descripcion)
+          VALUES ($1, $2)
+          RETURNING id, nombre, descripcion`,
+          [name, description]
+        );
+
+        return {
+          value: result.rows[0],
+          id: result.rows[0].id,
+        };
+      } catch (error) {
+        if (error.code === '23505') {
+          throw httpError(
+            'Ya existe una categoría con ese nombre.',
+            409,
+            'FAQ_CATEGORY_DUPLICATE'
+          );
+        }
+
+        throw error;
+      }
     });
   }
 
   async function updateCategory(id, data, adminId) {
     const categoryId = positiveId(id);
     const name = requiredText(data.nombre, 'Nombre', 100);
-    const description = data.descripcion == null || String(data.descripcion).trim() === ''
-      ? null : requiredText(data.descripcion, 'Descripción', 255);
+
+    const description =
+      data.descripcion == null || String(data.descripcion).trim() === ''
+        ? null
+        : requiredText(data.descripcion, 'Descripción', 255);
+
     return transact(adminId, 'EDITAR', 'categoria_faq', async (client) => {
-      const result = await client.query(
-        'UPDATE categoria_faq SET nombre = $1, descripcion = $2 WHERE id = $3 RETURNING id, nombre, descripcion',
-        [name, description, categoryId]
-      );
-      if (result.rowCount !== 1) throw httpError('Categoría no encontrada', 404, 'FAQ_CATEGORY_NOT_FOUND');
-      return { value: result.rows[0], id: categoryId };
+      try {
+        const result = await client.query(
+          `UPDATE categoria_faq
+          SET nombre = $1, descripcion = $2
+          WHERE id = $3
+          RETURNING id, nombre, descripcion`,
+          [name, description, categoryId]
+        );
+
+        if (result.rowCount !== 1) {
+          throw httpError(
+            'Categoría no encontrada',
+            404,
+            'FAQ_CATEGORY_NOT_FOUND'
+          );
+        }
+
+        return {
+          value: result.rows[0],
+          id: categoryId,
+        };
+      } catch (error) {
+        if (error.code === '23505') {
+          throw httpError(
+            'Ya existe una categoría con ese nombre.',
+            409,
+            'FAQ_CATEGORY_DUPLICATE'
+          );
+        }
+
+        throw error;
+      }
     });
   }
+
 
   async function deleteCategory(id, adminId) {
     const categoryId = positiveId(id);

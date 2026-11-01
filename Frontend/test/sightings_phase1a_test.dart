@@ -79,7 +79,7 @@ void main() {
   ) async {
     await tester.pumpWidget(
       MaterialApp(
-        home: const ReportTypeSelectorPage(),
+        home: const ReportarBuscarPage(),
         routes: {
           '/create-lost-report': (_) =>
               const Scaffold(body: Text('flujo-pérdida')),
@@ -98,7 +98,7 @@ void main() {
   ) async {
     await tester.pumpWidget(
       MaterialApp(
-        home: const ReportTypeSelectorPage(),
+        home: const ReportarBuscarPage(),
         routes: {
           '/create-lost-report': (_) =>
               const Scaffold(body: Text('flujo-pérdida')),
