@@ -72,9 +72,13 @@ class _PetPhotosManagementPageState extends State<PetPhotosManagementPage> {
   List<_EditablePetPhoto> _photos = [];
   bool _loading = true;
   bool _saving = false;
+  bool _checkingPhotos = false;
+  bool _comparisonFailed = false;
   bool _hasPendingChanges = false;
   bool _savedAnyChanges = false;
   bool _allowPop = false;
+
+  bool get _busy => _saving || _checkingPhotos;
 
   @override
   void initState() {
@@ -99,6 +103,7 @@ class _PetPhotosManagementPageState extends State<PetPhotosManagementPage> {
         _removedOriginals.clear();
         _remoteBytes.clear();
         _hasPendingChanges = false;
+        _comparisonFailed = false;
         _loading = false;
       });
     } catch (error) {
@@ -109,84 +114,78 @@ class _PetPhotosManagementPageState extends State<PetPhotosManagementPage> {
   }
 
   Future<void> _pickPhotos() async {
-    final picked =
-        await (widget.photosPicker ?? () => ImagePicker().pickMultiImage())();
-    if (picked.isEmpty || !mounted) return;
-
-    final currentNewFiles = _photos
-        .where((photo) => !photo.isExisting)
-        .map((photo) => photo.file!)
-        .toList();
-    final validation = await validatePetImageSelection(
-      selected: picked,
-      alreadyAdded: currentNewFiles,
-    );
-    var activeDuplicates = 0;
-    var restored = 0;
-    var comparisonFailed = false;
-    final additions = <_EditablePetPhoto>[];
-
-    for (final file in validation.accepted) {
-      final bytes = await file.readAsBytes();
-      _EditablePetPhoto? removedMatch;
-      try {
-        removedMatch = await _findSameContent(_removedOriginals, bytes);
-      } catch (_) {
-        comparisonFailed = true;
-        continue;
-      }
-      if (removedMatch != null) {
-        _removedOriginals.remove(removedMatch);
-        additions.add(removedMatch);
-        restored += 1;
-        continue;
-      }
-
-      try {
+    if (_busy || _loading) return;
+    setState(() => _checkingPhotos = true);
+    try {
+      final picked =
+          await (widget.photosPicker ?? () => ImagePicker().pickMultiImage())();
+      if (picked.isEmpty || !mounted) return;
+      final validation = await validatePetImageSelection(
+        selected: picked,
+        alreadyAdded: _photos
+            .where((photo) => !photo.isExisting)
+            .map((photo) => photo.file!)
+            .toList(),
+      );
+      if (!mounted) return;
+      var activeDuplicates = 0;
+      final restorations = <_EditablePetPhoto>[];
+      final additions = <_EditablePetPhoto>[];
+      for (final file in validation.accepted) {
+        final bytes = await file.readAsBytes();
+        if (!mounted) return;
+        final removedMatch = await _findSameContent(_removedOriginals, bytes);
+        if (!mounted) return;
+        if (removedMatch != null) {
+          restorations.add(removedMatch);
+          additions.add(removedMatch);
+          continue;
+        }
         if (await _findSameContent(_photos, bytes) != null ||
             await _findSameContent(additions, bytes) != null) {
           activeDuplicates += 1;
           continue;
         }
-      } catch (_) {
-        comparisonFailed = true;
-        continue;
+        if (!mounted) return;
+        additions.add(_EditablePetPhoto.newImage(file, bytes));
       }
-      additions.add(_EditablePetPhoto.newImage(file, bytes));
-    }
-
-    if (!mounted) return;
-    if (additions.isNotEmpty) {
+      if (!mounted) return;
+      // Aplicar la selección únicamente cuando terminaron todas las comparaciones.
       setState(() {
-        _photos.addAll(additions);
-        if (!_photos.any((photo) => photo.isPrincipal)) {
-          _photos.first.isPrincipal = true;
+        if (validation.accepted.isNotEmpty) _comparisonFailed = false;
+        if (additions.isNotEmpty) {
+          _removedOriginals.removeWhere(restorations.contains);
+          _photos.addAll(additions);
+          if (!_photos.any((photo) => photo.isPrincipal)) {
+            _photos.first.isPrincipal = true;
+          }
+          _movePrincipalFirst();
+          _hasPendingChanges = true;
         }
-        _movePrincipalFirst();
-        _hasPendingChanges = true;
       });
-    }
-
-    final messages = <String>[];
-    if (validation.rejectionMessage != null) {
-      messages.add(validation.rejectionMessage!);
-    }
-    if (activeDuplicates == 1) {
-      messages.add('Esta foto ya fue agregada.');
-    } else if (activeDuplicates > 1) {
-      messages.add('$activeDuplicates fotos ya fueron agregadas.');
-    }
-    if (comparisonFailed) {
-      messages.add('No se pudo validar una foto frente a la galería actual.');
-    }
-    if (restored > 0) {
-      messages.add(
-        restored == 1
-            ? 'Se restauró la foto original sin volver a subirla.'
-            : 'Se restauraron $restored fotos originales sin volver a subirlas.',
+      final messages = <String>[
+        if (validation.rejectionMessage != null) validation.rejectionMessage!,
+        if (activeDuplicates == 1) 'Esta foto ya fue agregada.',
+        if (activeDuplicates > 1)
+          '$activeDuplicates fotos ya fueron agregadas.',
+        if (restorations.isNotEmpty)
+          restorations.length == 1
+              ? 'Se restauró la foto original sin volver a subirla.'
+              : 'Se restauraron ${restorations.length} fotos originales sin volver a subirlas.',
+      ];
+      if (messages.isNotEmpty) _showMessage(messages.join(' '));
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _comparisonFailed = true);
+      final reason = error is PetPhotoReadException
+          ? error.message
+          : 'No pudimos leer o comparar una foto. Inténtalo nuevamente.';
+      _showMessage(
+        '$reason No se guardaron cambios. Vuelve a agregar las fotos para reintentar.',
       );
+    } finally {
+      if (mounted) setState(() => _checkingPhotos = false);
     }
-    if (messages.isNotEmpty) _showMessage(messages.join(' '));
   }
 
   Future<_EditablePetPhoto?> _findSameContent(
@@ -195,6 +194,7 @@ class _PetPhotosManagementPageState extends State<PetPhotosManagementPage> {
   ) async {
     for (final candidate in candidates) {
       final bytes = await _bytesFor(candidate);
+      if (!mounted) return null;
       if (_sameBytes(bytes, selected)) return candidate;
     }
     return null;
@@ -204,7 +204,11 @@ class _PetPhotosManagementPageState extends State<PetPhotosManagementPage> {
     if (photo.bytes != null) return photo.bytes!;
     final id = photo.id;
     final url = photo.url;
-    if (id == null || url == null) throw StateError('Foto sin referencia');
+    if (id == null || url == null) {
+      throw const PetPhotoReadException(
+        'Una foto no tiene una referencia válida. Recarga la galería.',
+      );
+    }
     final cached = _remoteBytes[id];
     if (cached != null) return cached;
     final loaded = Uint8List.fromList(
@@ -216,7 +220,7 @@ class _PetPhotosManagementPageState extends State<PetPhotosManagementPage> {
   }
 
   void _setPrincipal(_EditablePetPhoto photo) {
-    if (photo.isPrincipal) return;
+    if (_busy || photo.isPrincipal) return;
     setState(() {
       for (final item in _photos) {
         item.isPrincipal = identical(item, photo);
@@ -227,6 +231,7 @@ class _PetPhotosManagementPageState extends State<PetPhotosManagementPage> {
   }
 
   void _deletePhoto(_EditablePetPhoto photo) {
+    if (_busy) return;
     setState(() {
       final wasPrincipal = photo.isPrincipal;
       _photos.remove(photo);
@@ -244,6 +249,7 @@ class _PetPhotosManagementPageState extends State<PetPhotosManagementPage> {
   }
 
   void _movePhoto(int from, int to) {
+    if (_busy) return;
     if (from <= 0 || from >= _photos.length || to <= 0) return;
     setState(() {
       moveSecondaryImage(_photos, from, to);
@@ -257,6 +263,13 @@ class _PetPhotosManagementPageState extends State<PetPhotosManagementPage> {
   }
 
   Future<void> _saveChanges() async {
+    if (_busy || _loading) return;
+    if (_comparisonFailed) {
+      _showMessage(
+        'No se guardaron cambios. Vuelve a agregar las fotos para completar la validación.',
+      );
+      return;
+    }
     if (_photos.length < _minimumPhotos) {
       _showMessage(
         'Debes mantener mínimo 15 fotografías. Actualmente tienes ${_photos.length}.',
@@ -324,6 +337,7 @@ class _PetPhotosManagementPageState extends State<PetPhotosManagementPage> {
   }
 
   Future<void> _leave() async {
+    if (_busy) return;
     if (await _confirmExit() && mounted) {
       setState(() => _allowPop = true);
       Navigator.pop(context, _savedAnyChanges);
@@ -352,7 +366,7 @@ class _PetPhotosManagementPageState extends State<PetPhotosManagementPage> {
           backgroundColor: _green,
           foregroundColor: Colors.white,
           leading: IconButton(
-            onPressed: _leave,
+            onPressed: _busy ? null : _leave,
             icon: const Icon(Icons.arrow_back),
           ),
         ),
@@ -373,8 +387,13 @@ class _PetPhotosManagementPageState extends State<PetPhotosManagementPage> {
                     padding: const EdgeInsets.symmetric(horizontal: 16),
                     child: OutlinedButton.icon(
                       key: const ValueKey('add-managed-photos'),
-                      onPressed: _saving ? null : _pickPhotos,
-                      icon: const Icon(Icons.add_photo_alternate_outlined),
+                      onPressed: _busy ? null : _pickPhotos,
+                      icon: _checkingPhotos
+                          ? const SizedBox.square(
+                              dimension: 18,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.add_photo_alternate_outlined),
                       label: const Text('Agregar fotos'),
                     ),
                   ),
@@ -399,7 +418,7 @@ class _PetPhotosManagementPageState extends State<PetPhotosManagementPage> {
                     minimum: const EdgeInsets.fromLTRB(16, 8, 16, 14),
                     child: FilledButton.icon(
                       key: const ValueKey('save-photo-changes'),
-                      onPressed: _saving ? null : _saveChanges,
+                      onPressed: _busy ? null : _saveChanges,
                       style: FilledButton.styleFrom(
                         backgroundColor: _green,
                         padding: const EdgeInsets.symmetric(vertical: 14),
@@ -425,13 +444,14 @@ class _PetPhotosManagementPageState extends State<PetPhotosManagementPage> {
   Widget _photoDropTarget(_EditablePetPhoto photo, int index) {
     return DragTarget<int>(
       onWillAcceptWithDetails: (details) =>
-          details.data > 0 && index > 0 && details.data != index,
+          !_busy && details.data > 0 && index > 0 && details.data != index,
       onAcceptWithDetails: (details) => _movePhoto(details.data, index),
       builder: (context, candidates, rejected) {
         final tile = _photoTile(photo, candidates.isNotEmpty);
         if (index == 0) return tile;
         return LongPressDraggable<int>(
           data: index,
+          maxSimultaneousDrags: _busy ? 0 : 1,
           feedback: Material(
             elevation: 8,
             borderRadius: BorderRadius.circular(10),
@@ -480,7 +500,9 @@ class _PetPhotosManagementPageState extends State<PetPhotosManagementPage> {
                 borderRadius: BorderRadius.circular(12),
                 child: InkWell(
                   key: ValueKey('principal-photo-${photo.localKey}'),
-                  onTap: photo.isPrincipal ? null : () => _setPrincipal(photo),
+                  onTap: _busy || photo.isPrincipal
+                      ? null
+                      : () => _setPrincipal(photo),
                   borderRadius: BorderRadius.circular(12),
                   child: Padding(
                     padding: const EdgeInsets.all(5),
@@ -501,7 +523,7 @@ class _PetPhotosManagementPageState extends State<PetPhotosManagementPage> {
                 shape: const CircleBorder(),
                 child: InkWell(
                   key: ValueKey('delete-photo-${photo.localKey}'),
-                  onTap: () => _deletePhoto(photo),
+                  onTap: _busy ? null : () => _deletePhoto(photo),
                   customBorder: const CircleBorder(),
                   child: const Padding(
                     padding: EdgeInsets.all(5),

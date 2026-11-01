@@ -147,7 +147,7 @@ Future<PetImageSelectionResult> validatePetImageSelection({
       }
 
       final bytes = await image.readAsBytes();
-      if (!_hasValidImageSignature(bytes, extension)) {
+      if (!hasValidPetImageSignature(bytes, extension)) {
         rejected.add(
           PetImageRejection(
             image: image,
@@ -243,7 +243,7 @@ String _extensionOf(String name) {
   return separator < 0 ? '' : name.substring(separator + 1).toLowerCase();
 }
 
-bool _hasValidImageSignature(Uint8List bytes, String extension) {
+bool hasValidPetImageSignature(Uint8List bytes, String extension) {
   switch (extension) {
     case 'jpg':
     case 'jpeg':

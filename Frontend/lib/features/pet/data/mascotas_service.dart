@@ -1,9 +1,20 @@
+import 'dart:async';
 import 'dart:convert';
 import '../../../config/api_config.dart';
 import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
 import '../../auth/data/authenticated_http_client.dart';
 import '../../auth/data/session_manager.dart';
+import 'pet_image_selection.dart';
+
+class PetPhotoReadException implements Exception {
+  const PetPhotoReadException(this.message);
+
+  final String message;
+
+  @override
+  String toString() => message;
+}
 
 class MascotasService {
   static String get baseUrl => '${ApiConfig.current.baseUrl}/pets';
@@ -273,13 +284,74 @@ class MascotasService {
   }
 
   static Future<List<int>> descargarFoto(String url) async {
-    final uri = Uri.parse(absoluteImageUrl(url));
-    final response = await AuthenticatedHttpClient.instance.get(uri);
-    if (response.statusCode != 200 ||
-        !(response.headers['content-type'] ?? '').startsWith('image/')) {
-      throw Exception('No se pudo validar la foto existente');
+    final path = Uri.tryParse(url.trim());
+    final base = ApiConfig.current.baseUri;
+    final uri = path == null
+        ? null
+        : Uri.parse('${base.origin}/').resolveUri(path);
+    if (uri == null ||
+        !['http', 'https'].contains(uri.scheme) ||
+        uri.origin != base.origin ||
+        uri.userInfo.isNotEmpty ||
+        !uri.path.startsWith('${base.path}/pets/images/') ||
+        uri.hasQuery ||
+        uri.hasFragment) {
+      throw const PetPhotoReadException(
+        'La referencia de una foto no es válida. Recarga la galería e inténtalo nuevamente.',
+      );
     }
-    return response.bodyBytes;
+    final http.Response response;
+    try {
+      response = await AuthenticatedHttpClient.instance
+          .get(uri)
+          .timeout(const Duration(seconds: 20));
+    } on SessionInvalidException {
+      throw const PetPhotoReadException(
+        'Tu sesión no permite consultar las fotos. Inicia sesión nuevamente.',
+      );
+    } on TimeoutException {
+      throw const PetPhotoReadException(
+        'La descarga de una foto tardó demasiado. Revisa la conexión e inténtalo nuevamente.',
+      );
+    } on Exception {
+      throw const PetPhotoReadException(
+        'No pudimos descargar una foto existente. Revisa la conexión e inténtalo nuevamente.',
+      );
+    }
+    if (response.statusCode != 200) {
+      final message = switch (response.statusCode) {
+        401 =>
+          'Tu sesión no permite consultar las fotos. Inicia sesión nuevamente.',
+        403 => 'No tienes permiso para consultar una foto existente.',
+        404 =>
+          'Una foto existente ya no está disponible. Recarga la galería antes de agregar fotos.',
+        _ =>
+          'No pudimos descargar una foto existente (HTTP ${response.statusCode}). Inténtalo nuevamente.',
+      };
+      throw PetPhotoReadException(message);
+    }
+    final contentType = (response.headers['content-type'] ?? '')
+        .split(';')
+        .first
+        .trim()
+        .toLowerCase();
+    final extensions = switch (contentType) {
+      'image/jpeg' => const ['jpg'],
+      'image/png' => const ['png'],
+      'image/webp' => const ['webp'],
+      // El endpoint usa octet-stream cuando la foto no tiene MIME guardado.
+      'application/octet-stream' || '' => const ['jpg', 'png', 'webp'],
+      _ => const <String>[],
+    };
+    final bytes = response.bodyBytes;
+    if (!extensions.any(
+      (extension) => hasValidPetImageSignature(bytes, extension),
+    )) {
+      throw const PetPhotoReadException(
+        'El servidor no devolvió una foto JPG, PNG o WEBP válida. Recarga la galería e inténtalo nuevamente.',
+      );
+    }
+    return bytes;
   }
 
   static Future<void> guardarCambiosFotos({
