@@ -41,7 +41,64 @@ Widget fakeMap(BuildContext context, LatLng position, bool interactive) {
   );
 }
 
+Map<String, String>? networkHeaders(Image image) {
+  final provider = image.image;
+  final network = provider is ResizeImage ? provider.imageProvider : provider;
+  return (network as NetworkImage).headers;
+}
+
 void main() {
+  testWidgets(
+    'detalle privado conserva headers en principal, galería y visor',
+    (tester) async {
+      const headers = {'Authorization': 'Bearer isolated-test'};
+      await tester.pumpWidget(
+        MaterialApp(
+          home: ReportDetailPage(
+            report: detailReport(isOwner: true),
+            mapBuilder: fakeMap,
+            imageHeaders: headers,
+          ),
+        ),
+      );
+      await tester.pump();
+      final headerImage = tester.widget<Image>(find.byType(Image).first);
+      expect(networkHeaders(headerImage), headers);
+      await tester.scrollUntilVisible(
+        find.byKey(const ValueKey('open-report-gallery')),
+        250,
+        scrollable: find.byType(Scrollable).first,
+      );
+      for (final image in tester.widgetList<Image>(find.byType(Image))) {
+        expect(networkHeaders(image), headers);
+      }
+      await tester.ensureVisible(
+        find.byKey(const ValueKey('open-report-gallery')),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('open-report-gallery')));
+      await tester.pumpAndSettle();
+      expect(
+        tester
+            .widget<ReportPhotoGalleryPage>(find.byType(ReportPhotoGalleryPage))
+            .headers,
+        headers,
+      );
+      await tester.tap(find.byKey(const ValueKey('report-gallery-photo-0')));
+      await tester.pumpAndSettle();
+      expect(
+        tester
+            .widget<ReportPhotoViewerPage>(find.byType(ReportPhotoViewerPage))
+            .headers,
+        headers,
+      );
+      expect(
+        networkHeaders(tester.widget<Image>(find.byType(Image).first)),
+        headers,
+      );
+    },
+  );
+
   testWidgets('detalle activo separa ubicación y referencia', (tester) async {
     await tester.pumpWidget(
       MaterialApp(

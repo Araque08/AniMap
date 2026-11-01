@@ -10,6 +10,7 @@ import '../../data/device_location_service.dart';
 import '../../data/geofence_service.dart';
 import '../../data/geocoding_service.dart';
 import '../../data/reports_service.dart';
+import 'own_report_detail_page.dart';
 import '../../../sighting/presentation/pages/sightings_history_page.dart';
 
 typedef ReportsListLoader = Future<List<Map<String, dynamic>>> Function();
@@ -52,6 +53,9 @@ class CreateLostReportPage extends StatefulWidget {
     this.geofenceChecker,
     this.reportCreator,
     this.reportUpdater,
+    this.reportDetailBuilder,
+    this.reportCloser,
+    this.reportHistoryBuilder,
   });
 
   final ReportsListLoader? petsLoader;
@@ -62,6 +66,9 @@ class CreateLostReportPage extends StatefulWidget {
   final ReportGeofenceChecker? geofenceChecker;
   final ReportCreator? reportCreator;
   final ReportUpdater? reportUpdater;
+  final Widget Function(int reportId)? reportDetailBuilder;
+  final Future<void> Function(int reportId)? reportCloser;
+  final Widget Function(int reportId)? reportHistoryBuilder;
 
   @override
   State<CreateLostReportPage> createState() => _CreateLostReportPageState();
@@ -440,7 +447,9 @@ class _CreateLostReportPageState extends State<CreateLostReportPage> {
     );
     if (confirmed != true) return;
     try {
-      await ReportsService.closeReport(report['id'] as int);
+      await (widget.reportCloser ?? ReportsService.closeReport)(
+        report['id'] as int,
+      );
       if (!mounted) return;
       _showMessage('Reporte finalizado. La mascota volvió a estar activa.');
       await _loadData();
@@ -950,94 +959,109 @@ class _CreateLostReportPageState extends State<CreateLostReportPage> {
     final reference = location['referencia']?.toString();
     final isAddress = location['metodo'] == 'DIRECCION';
     return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                _petPhoto(photo, 62),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        '${pet['nombre']}',
-                        style: const TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      Text(
-                        '${pet['especie']}'
-                        '${pet['raza'] == null ? '' : ' · ${pet['raza']}'}',
-                      ),
-                    ],
-                  ),
-                ),
-                Chip(
-                  label: Text('${report['estado']}'),
-                  backgroundColor: active
-                      ? const Color(0xFFFFE1DE)
-                      : const Color(0xFFDFF3E8),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            Text(
-              report['descripcion']?.toString().isNotEmpty == true
-                  ? report['descripcion'].toString()
-                  : 'Sin descripción adicional.',
-            ),
-            const SizedBox(height: 6),
-            Text(
-              isAddress && location['direccion'] != null
-                  ? 'Ubicación: ${location['direccion']}'
-                  : 'Ubicación: ${location['metodo']} · '
-                        '${location['lat']}, ${location['lng']}',
-              style: const TextStyle(color: Color(0xFF64756B)),
-            ),
-            if (reference?.isNotEmpty == true) ...[
-              const SizedBox(height: 4),
-              Text(
-                'Señas: $reference',
-                style: const TextStyle(color: Color(0xFF64756B)),
-              ),
-            ],
-            const Divider(height: 24),
-            ReportSightingsSummary(
-              reportId: report['id'] as int,
-              count: (report['avistamientosCount'] as num?)?.toInt() ?? 0,
-              onOpen: () => Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) =>
-                      SightingsHistoryPage(reportId: report['id'] as int),
-                ),
-              ),
-            ),
-            if (active) ...[
-              const Divider(height: 16),
+      child: InkWell(
+        key: ValueKey('own-report-card-${report['id']}'),
+        borderRadius: BorderRadius.circular(12),
+        onTap: () => Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) =>
+                widget.reportDetailBuilder?.call(report['id'] as int) ??
+                OwnReportDetailPage(reportId: report['id'] as int),
+          ),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
               Row(
-                mainAxisAlignment: MainAxisAlignment.end,
                 children: [
-                  TextButton.icon(
-                    onPressed: () => _startEdit(report),
-                    icon: const Icon(Icons.edit_outlined),
-                    label: const Text('Editar'),
+                  _petPhoto(photo, 62),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '${pet['nombre']}',
+                          style: const TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        Text(
+                          '${pet['especie']}'
+                          '${pet['raza'] == null ? '' : ' · ${pet['raza']}'}',
+                        ),
+                      ],
+                    ),
                   ),
-                  const SizedBox(width: 8),
-                  FilledButton.icon(
-                    onPressed: () => _closeReport(report),
-                    icon: const Icon(Icons.check_circle_outline),
-                    label: const Text('Encontrada'),
+                  Chip(
+                    label: Text('${report['estado']}'),
+                    backgroundColor: active
+                        ? const Color(0xFFFFE1DE)
+                        : const Color(0xFFDFF3E8),
                   ),
                 ],
               ),
+              const SizedBox(height: 12),
+              Text(
+                report['descripcion']?.toString().isNotEmpty == true
+                    ? report['descripcion'].toString()
+                    : 'Sin descripción adicional.',
+              ),
+              const SizedBox(height: 6),
+              Text(
+                isAddress && location['direccion'] != null
+                    ? 'Ubicación: ${location['direccion']}'
+                    : 'Ubicación: ${location['metodo']} · '
+                          '${location['lat']}, ${location['lng']}',
+                style: const TextStyle(color: Color(0xFF64756B)),
+              ),
+              if (reference?.isNotEmpty == true) ...[
+                const SizedBox(height: 4),
+                Text(
+                  'Señas: $reference',
+                  style: const TextStyle(color: Color(0xFF64756B)),
+                ),
+              ],
+              const Divider(height: 24),
+              ReportSightingsSummary(
+                reportId: report['id'] as int,
+                count: (report['avistamientosCount'] as num?)?.toInt() ?? 0,
+                onOpen: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) =>
+                        widget.reportHistoryBuilder?.call(
+                          report['id'] as int,
+                        ) ??
+                        SightingsHistoryPage(reportId: report['id'] as int),
+                  ),
+                ),
+              ),
+              if (active) ...[
+                const Divider(height: 16),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    TextButton.icon(
+                      onPressed: () => _startEdit(report),
+                      icon: const Icon(Icons.edit_outlined),
+                      label: const Text('Editar'),
+                    ),
+                    const SizedBox(width: 8),
+                    FilledButton.icon(
+                      onPressed: () => _closeReport(report),
+                      icon: const Icon(Icons.check_circle_outline),
+                      label: const Text('Encontrada'),
+                    ),
+                  ],
+                ),
+              ],
             ],
-          ],
+          ),
         ),
       ),
     );

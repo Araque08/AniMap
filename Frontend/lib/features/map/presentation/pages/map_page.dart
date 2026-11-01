@@ -1539,8 +1539,18 @@ class SightingDetailPage extends StatelessWidget {
 class ReportDetailPage extends StatelessWidget {
   final MapReport report;
   final ReportMapBuilder? mapBuilder;
+  final Map<String, String>? imageHeaders;
+  final Map<String, String> petInfo;
+  final Widget? sightingsSummary;
 
-  const ReportDetailPage({super.key, required this.report, this.mapBuilder});
+  const ReportDetailPage({
+    super.key,
+    required this.report,
+    this.mapBuilder,
+    this.imageHeaders,
+    this.petInfo = const {},
+    this.sightingsSummary,
+  });
 
   List<String> get _photos {
     final result = <String>[];
@@ -1572,6 +1582,7 @@ class ReportDetailPage extends StatelessWidget {
           children: [
             _ReportPetHeader(
               report: report,
+              imageHeaders: imageHeaders,
               statusLabel: isFinalized ? 'FINALIZADO' : 'ACTIVO',
               statusColor: statusColor,
             ),
@@ -1610,6 +1621,18 @@ class ReportDetailPage extends StatelessWidget {
                       height: 1.4,
                     ),
                   ),
+                  for (final entry in petInfo.entries) ...[
+                    const SizedBox(height: 12),
+                    _ReportInfoLine(
+                      icon: Icons.pets_outlined,
+                      label: entry.key,
+                      value: entry.value,
+                    ),
+                  ],
+                  if (sightingsSummary != null) ...[
+                    const Divider(height: 24),
+                    sightingsSummary!,
+                  ],
                 ],
               ),
             ),
@@ -1632,10 +1655,10 @@ class ReportDetailPage extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 12),
-                  const _ReportInfoLine(
+                  _ReportInfoLine(
                     icon: Icons.pin_drop_outlined,
                     label: 'Ubicación',
-                    value: 'Punto marcado en el mapa',
+                    value: report.location,
                   ),
                   if (report.reference.trim().isNotEmpty)
                     _ReportInfoLine(
@@ -1686,6 +1709,7 @@ class ReportDetailPage extends StatelessWidget {
                                 _ReportPhotoThumbnail(
                                   key: ValueKey('report-preview-photo-$index'),
                                   url: photos[index],
+                                  headers: imageHeaders,
                                   isPrincipal: index == 0,
                                   onTap: () => Navigator.push(
                                     context,
@@ -1693,6 +1717,7 @@ class ReportDetailPage extends StatelessWidget {
                                       builder: (_) => ReportPhotoViewerPage(
                                         photos: photos,
                                         initialIndex: index,
+                                        headers: imageHeaders,
                                       ),
                                     ),
                                   ),
@@ -1707,8 +1732,10 @@ class ReportDetailPage extends StatelessWidget {
                             onPressed: () => Navigator.push(
                               context,
                               MaterialPageRoute(
-                                builder: (_) =>
-                                    ReportPhotoGalleryPage(photos: photos),
+                                builder: (_) => ReportPhotoGalleryPage(
+                                  photos: photos,
+                                  headers: imageHeaders,
+                                ),
                               ),
                             ),
                             icon: const Icon(Icons.grid_view_rounded),
@@ -1773,11 +1800,13 @@ class _ReportPetHeader extends StatelessWidget {
     required this.report,
     required this.statusLabel,
     required this.statusColor,
+    this.imageHeaders,
   });
 
   final MapReport report;
   final String statusLabel;
   final Color statusColor;
+  final Map<String, String>? imageHeaders;
 
   @override
   Widget build(BuildContext context) {
@@ -1813,6 +1842,7 @@ class _ReportPetHeader extends StatelessWidget {
                     )
                   : Image.network(
                       report.imageUrl!,
+                      headers: imageHeaders,
                       fit: BoxFit.cover,
                       errorBuilder: (_, _, _) => const ColoredBox(
                         color: Color(0xFFE5F1E8),

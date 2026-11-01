@@ -5,6 +5,19 @@ import 'package:http/http.dart' as http;
 import '../../../config/api_config.dart';
 import '../../auth/data/authenticated_http_client.dart';
 import '../../auth/data/session_manager.dart';
+import '../../pet/data/mascotas_service.dart';
+
+class OwnReportDetails {
+  const OwnReportDetails({
+    required this.report,
+    required this.pet,
+    required this.photos,
+  });
+
+  final Map<String, dynamic> report;
+  final Map<String, dynamic> pet;
+  final List<Map<String, dynamic>> photos;
+}
 
 class ReportsException implements Exception {
   final String message;
@@ -58,6 +71,72 @@ class ReportsService {
     return reports
         .map((item) => Map<String, dynamic>.from(item as Map))
         .toList();
+  }
+
+  static void _validateOwnReport(Map<String, dynamic> report, int reportId) {
+    final pet = report['mascota'];
+    if (report['id'] != reportId ||
+        report['mascotaId'] is! int ||
+        (report['mascotaId'] as int) <= 0 ||
+        pet is! Map ||
+        pet['id'] != report['mascotaId'] ||
+        report['ubicacion'] is! Map ||
+        !['ACTIVO', 'FINALIZADO'].contains(report['estado'])) {
+      throw ReportsException('El servidor devolvió un reporte inválido.');
+    }
+  }
+
+  static Future<Map<String, dynamic>> getOwnReport(
+    int reportId, {
+    AuthenticatedHttpClient? client,
+  }) async {
+    if (reportId <= 0) throw ReportsException('El reporte no es válido.');
+    final response = await (client ?? AuthenticatedHttpClient.instance).get(
+      Uri.parse('$baseUrl/$reportId'),
+      headers: _headers,
+    );
+    final body = _decode(response);
+    if (response.statusCode != 200 || body['ok'] != true) {
+      throw ReportsException(_message(body, 'No se pudo cargar el reporte.'));
+    }
+    if (body['report'] is! Map) {
+      throw ReportsException('El reporte no está disponible.');
+    }
+    final report = Map<String, dynamic>.from(body['report'] as Map);
+    _validateOwnReport(report, reportId);
+    return report;
+  }
+
+  static Future<OwnReportDetails> getOwnReportDetails(
+    int reportId, {
+    Future<Map<String, dynamic>> Function(int)? reportLoader,
+    Future<Map<String, dynamic>> Function(int)? petLoader,
+    Future<List<Map<String, dynamic>>> Function(int)? photosLoader,
+  }) async {
+    // Authorize the concrete report before requesting any pet or photo data.
+    final report = await (reportLoader ?? getOwnReport)(reportId);
+    _validateOwnReport(report, reportId);
+    final petId = report['mascotaId'] as int;
+    if ((report['mascota'] as Map)['estado'] == 'INACTIVA') {
+      // Historical reports remain readable; these pet endpoints return 404.
+      return OwnReportDetails(report: report, pet: const {}, photos: const []);
+    }
+    final results = await Future.wait<Object>([
+      (petLoader ?? (id) => MascotasService.obtenerMascotaPorId(mascotaId: id))(
+        petId,
+      ),
+      (photosLoader ??
+          (id) => MascotasService.obtenerImagenesMascota(mascotaId: id))(petId),
+    ]);
+    final pet = results[0] as Map<String, dynamic>;
+    if (pet['id'] != petId) {
+      throw ReportsException('No se pudieron cargar los datos de la mascota.');
+    }
+    return OwnReportDetails(
+      report: report,
+      pet: pet,
+      photos: results[1] as List<Map<String, dynamic>>,
+    );
   }
 
   static Future<void> createReport({
