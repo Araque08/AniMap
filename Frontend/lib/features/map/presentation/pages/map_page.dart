@@ -1640,7 +1640,7 @@ class ReportDetailPage extends StatelessWidget {
                   if (report.reference.trim().isNotEmpty)
                     _ReportInfoLine(
                       icon: Icons.notes_outlined,
-                      label: 'Referencia adicional',
+                      label: 'Señas',
                       value: report.reference.trim(),
                     ),
                   const SizedBox(height: 8),

@@ -56,7 +56,8 @@ void main() {
       find.textContaining('Ubicación: Punto marcado en el mapa'),
       findsOneWidget,
     );
-    expect(find.textContaining('Referencia adicional:'), findsOneWidget);
+    expect(find.textContaining('Señas:'), findsOneWidget);
+    expect(find.textContaining(detailReport().reference), findsOneWidget);
     expect(find.byKey(const ValueKey('mini-report-map')), findsOneWidget);
   });
 

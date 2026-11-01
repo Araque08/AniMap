@@ -798,7 +798,7 @@ class _CreateLostReportPageState extends State<CreateLostReportPage> {
                 controller: _referenceController,
                 maxLength: 255,
                 decoration: const InputDecoration(
-                  labelText: 'Referencia adicional (opcional)',
+                  labelText: 'Señas (opcional)',
                   hintText: 'Ej: frente al parque, portería del conjunto...',
                   border: OutlineInputBorder(),
                 ),
@@ -1002,7 +1002,7 @@ class _CreateLostReportPageState extends State<CreateLostReportPage> {
             if (reference?.isNotEmpty == true) ...[
               const SizedBox(height: 4),
               Text(
-                'Referencia: $reference',
+                'Señas: $reference',
                 style: const TextStyle(color: Color(0xFF64756B)),
               ),
             ],
