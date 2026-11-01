@@ -10,6 +10,7 @@ import 'features/map/presentation/pages/map_page.dart';
 import 'features/user/presentation/pages/profile_page.dart';
 import 'features/report/presentation/pages/create_lost_report_page.dart';
 import 'features/report/presentation/pages/report_type_selector_page.dart';
+import 'features/report/presentation/pages/report_search_page.dart';
 import 'features/sighting/presentation/pages/create_sighting_page.dart';
 import 'features/admin/presentation/pages/home/admin_home_page.dart';
 
@@ -79,8 +80,17 @@ class _AniMapAppState extends State<AniMapApp> {
           return MapPage(userName: name ?? '');
         },
         '/create-report': (context) => const ReportTypeSelectorPage(),
+        '/search-reports': (context) => const ReportarBuscarPage(),
         '/create-lost-report': (context) => const CreateLostReportPage(),
-        '/create-sighting': (context) => const CreateSightingPage(),
+
+        '/create-sighting': (context) {
+          final arguments = ModalRoute.of(context)?.settings.arguments;
+
+          return CreateSightingPage(
+            reporteInicialId: arguments is int ? arguments : null,
+          );
+        },
+
         '/profile': (context) => const ProfilePage(),
         '/faqs': (context) => const FaqScreen(),
         '/pet-list': (context) => const MyPetsPage(),

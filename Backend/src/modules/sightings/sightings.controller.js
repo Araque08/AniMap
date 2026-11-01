@@ -38,7 +38,7 @@ async function getPublicSighting(req, res, next) {
 
 async function listLinkableReports(req, res, next) {
   try {
-    const reports = await sightingsService.listLinkableReports();
+    const reports = await sightingsService.listLinkableReports(req.auth?.userId ?? null);
     return res.status(200).json({ ok: true, total: reports.length, reports });
   } catch (error) {
     return next(error);

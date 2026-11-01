@@ -57,7 +57,7 @@ function successfulPool({ reportId = null, storageRef = null } = {}) {
     if (sql.startsWith('SELECT r.id, r.estado')) {
       return {
         rowCount: 1,
-        rows: [{ id: reportId, estado: 'ACTIVO', mascota_estado: 'PERDIDA' }],
+        rows: [{ id: reportId, estado: 'ACTIVO', mascota_estado: 'PERDIDA', propietario_id: 8 }],
       };
     }
     if (sql.startsWith('INSERT INTO avistamiento')) {
@@ -107,7 +107,7 @@ test('2 independiente con una foto persiste Mongo y referencia PostgreSQL', asyn
   assert.equal(pool.calls.at(-1).sql, 'COMMIT');
 });
 
-test('3 cualquier usuario autenticado puede vincularse a un reporte ACTIVO', async () => {
+test('3 otro usuario autenticado puede vincularse a un reporte ACTIVO', async () => {
   const pool = successfulPool({ reportId: 88 });
   const service = createSightingsService(pool, {});
 
@@ -115,7 +115,8 @@ test('3 cualquier usuario autenticado puede vincularse a un reporte ACTIVO', asy
 
   const lookup = pool.calls.find((call) => call.sql.startsWith('SELECT r.id, r.estado'));
   assert.deepEqual(lookup.params, [88]);
-  assert.ok(!lookup.sql.includes('fk_usuario'));
+  assert.match(lookup.sql, /r.fk_usuario AS propietario_id/);
+  assert.doesNotMatch(lookup.sql, /WHERE[^]*r.fk_usuario\s*=/);
   assert.equal(result.vinculado, true);
   assert.equal(result.reporte.id, 88);
 });
@@ -289,4 +290,48 @@ test('el esquema no acepta userId enviado por el cliente', () => {
   const result = createSightingSchema.safeParse({ ...gpsData, userId: 99 });
   assert.equal(result.success, false);
   assert.equal(result.error.issues[0].code, 'unrecognized_keys');
+});
+
+
+test('propietario recibe 403 antes de cualquier escritura, foto o intencion FCM',async()=>{
+  const pool=fakePool(sql=>{
+    if(sql.startsWith('SELECT r.id, r.estado'))return {rowCount:1,rows:[{id:88,estado:'ACTIVO',mascota_estado:'PERDIDA',propietario_id:7}]};
+    assert.fail('No debe realizar escrituras de negocio');
+  });
+  let images=0,intents=0,wakes=0;
+  const service=createSightingsService(pool,{saveSightingImage:async()=>{images++;}},
+    {validateAllowedArea(){}},{recordIntent:async()=>{intents++;},wake(){wakes++;}});
+  await assert.rejects(service.createSighting(7,{...gpsData,reportId:88},{buffer:Buffer.from([1])}),
+    e=>e.statusCode===403&&e.message==='No puedes reportar un avistamiento de tu propia mascota');
+  assert.deepEqual([images,intents,wakes],[0,0,0]);
+  assert.ok(!pool.calls.some(c=>/INSERT|UPDATE|COMMIT/.test(c.sql)));
+  assert.equal(pool.calls.at(-1).sql,'ROLLBACK');
+});
+
+test('selector excluye propietario autenticado, conserva consulta publica y no expone autores',async()=>{
+  for(const userId of [7,undefined]){
+    let query;
+    const pool={query:async(sql,params)=>{query={sql,params};return {rowCount:1,rows:[{id:88,nombre:'Luna',especie:'Perro',raza:'Criollo'}]};}};
+    const reports=await createSightingsService(pool,{}).listLinkableReports(userId);
+    assert.deepEqual(query.params,[userId??null]);
+    assert.match(query.sql,/r.fk_usuario <> \$1/);
+    assert.match(query.sql,/r.estado = 'ACTIVO' AND m.estado = 'PERDIDA'/);
+    assert.ok(!JSON.stringify(reports).includes('fk_usuario'));
+    assert.equal(reports[0].id,88);
+  }
+});
+
+
+test('selector toma el usuario solo del JWT e ignora IDs enviados en query',async t=>{
+  const {sightingsService}=require('../src/modules/sightings/sightings.service');
+  const original=sightingsService.listLinkableReports;const owners=[];
+  sightingsService.listLinkableReports=async userId=>{owners.push(userId);return [];};
+  const server=app.listen(0,'127.0.0.1');await once(server,'listening');
+  t.after(async()=>{sightingsService.listLinkableReports=original;await new Promise(r=>server.close(r));});
+  const url='http://127.0.0.1:'+server.address().port+'/api/sightings/linkable-reports?userId=999';
+  const response=await fetch(url,{headers:{Authorization:'Bearer '+signAccessToken({sub:7,deviceId:'test-device'})}});
+  assert.equal(response.status,200);assert.deepEqual(owners,[7]);
+  assert.equal((await fetch(url)).status,200);assert.deepEqual(owners,[7,null]);
+  assert.equal((await fetch(url,{headers:{Authorization:'Bearer invalid'}})).status,401);
+  assert.deepEqual(owners,[7,null]);
 });

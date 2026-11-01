@@ -88,13 +88,24 @@ Future<void> _openForm(
     ),
   );
   await tester.pumpAndSettle();
-  final target = editing ? find.byTooltip('Editar pregunta') : find.text('Nueva pregunta');
-  await tester.scrollUntilVisible(target, 200, scrollable: find.byType(Scrollable).first);
+  final target = editing
+      ? find.byTooltip('Editar pregunta')
+      : find.text('Nueva pregunta');
+  await tester.scrollUntilVisible(
+    target,
+    200,
+    scrollable: find.byType(Scrollable).first,
+  );
+  await tester.ensureVisible(target);
+  await tester.pumpAndSettle();
   await tester.tap(target);
   await tester.pumpAndSettle();
   if (!editing) {
-    await tester.scrollUntilVisible(find.widgetWithText(TextFormField, 'Pregunta'), 200,
-        scrollable: find.byType(Scrollable).first);
+    await tester.scrollUntilVisible(
+      find.widgetWithText(TextFormField, 'Pregunta'),
+      200,
+      scrollable: find.byType(Scrollable).first,
+    );
     await tester.enterText(
       find.widgetWithText(TextFormField, 'Pregunta'),
       'Nueva pregunta',
@@ -104,8 +115,11 @@ Future<void> _openForm(
       'Nueva respuesta',
     );
   }
-  await tester.scrollUntilVisible(find.byType(FilledButton).last, 200,
-      scrollable: find.byType(Scrollable).first);
+  await tester.scrollUntilVisible(
+    find.byType(FilledButton).last,
+    200,
+    scrollable: find.byType(Scrollable).first,
+  );
   await tester.pumpAndSettle();
 }
 
@@ -205,9 +219,7 @@ void main() {
     expect(find.byType(AdminFaqFormPage), findsOneWidget);
     expect(observer.pops, 0);
     expect(
-      find.text(
-        'No pudimos actualizar la pregunta. Intenta nuevamente.',
-      ),
+      find.text('No pudimos actualizar la pregunta. Intenta nuevamente.'),
       findsOneWidget,
     );
     expect(

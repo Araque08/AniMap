@@ -50,6 +50,15 @@ class ReportTypeSelectorPage extends StatelessWidget {
                     onTap: () =>
                         Navigator.pushNamed(context, '/create-sighting'),
                   ),
+                  const SizedBox(height: 14),
+                  _ReportOption(
+                    key: const ValueKey('search-public-reports'),
+                    icon: Icons.search,
+                    title: 'Buscar reportes',
+                    subtitle: 'Consulta mascotas perdidas y avistamientos.',
+                    onTap: () =>
+                        Navigator.pushNamed(context, '/search-reports'),
+                  ),
                 ],
               ),
             ),

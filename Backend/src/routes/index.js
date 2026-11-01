@@ -18,12 +18,15 @@ const petsRoutes = require('../modules/pets/pets.routes');
 const mapRoutes = require('../modules/map/map.routes');
 const profileRoutes = require('../modules/profile/profile.routes');
 const reportsRoutes = require('../modules/reports/reports.routes');
+const adminReportsRoutes = require('../modules/admin-reports/admin-reports.routes');
 const sightingsRoutes = require('../modules/sightings/sightings.routes');
 const geofenceRoutes = require('../modules/geofence/geofence.routes');
 const geocodingRoutes = require('../modules/geocoding/geocoding.routes');
 const notificationPreferencesRoutes = require('../modules/notification-preferences/notification-preferences.routes');
 const faqRoutes = require('../modules/faq/faq.routes');
 const usersRoutes = require('../modules/users/users.routes');
+const bitacoraRoutes = require('../modules/admin-bitacora/bitacora.routes');
+
 
 /*
   Aquí creo el router principal de Express.
@@ -63,6 +66,19 @@ router.use('/catalogos', catalogosRoutes);
 */
 router.use('/pets', mascotasRoutes);
 router.use('/pets', petsRoutes);
+
+/*
+  Bitácora administrativa.
+  Consulta protegida para administradores.
+*/
+router.use('/admin/bitacora', bitacoraRoutes);
+
+
+/*
+  Módulo de reportes administrativos.
+  Consulta protegida para administradores.
+*/
+router.use('/admin/reports', adminReportsRoutes);
 
 /*
   Aquí conecto el nuevo módulo del mapa.

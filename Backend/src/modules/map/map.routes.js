@@ -184,7 +184,7 @@ router.get('/reports', optionalAuthMiddleware, async (req, res) => {
         ORDER BY id
         LIMIT 1
       ) fa ON TRUE
-      WHERE TRUE ${sightingFilter.sql}
+      WHERE a.estado IS DISTINCT FROM 'ELIMINADO' ${sightingFilter.sql}
       ORDER BY a.fecha_hora DESC;
     `, sightingFilter.values);
 

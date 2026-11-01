@@ -7,10 +7,7 @@ import 'admin_faq_form_page.dart';
 class AdminFaqPage extends StatefulWidget {
   final FaqService? service;
 
-  const AdminFaqPage({
-    super.key,
-    this.service,
-  });
+  const AdminFaqPage({super.key, this.service});
 
   @override
   State<AdminFaqPage> createState() => _AdminFaqPageState();
@@ -34,8 +31,7 @@ class _AdminFaqPageState extends State<AdminFaqPage> {
   // SERVICIO
   // =========================================================
 
-  late final FaqService _service =
-      widget.service ?? FaqService();
+  late final FaqService _service = widget.service ?? FaqService();
 
   // =========================================================
   // DATOS
@@ -52,12 +48,14 @@ class _AdminFaqPageState extends State<AdminFaqPage> {
   // BUSCADOR Y FILTROS
   // =========================================================
 
-  final TextEditingController _searchController =
-  TextEditingController();
+  final TextEditingController _searchController = TextEditingController();
 
   String _searchText = '';
 
   int? _selectedCategoryId;
+
+  // null: todas; true: activas; false: archivadas.
+  bool? _selectedActiveStatus;
 
   // =========================================================
   // INIT
@@ -106,14 +104,11 @@ class _AdminFaqPageState extends State<AdminFaqPage> {
         // Si una categoría fue eliminada desde la
         // administración de categorías, quitamos el filtro.
         if (_selectedCategoryId != null) {
-          final categoryExists = _categories.any(
-                (category) {
-              final id =
-              (category['id'] as num?)?.toInt();
+          final categoryExists = _categories.any((category) {
+            final id = (category['id'] as num?)?.toInt();
 
-              return id == _selectedCategoryId;
-            },
-          );
+            return id == _selectedCategoryId;
+          });
 
           if (!categoryExists) {
             _selectedCategoryId = null;
@@ -137,27 +132,14 @@ class _AdminFaqPageState extends State<AdminFaqPage> {
   // =========================================================
 
   List<Map<String, dynamic>> get _filteredFaqs {
-    final search =
-    _searchText.trim().toLowerCase();
+    final search = _searchText.trim().toLowerCase();
 
     return _faqs.where((faq) {
-      final question =
-          faq['pregunta']
-              ?.toString()
-              .toLowerCase() ??
-              '';
+      final question = faq['pregunta']?.toString().toLowerCase() ?? '';
 
-      final answer =
-          faq['respuesta']
-              ?.toString()
-              .toLowerCase() ??
-              '';
+      final answer = faq['respuesta']?.toString().toLowerCase() ?? '';
 
-      final category =
-          faq['categoria']
-              ?.toString()
-              .toLowerCase() ??
-              '';
+      final category = faq['categoria']?.toString().toLowerCase() ?? '';
 
       // =====================================================
       // FILTRO POR TEXTO
@@ -165,9 +147,9 @@ class _AdminFaqPageState extends State<AdminFaqPage> {
 
       final matchesSearch =
           search.isEmpty ||
-              question.contains(search) ||
-              answer.contains(search) ||
-              category.contains(search);
+          question.contains(search) ||
+          answer.contains(search) ||
+          category.contains(search);
 
       // =====================================================
       // FILTRO POR CATEGORÍA
@@ -176,14 +158,16 @@ class _AdminFaqPageState extends State<AdminFaqPage> {
       bool matchesCategory = true;
 
       if (_selectedCategoryId != null) {
-        final faqCategoryId =
-        (faq['fk_categoria'] as num?)?.toInt();
+        final faqCategoryId = (faq['fk_categoria'] as num?)?.toInt();
 
-        matchesCategory =
-            faqCategoryId == _selectedCategoryId;
+        matchesCategory = faqCategoryId == _selectedCategoryId;
       }
 
-      return matchesSearch && matchesCategory;
+      final matchesStatus =
+          _selectedActiveStatus == null ||
+          (faq['activa'] == true) == _selectedActiveStatus;
+
+      return matchesSearch && matchesCategory && matchesStatus;
     }).toList();
   }
 
@@ -194,11 +178,7 @@ class _AdminFaqPageState extends State<AdminFaqPage> {
   Future<void> _createFaq() async {
     final result = await Navigator.push<bool>(
       context,
-      MaterialPageRoute(
-        builder: (_) => AdminFaqFormPage(
-          service: _service,
-        ),
-      ),
+      MaterialPageRoute(builder: (_) => AdminFaqFormPage(service: _service)),
     );
 
     if (!mounted) return;
@@ -212,16 +192,11 @@ class _AdminFaqPageState extends State<AdminFaqPage> {
   // ABRIR FORMULARIO PARA EDITAR
   // =========================================================
 
-  Future<void> _editFaq(
-      Map<String, dynamic> faq,
-      ) async {
+  Future<void> _editFaq(Map<String, dynamic> faq) async {
     final result = await Navigator.push<bool>(
       context,
       MaterialPageRoute(
-        builder: (_) => AdminFaqFormPage(
-          faq: faq,
-          service: _service,
-        ),
+        builder: (_) => AdminFaqFormPage(faq: faq, service: _service),
       ),
     );
 
@@ -239,10 +214,7 @@ class _AdminFaqPageState extends State<AdminFaqPage> {
   Future<void> _openCategories() async {
     await Navigator.push(
       context,
-      MaterialPageRoute(
-        builder: (_) =>
-        const AdminFaqCategoriesPage(),
-      ),
+      MaterialPageRoute(builder: (_) => const AdminFaqCategoriesPage()),
     );
 
     if (!mounted) return;
@@ -256,17 +228,11 @@ class _AdminFaqPageState extends State<AdminFaqPage> {
   // ACTIVAR / ARCHIVAR
   // =========================================================
 
-  Future<void> _toggleFaq(
-      Map<String, dynamic> faq,
-      ) async {
+  Future<void> _toggleFaq(Map<String, dynamic> faq) async {
     try {
-      final currentlyActive =
-          faq['activa'] == true;
+      final currentlyActive = faq['activa'] == true;
 
-      await _service.setFaqStatus(
-        (faq['id'] as num).toInt(),
-        !currentlyActive,
-      );
+      await _service.setFaqStatus((faq['id'] as num).toInt(), !currentlyActive);
 
       if (!mounted) return;
 
@@ -300,14 +266,10 @@ class _AdminFaqPageState extends State<AdminFaqPage> {
   // ELIMINAR FAQ
   // =========================================================
 
-  Future<void> _deleteFaq(
-      Map<String, dynamic> faq,
-      ) async {
-    final id =
-    (faq['id'] as num).toInt();
+  Future<void> _deleteFaq(Map<String, dynamic> faq) async {
+    final id = (faq['id'] as num).toInt();
 
-    final question =
-        faq['pregunta']?.toString() ?? '';
+    final question = faq['pregunta']?.toString() ?? '';
 
     var deleting = false;
 
@@ -325,8 +287,7 @@ class _AdminFaqPageState extends State<AdminFaqPage> {
                 backgroundColor: Colors.white,
 
                 shape: RoundedRectangleBorder(
-                  borderRadius:
-                  BorderRadius.circular(24),
+                  borderRadius: BorderRadius.circular(24),
                 ),
 
                 title: Row(
@@ -336,11 +297,9 @@ class _AdminFaqPageState extends State<AdminFaqPage> {
                       height: 45,
 
                       decoration: BoxDecoration(
-                        color:
-                        const Color(0xFFFFEEEE),
+                        color: const Color(0xFFFFEEEE),
 
-                        borderRadius:
-                        BorderRadius.circular(14),
+                        borderRadius: BorderRadius.circular(14),
                       ),
 
                       child: const Icon(
@@ -357,8 +316,7 @@ class _AdminFaqPageState extends State<AdminFaqPage> {
                         style: TextStyle(
                           color: textPrimary,
                           fontSize: 19,
-                          fontWeight:
-                          FontWeight.w800,
+                          fontWeight: FontWeight.w800,
                         ),
                       ),
                     ),
@@ -367,8 +325,7 @@ class _AdminFaqPageState extends State<AdminFaqPage> {
 
                 content: Column(
                   mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment:
-                  CrossAxisAlignment.start,
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     const Text(
                       '¿Seguro que deseas eliminar esta pregunta frecuente?',
@@ -384,15 +341,12 @@ class _AdminFaqPageState extends State<AdminFaqPage> {
                       Container(
                         width: double.infinity,
 
-                        padding:
-                        const EdgeInsets.all(13),
+                        padding: const EdgeInsets.all(13),
 
                         decoration: BoxDecoration(
-                          color:
-                          const Color(0xFFF6F8F7),
+                          color: const Color(0xFFF6F8F7),
 
-                          borderRadius:
-                          BorderRadius.circular(13),
+                          borderRadius: BorderRadius.circular(13),
                         ),
 
                         child: Text(
@@ -400,8 +354,7 @@ class _AdminFaqPageState extends State<AdminFaqPage> {
 
                           maxLines: 3,
 
-                          overflow:
-                          TextOverflow.ellipsis,
+                          overflow: TextOverflow.ellipsis,
 
                           style: const TextStyle(
                             color: textSecondary,
@@ -443,21 +396,15 @@ class _AdminFaqPageState extends State<AdminFaqPage> {
                     onPressed: deleting
                         ? null
                         : () {
-                      Navigator.pop(
-                        dialogContext,
-                        false,
-                      );
-                    },
+                            Navigator.pop(dialogContext, false);
+                          },
 
-                    child: const Text(
-                      'Cancelar',
-                    ),
+                    child: const Text('Cancelar'),
                   ),
 
                   FilledButton.icon(
                     style: FilledButton.styleFrom(
-                      backgroundColor:
-                      const Color(0xFFB95050),
+                      backgroundColor: const Color(0xFFB95050),
 
                       foregroundColor: Colors.white,
                     ),
@@ -465,63 +412,47 @@ class _AdminFaqPageState extends State<AdminFaqPage> {
                     onPressed: deleting
                         ? null
                         : () async {
-                      update(() {
-                        deleting = true;
-                        dialogError = null;
-                      });
+                            update(() {
+                              deleting = true;
+                              dialogError = null;
+                            });
 
-                      try {
-                        await _service.deleteFaq(
-                          id,
-                        );
+                            try {
+                              await _service.deleteFaq(id);
 
-                        if (!dialogContext
-                            .mounted) {
-                          return;
-                        }
+                              if (!dialogContext.mounted) {
+                                return;
+                              }
 
-                        Navigator.pop(
-                          dialogContext,
-                          true,
-                        );
-                      } catch (error) {
-                        if (!dialogContext
-                            .mounted) {
-                          return;
-                        }
+                              Navigator.pop(dialogContext, true);
+                            } catch (error) {
+                              if (!dialogContext.mounted) {
+                                return;
+                              }
 
-                        update(() {
-                          deleting = false;
+                              update(() {
+                                deleting = false;
 
-                          dialogError =
-                          error
-                          is FaqException
-                              ? error.message
-                              : 'No pudimos eliminar la pregunta. Intenta nuevamente.';
-                        });
-                      }
-                    },
+                                dialogError = error is FaqException
+                                    ? error.message
+                                    : 'No pudimos eliminar la pregunta. Intenta nuevamente.';
+                              });
+                            }
+                          },
 
                     icon: deleting
                         ? const SizedBox(
-                      width: 17,
-                      height: 17,
+                            width: 17,
+                            height: 17,
 
-                      child:
-                      CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: Colors.white,
-                      ),
-                    )
-                        : const Icon(
-                      Icons.delete_outline,
-                    ),
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          )
+                        : const Icon(Icons.delete_outline),
 
-                    label: Text(
-                      deleting
-                          ? 'Eliminando...'
-                          : 'Eliminar',
-                    ),
+                    label: Text(deleting ? 'Eliminando...' : 'Eliminar'),
                   ),
                 ],
               ),
@@ -536,16 +467,12 @@ class _AdminFaqPageState extends State<AdminFaqPage> {
     }
 
     setState(() {
-      _faqs.removeWhere(
-            (item) => item['id'] == id,
-      );
+      _faqs.removeWhere((item) => item['id'] == id);
     });
 
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
-        content: Text(
-          'Pregunta frecuente eliminada correctamente',
-        ),
+        content: Text('Pregunta frecuente eliminada correctamente'),
       ),
     );
   }
@@ -560,6 +487,7 @@ class _AdminFaqPageState extends State<AdminFaqPage> {
     setState(() {
       _searchText = '';
       _selectedCategoryId = null;
+      _selectedActiveStatus = null;
     });
   }
 
@@ -581,27 +509,21 @@ class _AdminFaqPageState extends State<AdminFaqPage> {
 
         title: const Text(
           'Preguntas frecuentes',
-          style: TextStyle(
-            fontWeight: FontWeight.w800,
-          ),
+          style: TextStyle(fontWeight: FontWeight.w800),
         ),
       ),
 
       body: _loading
-          ? const Center(
-        child: CircularProgressIndicator(
-          color: green,
-        ),
-      )
+          ? const Center(child: CircularProgressIndicator(color: green))
           : _error != null
           ? _buildError()
           : RefreshIndicator(
-        color: green,
+              color: green,
 
-        onRefresh: _load,
+              onRefresh: _load,
 
-        child: _buildContent(),
-      ),
+              child: _buildContent(),
+            ),
     );
   }
 
@@ -654,9 +576,7 @@ class _AdminFaqPageState extends State<AdminFaqPage> {
 
               textAlign: TextAlign.center,
 
-              style: const TextStyle(
-                color: textSecondary,
-              ),
+              style: const TextStyle(color: textSecondary),
             ),
 
             const SizedBox(height: 18),
@@ -669,13 +589,9 @@ class _AdminFaqPageState extends State<AdminFaqPage> {
 
               onPressed: _load,
 
-              icon: const Icon(
-                Icons.refresh_rounded,
-              ),
+              icon: const Icon(Icons.refresh_rounded),
 
-              label: const Text(
-                'Reintentar',
-              ),
+              label: const Text('Reintentar'),
             ),
           ],
         ),
@@ -691,15 +607,9 @@ class _AdminFaqPageState extends State<AdminFaqPage> {
     final filteredFaqs = _filteredFaqs;
 
     return ListView(
-      physics:
-      const AlwaysScrollableScrollPhysics(),
+      physics: const AlwaysScrollableScrollPhysics(),
 
-      padding: const EdgeInsets.fromLTRB(
-        18,
-        8,
-        18,
-        30,
-      ),
+      padding: const EdgeInsets.fromLTRB(18, 8, 18, 30),
 
       children: [
         // =====================================================
@@ -713,13 +623,11 @@ class _AdminFaqPageState extends State<AdminFaqPage> {
         // =====================================================
         // TÍTULO
         // =====================================================
-
         Row(
           children: [
             const Expanded(
               child: Column(
-                crossAxisAlignment:
-                CrossAxisAlignment.start,
+                crossAxisAlignment: CrossAxisAlignment.start,
 
                 children: [
                   Text(
@@ -737,26 +645,19 @@ class _AdminFaqPageState extends State<AdminFaqPage> {
                   Text(
                     'Busca o filtra el contenido del centro de ayuda.',
 
-                    style: TextStyle(
-                      color: textSecondary,
-                      fontSize: 13,
-                    ),
+                    style: TextStyle(color: textSecondary, fontSize: 13),
                   ),
                 ],
               ),
             ),
 
             Container(
-              padding: const EdgeInsets.symmetric(
-                horizontal: 11,
-                vertical: 7,
-              ),
+              padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
 
               decoration: BoxDecoration(
                 color: lightGreen,
 
-                borderRadius:
-                BorderRadius.circular(20),
+                borderRadius: BorderRadius.circular(20),
               ),
 
               child: Text(
@@ -777,7 +678,6 @@ class _AdminFaqPageState extends State<AdminFaqPage> {
         // =====================================================
         // BUSCADOR
         // =====================================================
-
         _buildSearchField(),
 
         const SizedBox(height: 14),
@@ -785,32 +685,27 @@ class _AdminFaqPageState extends State<AdminFaqPage> {
         // =====================================================
         // FILTROS
         // =====================================================
-
         _buildCategoryFilters(),
+
+        const SizedBox(height: 14),
+
+        _buildStatusFilters(),
 
         const SizedBox(height: 22),
 
         // =====================================================
         // RESULTADOS
         // =====================================================
-
         if (filteredFaqs.isEmpty)
           _buildEmptyState()
         else
-          ...filteredFaqs.map(
-                (faq) {
-              return Padding(
-                padding:
-                const EdgeInsets.only(
-                  bottom: 14,
-                ),
+          ...filteredFaqs.map((faq) {
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 14),
 
-                child: _buildFaqCard(
-                  faq,
-                ),
-              );
-            },
-          ),
+              child: _buildFaqCard(faq),
+            );
+          }),
       ],
     );
   }
@@ -825,10 +720,7 @@ class _AdminFaqPageState extends State<AdminFaqPage> {
 
       decoration: BoxDecoration(
         gradient: const LinearGradient(
-          colors: [
-            green,
-            darkGreen,
-          ],
+          colors: [green, darkGreen],
 
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
@@ -838,23 +730,17 @@ class _AdminFaqPageState extends State<AdminFaqPage> {
 
         boxShadow: [
           BoxShadow(
-            color: green.withValues(
-              alpha: 0.18,
-            ),
+            color: green.withValues(alpha: 0.18),
 
             blurRadius: 18,
 
-            offset: const Offset(
-              0,
-              7,
-            ),
+            offset: const Offset(0, 7),
           ),
         ],
       ),
 
       child: Column(
-        crossAxisAlignment:
-        CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.start,
 
         children: [
           Row(
@@ -864,12 +750,9 @@ class _AdminFaqPageState extends State<AdminFaqPage> {
                 height: 49,
 
                 decoration: BoxDecoration(
-                  color: Colors.white.withValues(
-                    alpha: 0.16,
-                  ),
+                  color: Colors.white.withValues(alpha: 0.16),
 
-                  borderRadius:
-                  BorderRadius.circular(15),
+                  borderRadius: BorderRadius.circular(15),
                 ),
 
                 child: const Icon(
@@ -883,8 +766,7 @@ class _AdminFaqPageState extends State<AdminFaqPage> {
 
               const Expanded(
                 child: Column(
-                  crossAxisAlignment:
-                  CrossAxisAlignment.start,
+                  crossAxisAlignment: CrossAxisAlignment.start,
 
                   children: [
                     Text(
@@ -893,8 +775,7 @@ class _AdminFaqPageState extends State<AdminFaqPage> {
                       style: TextStyle(
                         color: Colors.white,
                         fontSize: 20,
-                        fontWeight:
-                        FontWeight.w800,
+                        fontWeight: FontWeight.w800,
                       ),
                     ),
 
@@ -920,7 +801,6 @@ class _AdminFaqPageState extends State<AdminFaqPage> {
           // ===================================================
           // BOTONES
           // ===================================================
-
           Row(
             children: [
               // =================================================
@@ -934,29 +814,21 @@ class _AdminFaqPageState extends State<AdminFaqPage> {
 
                     foregroundColor: darkGreen,
 
-                    padding:
-                    const EdgeInsets.symmetric(
-                      vertical: 14,
-                    ),
+                    padding: const EdgeInsets.symmetric(vertical: 14),
 
                     shape: RoundedRectangleBorder(
-                      borderRadius:
-                      BorderRadius.circular(14),
+                      borderRadius: BorderRadius.circular(14),
                     ),
                   ),
 
                   onPressed: _createFaq,
 
-                  icon: const Icon(
-                    Icons.add_rounded,
-                  ),
+                  icon: const Icon(Icons.add_rounded),
 
                   label: const Text(
                     'Nueva pregunta',
 
-                    style: TextStyle(
-                      fontWeight: FontWeight.w800,
-                    ),
+                    style: TextStyle(fontWeight: FontWeight.w800),
                   ),
                 ),
               ),
@@ -966,41 +838,30 @@ class _AdminFaqPageState extends State<AdminFaqPage> {
               // =================================================
               // CATEGORÍAS
               // =================================================
-
               Expanded(
                 child: OutlinedButton.icon(
                   style: OutlinedButton.styleFrom(
                     foregroundColor: Colors.white,
 
                     side: BorderSide(
-                      color: Colors.white.withValues(
-                        alpha: 0.55,
-                      ),
+                      color: Colors.white.withValues(alpha: 0.55),
                     ),
 
-                    padding:
-                    const EdgeInsets.symmetric(
-                      vertical: 14,
-                    ),
+                    padding: const EdgeInsets.symmetric(vertical: 14),
 
                     shape: RoundedRectangleBorder(
-                      borderRadius:
-                      BorderRadius.circular(14),
+                      borderRadius: BorderRadius.circular(14),
                     ),
                   ),
 
                   onPressed: _openCategories,
 
-                  icon: const Icon(
-                    Icons.category_outlined,
-                  ),
+                  icon: const Icon(Icons.category_outlined),
 
                   label: const Text(
                     'Categorías',
 
-                    style: TextStyle(
-                      fontWeight: FontWeight.w800,
-                    ),
+                    style: TextStyle(fontWeight: FontWeight.w800),
                   ),
                 ),
               ),
@@ -1026,70 +887,50 @@ class _AdminFaqPageState extends State<AdminFaqPage> {
       },
 
       decoration: InputDecoration(
-        hintText:
-        'Buscar pregunta, respuesta o categoría...',
+        hintText: 'Buscar pregunta, respuesta o categoría...',
 
-        hintStyle: const TextStyle(
-          color: Color(0xFF9AA69F),
-          fontSize: 14,
-        ),
+        hintStyle: const TextStyle(color: Color(0xFF9AA69F), fontSize: 14),
 
-        prefixIcon: const Icon(
-          Icons.search_rounded,
-          color: green,
-        ),
+        prefixIcon: const Icon(Icons.search_rounded, color: green),
 
         suffixIcon: _searchText.isNotEmpty
             ? IconButton(
-          tooltip: 'Limpiar búsqueda',
+                tooltip: 'Limpiar búsqueda',
 
-          onPressed: () {
-            _searchController.clear();
+                onPressed: () {
+                  _searchController.clear();
 
-            setState(() {
-              _searchText = '';
-            });
-          },
+                  setState(() {
+                    _searchText = '';
+                  });
+                },
 
-          icon: const Icon(
-            Icons.close_rounded,
-          ),
-        )
+                icon: const Icon(Icons.close_rounded),
+              )
             : null,
 
         filled: true,
 
         fillColor: Colors.white,
 
-        contentPadding:
-        const EdgeInsets.symmetric(
-          vertical: 15,
-        ),
+        contentPadding: const EdgeInsets.symmetric(vertical: 15),
 
         border: OutlineInputBorder(
-          borderRadius:
-          BorderRadius.circular(17),
+          borderRadius: BorderRadius.circular(17),
 
           borderSide: BorderSide.none,
         ),
 
         enabledBorder: OutlineInputBorder(
-          borderRadius:
-          BorderRadius.circular(17),
+          borderRadius: BorderRadius.circular(17),
 
-          borderSide: const BorderSide(
-            color: Color(0xFFE1E9E4),
-          ),
+          borderSide: const BorderSide(color: Color(0xFFE1E9E4)),
         ),
 
         focusedBorder: OutlineInputBorder(
-          borderRadius:
-          BorderRadius.circular(17),
+          borderRadius: BorderRadius.circular(17),
 
-          borderSide: const BorderSide(
-            color: green,
-            width: 1.5,
-          ),
+          borderSide: const BorderSide(color: green, width: 1.5),
         ),
       ),
     );
@@ -1110,8 +951,7 @@ class _AdminFaqPageState extends State<AdminFaqPage> {
           _CategoryFilterChip(
             label: 'Todas',
 
-            selected:
-            _selectedCategoryId == null,
+            selected: _selectedCategoryId == null,
 
             onTap: () {
               setState(() {
@@ -1120,30 +960,65 @@ class _AdminFaqPageState extends State<AdminFaqPage> {
             },
           ),
 
-          ..._categories.map(
-                (category) {
-              final id =
-              (category['id'] as num).toInt();
+          ..._categories.map((category) {
+            final id = (category['id'] as num).toInt();
 
-              return _CategoryFilterChip(
-                label:
-                category['nombre']
-                    ?.toString() ??
-                    'Categoría',
+            return _CategoryFilterChip(
+              label: category['nombre']?.toString() ?? 'Categoría',
 
-                selected:
-                _selectedCategoryId == id,
+              selected: _selectedCategoryId == id,
 
-                onTap: () {
-                  setState(() {
-                    _selectedCategoryId = id;
-                  });
-                },
-              );
-            },
-          ),
+              onTap: () {
+                setState(() {
+                  _selectedCategoryId = id;
+                });
+              },
+            );
+          }),
         ],
       ),
+    );
+  }
+
+  // =========================================================
+  // FILTROS POR ESTADO
+  // =========================================================
+
+  Widget _buildStatusFilters() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Estado de las preguntas',
+          style: TextStyle(
+            color: textPrimary,
+            fontSize: 13,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        const SizedBox(height: 9),
+        Wrap(
+          spacing: 9,
+          runSpacing: 9,
+          children: [
+            _CategoryFilterChip(
+              label: 'Todas',
+              selected: _selectedActiveStatus == null,
+              onTap: () => setState(() => _selectedActiveStatus = null),
+            ),
+            _CategoryFilterChip(
+              label: 'Activas',
+              selected: _selectedActiveStatus == true,
+              onTap: () => setState(() => _selectedActiveStatus = true),
+            ),
+            _CategoryFilterChip(
+              label: 'Inactivas',
+              selected: _selectedActiveStatus == false,
+              onTap: () => setState(() => _selectedActiveStatus = false),
+            ),
+          ],
+        ),
+      ],
     );
   }
 
@@ -1154,24 +1029,20 @@ class _AdminFaqPageState extends State<AdminFaqPage> {
   Widget _buildEmptyState() {
     final filtering =
         _searchText.trim().isNotEmpty ||
-            _selectedCategoryId != null;
+        _selectedCategoryId != null ||
+        _selectedActiveStatus != null;
 
     return Container(
       width: double.infinity,
 
-      padding: const EdgeInsets.symmetric(
-        horizontal: 25,
-        vertical: 38,
-      ),
+      padding: const EdgeInsets.symmetric(horizontal: 25, vertical: 38),
 
       decoration: BoxDecoration(
         color: Colors.white,
 
         borderRadius: BorderRadius.circular(21),
 
-        border: Border.all(
-          color: const Color(0xFFE3EAE6),
-        ),
+        border: Border.all(color: const Color(0xFFE3EAE6)),
       ),
 
       child: Column(
@@ -1186,9 +1057,7 @@ class _AdminFaqPageState extends State<AdminFaqPage> {
             ),
 
             child: Icon(
-              filtering
-                  ? Icons.search_off_rounded
-                  : Icons.help_outline_rounded,
+              filtering ? Icons.search_off_rounded : Icons.help_outline_rounded,
 
               color: green,
 
@@ -1200,7 +1069,11 @@ class _AdminFaqPageState extends State<AdminFaqPage> {
 
           Text(
             filtering
-                ? 'No encontramos coincidencias'
+                ? (_selectedActiveStatus == true
+                      ? 'No hay preguntas activas con estos filtros'
+                      : _selectedActiveStatus == false
+                      ? 'No hay preguntas inactivas con estos filtros'
+                      : 'No encontramos coincidencias')
                 : 'Aún no hay preguntas',
 
             textAlign: TextAlign.center,
@@ -1216,7 +1089,7 @@ class _AdminFaqPageState extends State<AdminFaqPage> {
 
           Text(
             filtering
-                ? 'Prueba con otro texto o selecciona otra categoría.'
+                ? 'Prueba con otro texto, categoría o estado.'
                 : 'Crea la primera pregunta frecuente para el centro de ayuda.',
 
             textAlign: TextAlign.center,
@@ -1234,13 +1107,9 @@ class _AdminFaqPageState extends State<AdminFaqPage> {
             TextButton.icon(
               onPressed: _clearFilters,
 
-              icon: const Icon(
-                Icons.filter_alt_off_outlined,
-              ),
+              icon: const Icon(Icons.filter_alt_off_outlined),
 
-              label: const Text(
-                'Limpiar filtros',
-              ),
+              label: const Text('Limpiar filtros'),
             ),
           ],
 
@@ -1255,13 +1124,9 @@ class _AdminFaqPageState extends State<AdminFaqPage> {
 
               onPressed: _createFaq,
 
-              icon: const Icon(
-                Icons.add_rounded,
-              ),
+              icon: const Icon(Icons.add_rounded),
 
-              label: const Text(
-                'Crear pregunta',
-              ),
+              label: const Text('Crear pregunta'),
             ),
           ],
         ],
@@ -1273,35 +1138,24 @@ class _AdminFaqPageState extends State<AdminFaqPage> {
   // TARJETA FAQ
   // =========================================================
 
-  Widget _buildFaqCard(
-      Map<String, dynamic> faq,
-      ) {
-    final active =
-        faq['activa'] == true;
+  Widget _buildFaqCard(Map<String, dynamic> faq) {
+    final active = faq['activa'] == true;
 
-    final question =
-        faq['pregunta']?.toString() ?? '';
+    final question = faq['pregunta']?.toString() ?? '';
 
-    final answer =
-        faq['respuesta']?.toString() ?? '';
+    final answer = faq['respuesta']?.toString() ?? '';
 
-    final category =
-        faq['categoria']?.toString() ??
-            'Sin categoría';
+    final category = faq['categoria']?.toString() ?? 'Sin categoría';
 
     return Container(
       key: ValueKey('faq-card-${faq['id']}'),
       decoration: BoxDecoration(
-        color: active
-            ? Colors.white
-            : const Color(0xFFECEFF1),
+        color: active ? Colors.white : const Color(0xFFECEFF1),
 
         borderRadius: BorderRadius.circular(20),
 
         border: Border.all(
-          color: active
-              ? const Color(0xFFE2EAE5)
-              : const Color(0xFFD9DFDC),
+          color: active ? const Color(0xFFE2EAE5) : const Color(0xFFD9DFDC),
         ),
       ),
 
@@ -1310,8 +1164,7 @@ class _AdminFaqPageState extends State<AdminFaqPage> {
 
         child: IntrinsicHeight(
           child: Row(
-            crossAxisAlignment:
-            CrossAxisAlignment.stretch,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
 
             children: [
               // =================================================
@@ -1328,20 +1181,12 @@ class _AdminFaqPageState extends State<AdminFaqPage> {
               // =================================================
               // CONTENIDO
               // =================================================
-
               Expanded(
                 child: Padding(
-                  padding:
-                  const EdgeInsets.fromLTRB(
-                    16,
-                    16,
-                    10,
-                    12,
-                  ),
+                  padding: const EdgeInsets.fromLTRB(16, 16, 10, 12),
 
                   child: Column(
-                    crossAxisAlignment:
-                    CrossAxisAlignment.start,
+                    crossAxisAlignment: CrossAxisAlignment.start,
 
                     children: [
                       // =========================================
@@ -1355,8 +1200,7 @@ class _AdminFaqPageState extends State<AdminFaqPage> {
                         children: [
                           // CATEGORÍA
                           Container(
-                            padding:
-                            const EdgeInsets.symmetric(
+                            padding: const EdgeInsets.symmetric(
                               horizontal: 10,
                               vertical: 5,
                             ),
@@ -1364,14 +1208,9 @@ class _AdminFaqPageState extends State<AdminFaqPage> {
                             decoration: BoxDecoration(
                               color: active
                                   ? lightGreen
-                                  : const Color(
-                                0xFFE1E5E3,
-                              ),
+                                  : const Color(0xFFE1E5E3),
 
-                              borderRadius:
-                              BorderRadius.circular(
-                                20,
-                              ),
+                              borderRadius: BorderRadius.circular(20),
                             ),
 
                             child: Text(
@@ -1380,82 +1219,63 @@ class _AdminFaqPageState extends State<AdminFaqPage> {
                               style: TextStyle(
                                 color: active
                                     ? darkGreen
-                                    : const Color(
-                                  0xFF68726D,
-                                ),
+                                    : const Color(0xFF68726D),
 
                                 fontSize: 11,
 
-                                fontWeight:
-                                FontWeight.w700,
+                                fontWeight: FontWeight.w700,
                               ),
                             ),
                           ),
 
                           // ESTADO
                           Container(
-                            key: active ? null : const ValueKey('archived-faq-badge'),
-                            padding:
-                            const EdgeInsets.symmetric(
+                            key: active
+                                ? null
+                                : const ValueKey('archived-faq-badge'),
+                            padding: const EdgeInsets.symmetric(
                               horizontal: 9,
                               vertical: 5,
                             ),
 
                             decoration: BoxDecoration(
                               color: active
-                                  ? const Color(
-                                0xFFE8F5EC,
-                              )
-                                  : const Color(
-                                0xFFCFD8DC,
-                              ),
+                                  ? const Color(0xFFE8F5EC)
+                                  : const Color(0xFFCFD8DC),
 
-                              borderRadius:
-                              BorderRadius.circular(
-                                20,
-                              ),
+                              borderRadius: BorderRadius.circular(20),
                             ),
 
                             child: Row(
-                              mainAxisSize:
-                              MainAxisSize.min,
+                              mainAxisSize: MainAxisSize.min,
 
                               children: [
                                 Container(
                                   width: 6,
                                   height: 6,
 
-                                  decoration:
-                                  BoxDecoration(
+                                  decoration: BoxDecoration(
                                     color: active
                                         ? green
-                                        : const Color(
-                                      0xFF89958E,
-                                    ),
+                                        : const Color(0xFF89958E),
 
-                                    shape:
-                                    BoxShape.circle,
+                                    shape: BoxShape.circle,
                                   ),
                                 ),
 
                                 const SizedBox(width: 5),
 
                                 Text(
-                                  active
-                                      ? 'Activa'
-                                      : 'ARCHIVADA',
+                                  active ? 'Activa' : 'ARCHIVADA',
 
                                   style: TextStyle(
                                     color: active
                                         ? darkGreen
-                                        : const Color(
-                                      0xFF68726D,
-                                    ),
+                                        : const Color(0xFF68726D),
 
                                     fontSize: 10,
 
-                                    fontWeight:
-                                    FontWeight.w700,
+                                    fontWeight: FontWeight.w700,
                                   ),
                                 ),
                               ],
@@ -1469,21 +1289,15 @@ class _AdminFaqPageState extends State<AdminFaqPage> {
                       // =========================================
                       // PREGUNTA
                       // =========================================
-
                       Text(
                         question,
 
                         style: TextStyle(
-                          color: active
-                              ? textPrimary
-                              : const Color(
-                            0xFF5F6964,
-                          ),
+                          color: active ? textPrimary : const Color(0xFF5F6964),
 
                           fontSize: 16,
 
-                          fontWeight:
-                          FontWeight.w800,
+                          fontWeight: FontWeight.w800,
 
                           height: 1.3,
                         ),
@@ -1492,7 +1306,6 @@ class _AdminFaqPageState extends State<AdminFaqPage> {
                       // =========================================
                       // RESPUESTA
                       // =========================================
-
                       if (answer.isNotEmpty) ...[
                         const SizedBox(height: 8),
 
@@ -1501,8 +1314,7 @@ class _AdminFaqPageState extends State<AdminFaqPage> {
 
                           maxLines: 3,
 
-                          overflow:
-                          TextOverflow.ellipsis,
+                          overflow: TextOverflow.ellipsis,
 
                           style: const TextStyle(
                             color: textSecondary,
@@ -1517,19 +1329,15 @@ class _AdminFaqPageState extends State<AdminFaqPage> {
                       // =========================================
                       // ACCIONES
                       // =========================================
-
                       Row(
-                        mainAxisAlignment:
-                        MainAxisAlignment.end,
+                        mainAxisAlignment: MainAxisAlignment.end,
 
                         children: [
                           // EDITAR
                           _FaqActionButton(
-                            tooltip:
-                            'Editar pregunta',
+                            tooltip: 'Editar pregunta',
 
-                            icon:
-                            Icons.edit_outlined,
+                            icon: Icons.edit_outlined,
 
                             color: active
                                 ? const Color(0xFF567267)
@@ -1547,16 +1355,10 @@ class _AdminFaqPageState extends State<AdminFaqPage> {
                                 : 'Activar pregunta',
 
                             icon: active
-                                ? Icons
-                                .visibility_off_outlined
-                                : Icons
-                                .visibility_outlined,
+                                ? Icons.visibility_off_outlined
+                                : Icons.visibility_outlined,
 
-                            color: active
-                                ? const Color(
-                              0xFF7B8580,
-                            )
-                                : green,
+                            color: active ? const Color(0xFF7B8580) : green,
 
                             onPressed: () {
                               _toggleFaq(faq);
@@ -1565,15 +1367,11 @@ class _AdminFaqPageState extends State<AdminFaqPage> {
 
                           // ELIMINAR
                           _FaqActionButton(
-                            tooltip:
-                            'Eliminar pregunta',
+                            tooltip: 'Eliminar pregunta',
 
-                            icon: Icons
-                                .delete_outline_rounded,
+                            icon: Icons.delete_outline_rounded,
 
-                            color: const Color(
-                              0xFFB95050,
-                            ),
+                            color: const Color(0xFFB95050),
 
                             onPressed: () {
                               _deleteFaq(faq);
@@ -1613,42 +1411,28 @@ class _CategoryFilterChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.only(
-        right: 9,
-      ),
+      padding: const EdgeInsets.only(right: 9),
 
       child: Material(
-        color: selected
-            ? _AdminFaqPageState.green
-            : Colors.white,
+        color: selected ? _AdminFaqPageState.green : Colors.white,
 
-        borderRadius: BorderRadius.circular(
-          30,
-        ),
+        borderRadius: BorderRadius.circular(30),
 
         child: InkWell(
-          borderRadius:
-          BorderRadius.circular(30),
+          borderRadius: BorderRadius.circular(30),
 
           onTap: onTap,
 
           child: Container(
-            padding:
-            const EdgeInsets.symmetric(
-              horizontal: 16,
-              vertical: 10,
-            ),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
 
             decoration: BoxDecoration(
-              borderRadius:
-              BorderRadius.circular(30),
+              borderRadius: BorderRadius.circular(30),
 
               border: Border.all(
                 color: selected
                     ? _AdminFaqPageState.green
-                    : const Color(
-                  0xFFDDE6E1,
-                ),
+                    : const Color(0xFFDDE6E1),
               ),
             ),
 
@@ -1658,13 +1442,11 @@ class _CategoryFilterChip extends StatelessWidget {
               style: TextStyle(
                 color: selected
                     ? Colors.white
-                    : _AdminFaqPageState
-                    .textSecondary,
+                    : _AdminFaqPageState.textSecondary,
 
                 fontSize: 12,
 
-                fontWeight:
-                FontWeight.w700,
+                fontWeight: FontWeight.w700,
               ),
             ),
           ),
@@ -1703,11 +1485,7 @@ class _FaqActionButton extends StatelessWidget {
 
       onPressed: onPressed,
 
-      icon: Icon(
-        icon,
-        color: color,
-        size: 21,
-      ),
+      icon: Icon(icon, color: color, size: 21),
     );
   }
 }
