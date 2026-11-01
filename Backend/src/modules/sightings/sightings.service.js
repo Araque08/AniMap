@@ -75,7 +75,7 @@ function createSightingsService(
 ) {
   async function querySighting(queryable, sightingId) {
     const result = await queryable.query(
-      
+
     `${SIGHTING_SELECT}
     WHERE a.id = $1
     AND a.estado IS DISTINCT FROM 'ELIMINADO'`,
@@ -88,7 +88,7 @@ function createSightingsService(
     return normalizeSighting(result.rows[0]);
   }
 
-  async function listLinkableReports() {
+  async function listLinkableReports(userId = null) {
     const result = await pool.query(`
       SELECT
         r.id,
@@ -109,8 +109,9 @@ function createSightingsService(
         LIMIT 1
       ) fp ON TRUE
       WHERE r.estado = 'ACTIVO' AND m.estado = 'PERDIDA'
+        AND ($1::integer IS NULL OR r.fk_usuario <> $1)
       ORDER BY r.creado_en DESC, r.id DESC
-    `);
+    `, [userId]);
     return result.rows.map((row) => ({
       id: Number(row.id),
       mascota: {
@@ -163,7 +164,6 @@ function createSightingsService(
         WHERE total_a.fk_reporte_perdida = r.id
           AND total_a.estado IS DISTINCT FROM 'ELIMINADO'
         ) AS total_avistamientos,
-        AS total_avistamientos,
         a.id AS avistamiento_id, a.descripcion AS avistamiento_descripcion,
         to_char(a.fecha_hora, 'YYYY-MM-DD"T"HH24:MI:SS.MS') || 'Z'
           AS avistamiento_fecha_hora,
@@ -200,7 +200,7 @@ function createSightingsService(
        ) fa ON TRUE
        WHERE r.id = $1
         AND r.fk_usuario = $2
-        AND r.estado <> 'ELIMINADO'
+        AND r.estado::text <> 'ELIMINADO'
        ORDER BY a.fecha_hora DESC NULLS LAST, a.id DESC NULLS LAST`,
       [reportId, userId]
     );
@@ -270,7 +270,7 @@ function createSightingsService(
     };
   }
 
-  
+
 async function getPublicImage(imageId) {
 
   // ========================================================
@@ -351,7 +351,10 @@ async function getPublicImage(imageId) {
           FOR SHARE`,
           [data.reportId]
         );
-        
+
+        if (reportResult.rowCount === 0) {
+          throw createHttpError('El reporte seleccionado no existe', 404);
+        }
         // Impedir que el propietario registre un avistamiento
         // vinculado a su propio reporte de mascota perdida.
         if (
@@ -359,14 +362,11 @@ async function getPublicImage(imageId) {
           Number(userId)
         ) {
           throw createHttpError(
-            'No puedes registrar un avistamiento de tu propia mascota.',
+            'No puedes reportar un avistamiento de tu propia mascota',
             403
           );
         }
 
-        if (reportResult.rowCount === 0) {
-          throw createHttpError('El reporte seleccionado no existe', 404);
-        }
         if (
           reportResult.rows[0].estado !== 'ACTIVO' ||
           reportResult.rows[0].mascota_estado !== 'PERDIDA'

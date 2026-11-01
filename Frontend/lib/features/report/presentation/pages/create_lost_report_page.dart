@@ -512,8 +512,8 @@ class _CreateLostReportPageState extends State<CreateLostReportPage> {
         false;
   }
 
-  void _goToReportSelector() {
-    Navigator.pushNamedAndRemoveUntil(context, '/create-report', (_) => false);
+  void _goToReportSearch() {
+    Navigator.pushNamedAndRemoveUntil(context, '/search-reports', (_) => false);
   }
 
   @override
@@ -546,7 +546,7 @@ class _CreateLostReportPageState extends State<CreateLostReportPage> {
         bottomNavigationBar: BottomMenuAnimap(
           currentIndex: 1,
           onBeforeNavigate: _confirmDiscard,
-          onReportTap: _goToReportSelector,
+          onReportTap: _goToReportSearch,
         ),
       ),
     );

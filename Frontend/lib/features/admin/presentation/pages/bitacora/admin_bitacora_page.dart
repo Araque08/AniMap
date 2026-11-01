@@ -1,7 +1,7 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
+import '../../../../auth/data/authenticated_http_client.dart';
 
 /// Pantalla de consulta de la bitácora administrativa de AniMap.
 ///
@@ -18,10 +18,12 @@ class AdminBitacoraPage extends StatefulWidget {
     super.key,
     required this.baseUrl,
     required this.token,
+    this.client,
   });
 
   final String baseUrl;
   final String token;
+  final AuthenticatedHttpClient? client;
 
   @override
   State<AdminBitacoraPage> createState() => _AdminBitacoraPageState();
@@ -59,33 +61,35 @@ class _AdminBitacoraPageState extends State<AdminBitacoraPage> {
     try {
       if (widget.baseUrl.trim().isEmpty || widget.token.trim().isEmpty) {
         throw Exception(
-            'La pantalla ya está disponible, pero falta conectar la URL de la API '
-                'y el token de la sesión administrativa para consultar los registros.'
+          'La pantalla ya está disponible, pero falta conectar la URL de la API '
+          'y el token de la sesión administrativa para consultar los registros.',
         );
       }
       final base = widget.baseUrl.replaceAll(RegExp(r'/$'), '');
       final List<dynamic> todos = [];
       int pagina = 1;
       while (true) {
-        final uri = Uri.parse('$base/admin/bitacora').replace(
-          queryParameters: {'pagina': '$pagina', 'limite': '100'},
-        );
-        final respuesta = await http.get(
-          uri,
-          headers: {
-            'Accept': 'application/json',
-            'Authorization': 'Bearer ${widget.token}',
-          },
-        ).timeout(const Duration(seconds: 15));
+        final uri = Uri.parse(
+          '$base/admin/bitacora',
+        ).replace(queryParameters: {'pagina': '$pagina', 'limite': '100'});
+        final respuesta =
+            await (widget.client ?? AuthenticatedHttpClient.instance)
+                .get(uri, headers: {'Accept': 'application/json'})
+                .timeout(const Duration(seconds: 15));
+        if (!mounted) return;
 
         if (respuesta.statusCode == 401) {
-          throw Exception('Tu sesión expiró o fue revocada. Ingresa nuevamente.');
+          throw Exception(
+            'Tu sesión expiró o fue revocada. Ingresa nuevamente.',
+          );
         }
         if (respuesta.statusCode == 403) {
           throw Exception('Tu cuenta no tiene permisos de administrador.');
         }
         if (respuesta.statusCode != 200) {
-          throw Exception('No se pudo consultar la bitácora (HTTP ${respuesta.statusCode}).');
+          throw Exception(
+            'No se pudo consultar la bitácora (HTTP ${respuesta.statusCode}).',
+          );
         }
 
         final dynamic datos = jsonDecode(utf8.decode(respuesta.bodyBytes));
@@ -98,11 +102,15 @@ class _AdminBitacoraPageState extends State<AdminBitacoraPage> {
           throw const FormatException('Respuesta inesperada del servidor.');
         }
         if (lista is! List) {
-          throw const FormatException('La respuesta no contiene una lista de registros.');
+          throw const FormatException(
+            'La respuesta no contiene una lista de registros.',
+          );
         }
         todos.addAll(lista);
         if (lista.isEmpty) break;
-        if (datos is! Map<String, dynamic> || datos['paginacion'] is! Map) break;
+        if (datos is! Map<String, dynamic> || datos['paginacion'] is! Map) {
+          break;
+        }
         final paginacion = datos['paginacion'] as Map;
         final totalPaginas = int.tryParse('${paginacion['totalPaginas']}') ?? 1;
         if (pagina >= totalPaginas) break;
@@ -110,10 +118,15 @@ class _AdminBitacoraPageState extends State<AdminBitacoraPage> {
       }
 
       final lista = todos;
-      final registros = lista
-          .map((item) => RegistroBitacora.fromJson(Map<String, dynamic>.from(item as Map)))
-          .toList()
-        ..sort((a, b) => b.fechaHora.compareTo(a.fechaHora));
+      final registros =
+          lista
+              .map(
+                (item) => RegistroBitacora.fromJson(
+                  Map<String, dynamic>.from(item as Map),
+                ),
+              )
+              .toList()
+            ..sort((a, b) => b.fechaHora.compareTo(a.fechaHora));
 
       if (!mounted) return;
       setState(() => _registros = registros);
@@ -125,24 +138,40 @@ class _AdminBitacoraPageState extends State<AdminBitacoraPage> {
     }
   }
 
-  List<String> _opciones(String Function(RegistroBitacora) obtener, String todas) {
-    final valores = _registros.map(obtener).where((s) => s.trim().isNotEmpty).toSet().toList()..sort();
+  List<String> _opciones(
+    String Function(RegistroBitacora) obtener,
+    String todas,
+  ) {
+    final valores =
+        _registros
+            .map(obtener)
+            .where((s) => s.trim().isNotEmpty)
+            .toSet()
+            .toList()
+          ..sort();
     return [todas, ...valores];
   }
 
   List<RegistroBitacora> get _filtrados {
     final texto = _busquedaController.text.toLowerCase().trim();
     return _registros.where((r) {
-      final coincideAccion = _accionSeleccionada == 'Todas' || r.accion == _accionSeleccionada;
-      final coincideModulo = _moduloSeleccionado == 'Todos' || r.modulo == _moduloSeleccionado;
-      final coincideFecha = _fechaSeleccionada == null ||
+      final coincideAccion =
+          _accionSeleccionada == 'Todas' || r.accion == _accionSeleccionada;
+      final coincideModulo =
+          _moduloSeleccionado == 'Todos' || r.modulo == _moduloSeleccionado;
+      final coincideFecha =
+          _fechaSeleccionada == null ||
           (r.fechaHora.year == _fechaSeleccionada!.year &&
               r.fechaHora.month == _fechaSeleccionada!.month &&
               r.fechaHora.day == _fechaSeleccionada!.day);
-      final contenido = '${r.administrador} ${r.fkAdmin} ${r.accion} ${r.modulo} '
-          '${r.entidadAfectada} ${r.idEntidadAfectada ?? ''} ${r.motivo ?? ''} ${r.detalle ?? ''}'
-          .toLowerCase();
-      return coincideAccion && coincideModulo && coincideFecha && contenido.contains(texto);
+      final contenido =
+          '${r.administrador} ${r.fkAdmin} ${r.accion} ${r.modulo} '
+                  '${r.entidadAfectada} ${r.idEntidadAfectada ?? ''} ${r.motivo ?? ''} ${r.detalle ?? ''}'
+              .toLowerCase();
+      return coincideAccion &&
+          coincideModulo &&
+          coincideFecha &&
+          contenido.contains(texto);
     }).toList();
   }
 
@@ -178,15 +207,29 @@ class _AdminBitacoraPageState extends State<AdminBitacoraPage> {
               _dato('Módulo', r.modulo),
               _dato('Acción', r.accion),
               _dato('Entidad afectada', r.entidadAfectada),
-              _dato('ID entidad', r.idEntidadAfectada?.toString() ?? 'No aplica'),
-              _dato('Motivo', r.motivo?.isNotEmpty == true ? r.motivo! : 'No registrado'),
-              _dato('Detalle', r.detalle?.isNotEmpty == true ? r.detalle! : 'No registrado'),
+              _dato(
+                'ID entidad',
+                r.idEntidadAfectada?.toString() ?? 'No aplica',
+              ),
+              _dato(
+                'Motivo',
+                r.motivo?.isNotEmpty == true ? r.motivo! : 'No registrado',
+              ),
+              _dato(
+                'Detalle',
+                r.detalle?.isNotEmpty == true ? r.detalle! : 'No registrado',
+              ),
               _dato('Fecha', _fecha(r.fechaHora)),
               _dato('Hora', _hora(r.fechaHora)),
             ],
           ),
         ),
-        actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cerrar'))],
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cerrar'),
+          ),
+        ],
       ),
     );
   }
@@ -196,7 +239,14 @@ class _AdminBitacoraPageState extends State<AdminBitacoraPage> {
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(titulo, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.black54)),
+        Text(
+          titulo,
+          style: const TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+            color: Colors.black54,
+          ),
+        ),
         const SizedBox(height: 2),
         SelectableText(valor),
       ],
@@ -210,14 +260,24 @@ class _AdminBitacoraPageState extends State<AdminBitacoraPage> {
     required ValueChanged<String?> cambiar,
   }) {
     return DropdownButtonFormField<String>(
-      value: opciones.contains(valor) ? valor : opciones.first,
+      initialValue: opciones.contains(valor) ? valor : opciones.first,
       isExpanded: true,
       decoration: InputDecoration(
         labelText: titulo,
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 13),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 12,
+          vertical: 13,
+        ),
       ),
-      items: opciones.map((s) => DropdownMenuItem(value: s, child: Text(s, overflow: TextOverflow.ellipsis))).toList(),
+      items: opciones
+          .map(
+            (s) => DropdownMenuItem(
+              value: s,
+              child: Text(s, overflow: TextOverflow.ellipsis),
+            ),
+          )
+          .toList(),
       onChanged: cambiar,
     );
   }
@@ -231,7 +291,11 @@ class _AdminBitacoraPageState extends State<AdminBitacoraPage> {
         backgroundColor: _verde,
         title: const Text('Bitácora administrativa'),
         actions: [
-          IconButton(tooltip: 'Actualizar', onPressed: _cargando ? null : _cargarRegistros, icon: const Icon(Icons.refresh)),
+          IconButton(
+            tooltip: 'Actualizar',
+            onPressed: _cargando ? null : _cargarRegistros,
+            icon: const Icon(Icons.refresh),
+          ),
         ],
       ),
       body: RefreshIndicator(
@@ -239,9 +303,15 @@ class _AdminBitacoraPageState extends State<AdminBitacoraPage> {
         child: ListView(
           padding: const EdgeInsets.all(16),
           children: [
-            const Text('Historial de acciones', style: TextStyle(fontSize: 23, fontWeight: FontWeight.bold)),
+            const Text(
+              'Historial de acciones',
+              style: TextStyle(fontSize: 23, fontWeight: FontWeight.bold),
+            ),
             const SizedBox(height: 6),
-            const Text('Consulta los cambios realizados desde el panel de administración.', style: TextStyle(color: Colors.black54)),
+            const Text(
+              'Consulta los cambios realizados desde el panel de administración.',
+              style: TextStyle(color: Colors.black54),
+            ),
             const SizedBox(height: 16),
             Card(
               elevation: 0,
@@ -257,7 +327,9 @@ class _AdminBitacoraPageState extends State<AdminBitacoraPage> {
                       decoration: InputDecoration(
                         prefixIcon: const Icon(Icons.search),
                         hintText: 'Buscar administrador, acción o elemento',
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
                       ),
                     ),
                     const SizedBox(height: 12),
@@ -265,20 +337,26 @@ class _AdminBitacoraPageState extends State<AdminBitacoraPage> {
                       titulo: 'Módulo',
                       valor: _moduloSeleccionado,
                       opciones: _opciones((r) => r.modulo, 'Todos'),
-                      cambiar: (v) => setState(() => _moduloSeleccionado = v ?? 'Todos'),
+                      cambiar: (v) =>
+                          setState(() => _moduloSeleccionado = v ?? 'Todos'),
                     ),
                     const SizedBox(height: 12),
                     _selector(
                       titulo: 'Tipo de acción',
                       valor: _accionSeleccionada,
                       opciones: _opciones((r) => r.accion, 'Todas'),
-                      cambiar: (v) => setState(() => _accionSeleccionada = v ?? 'Todas'),
+                      cambiar: (v) =>
+                          setState(() => _accionSeleccionada = v ?? 'Todas'),
                     ),
                     const SizedBox(height: 12),
                     OutlinedButton.icon(
                       onPressed: _elegirFecha,
                       icon: const Icon(Icons.calendar_today_outlined),
-                      label: Text(_fechaSeleccionada == null ? 'Filtrar por fecha' : _fecha(_fechaSeleccionada!)),
+                      label: Text(
+                        _fechaSeleccionada == null
+                            ? 'Filtrar por fecha'
+                            : _fecha(_fechaSeleccionada!),
+                      ),
                     ),
                     TextButton.icon(
                       onPressed: () => setState(() {
@@ -296,41 +374,64 @@ class _AdminBitacoraPageState extends State<AdminBitacoraPage> {
             ),
             const SizedBox(height: 14),
             if (_cargando)
-              const Padding(padding: EdgeInsets.all(48), child: Center(child: CircularProgressIndicator()))
+              const Padding(
+                padding: EdgeInsets.all(48),
+                child: Center(child: CircularProgressIndicator()),
+              )
             else if (_error != null)
               Card(
                 child: Padding(
                   padding: const EdgeInsets.all(20),
-                  child: Column(children: [
-                    const Icon(Icons.error_outline, size: 42, color: Colors.redAccent),
-                    const SizedBox(height: 8),
-                    Text(_error!, textAlign: TextAlign.center),
-                    TextButton(onPressed: _cargarRegistros, child: const Text('Reintentar')),
-                  ]),
+                  child: Column(
+                    children: [
+                      const Icon(
+                        Icons.error_outline,
+                        size: 42,
+                        color: Colors.redAccent,
+                      ),
+                      const SizedBox(height: 8),
+                      Text(_error!, textAlign: TextAlign.center),
+                      TextButton(
+                        onPressed: _cargarRegistros,
+                        child: const Text('Reintentar'),
+                      ),
+                    ],
+                  ),
                 ),
               )
             else ...[
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 8),
-                  child: Text('${filtrados.length} registro(s) encontrado(s)', style: const TextStyle(fontWeight: FontWeight.w600)),
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Text(
+                  '${filtrados.length} registro(s) encontrado(s)',
+                  style: const TextStyle(fontWeight: FontWeight.w600),
                 ),
-                if (filtrados.isEmpty)
-                  const Card(
-                    child: Padding(
-                      padding: EdgeInsets.all(32),
-                      child: Column(children: [
+              ),
+              if (filtrados.isEmpty)
+                const Card(
+                  child: Padding(
+                    padding: EdgeInsets.all(32),
+                    child: Column(
+                      children: [
                         Icon(Icons.history, size: 52, color: Colors.grey),
                         SizedBox(height: 12),
-                        Text('No hay registros para mostrar.', textAlign: TextAlign.center),
-                      ]),
+                        Text(
+                          'No hay registros para mostrar.',
+                          textAlign: TextAlign.center,
+                        ),
+                      ],
                     ),
-                  )
-                else
-                  ...filtrados.map((r) => Card(
+                  ),
+                )
+              else
+                ...filtrados.map(
+                  (r) => Card(
                     elevation: 0,
                     color: Colors.white,
                     margin: const EdgeInsets.only(bottom: 10),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
                     child: InkWell(
                       borderRadius: BorderRadius.circular(14),
                       onTap: () => _mostrarDetalles(r),
@@ -339,36 +440,78 @@ class _AdminBitacoraPageState extends State<AdminBitacoraPage> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Row(children: [
-                              const CircleAvatar(backgroundColor: Color(0xFFE4F5E5), child: Icon(Icons.manage_accounts, color: Color(0xFF337E40))),
-                              const SizedBox(width: 10),
-                              Expanded(child: Text(r.accion, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold))),
-                              const Icon(Icons.chevron_right, color: Colors.grey),
-                            ]),
+                            Row(
+                              children: [
+                                const CircleAvatar(
+                                  backgroundColor: Color(0xFFE4F5E5),
+                                  child: Icon(
+                                    Icons.manage_accounts,
+                                    color: Color(0xFF337E40),
+                                  ),
+                                ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: Text(
+                                    r.accion,
+                                    style: const TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ),
+                                const Icon(
+                                  Icons.chevron_right,
+                                  color: Colors.grey,
+                                ),
+                              ],
+                            ),
                             const SizedBox(height: 10),
-                            Wrap(spacing: 8, runSpacing: 7, children: [
-                              Chip(label: Text(r.modulo), visualDensity: VisualDensity.compact),
-                              Chip(label: Text(r.entidadAfectada), visualDensity: VisualDensity.compact),
-                            ]),
+                            Wrap(
+                              spacing: 8,
+                              runSpacing: 7,
+                              children: [
+                                Chip(
+                                  label: Text(r.modulo),
+                                  visualDensity: VisualDensity.compact,
+                                ),
+                                Chip(
+                                  label: Text(r.entidadAfectada),
+                                  visualDensity: VisualDensity.compact,
+                                ),
+                              ],
+                            ),
                             const SizedBox(height: 6),
                             Text('Administrador: ${r.administrador}'),
-                            Text('Elemento afectado: ${r.entidadAfectada}${r.idEntidadAfectada != null ? ' #${r.idEntidadAfectada}' : ''}'),
+                            Text(
+                              'Elemento afectado: ${r.entidadAfectada}${r.idEntidadAfectada != null ? ' #${r.idEntidadAfectada}' : ''}',
+                            ),
                             const SizedBox(height: 8),
-                            Row(children: [
-                              const Icon(Icons.event, size: 16, color: Colors.black54),
-                              const SizedBox(width: 4),
-                              Text(_fecha(r.fechaHora)),
-                              const SizedBox(width: 14),
-                              const Icon(Icons.access_time, size: 16, color: Colors.black54),
-                              const SizedBox(width: 4),
-                              Text(_hora(r.fechaHora)),
-                            ]),
+                            Row(
+                              children: [
+                                const Icon(
+                                  Icons.event,
+                                  size: 16,
+                                  color: Colors.black54,
+                                ),
+                                const SizedBox(width: 4),
+                                Text(_fecha(r.fechaHora)),
+                                const SizedBox(width: 14),
+                                const Icon(
+                                  Icons.access_time,
+                                  size: 16,
+                                  color: Colors.black54,
+                                ),
+                                const SizedBox(width: 4),
+                                Text(_hora(r.fechaHora)),
+                              ],
+                            ),
                           ],
                         ),
                       ),
                     ),
-                  )),
-              ],
+                  ),
+                ),
+            ],
           ],
         ),
       ),
@@ -404,19 +547,23 @@ class RegistroBitacora {
   factory RegistroBitacora.fromJson(Map<String, dynamic> json) {
     int entero(dynamic v) => v is int ? v : int.tryParse('$v') ?? 0;
     int? enteroOpcional(dynamic v) => v == null ? null : int.tryParse('$v');
-    final admin = json['administrador'] ?? json['nombre_admin'] ?? json['admin_nombre'];
+    final admin =
+        json['administrador'] ?? json['nombre_admin'] ?? json['admin_nombre'];
     final idAdmin = entero(json['fk_admin']);
     return RegistroBitacora(
       id: entero(json['id']),
       fkAdmin: idAdmin,
-      administrador: admin == null || '$admin'.trim().isEmpty ? 'Administrador #$idAdmin' : '$admin',
+      administrador: admin == null || '$admin'.trim().isEmpty
+          ? 'Administrador #$idAdmin'
+          : '$admin',
       modulo: '${json['modulo'] ?? 'Sin módulo'}',
       accion: '${json['accion'] ?? 'Sin acción'}',
       entidadAfectada: '${json['entidad_afectada'] ?? 'No especificada'}',
       idEntidadAfectada: enteroOpcional(json['id_entidad_afectada']),
       motivo: json['motivo']?.toString(),
       detalle: json['detalle']?.toString(),
-      fechaHora: DateTime.tryParse('${json['fecha_hora'] ?? ''}') ?? DateTime(1970),
+      fechaHora:
+          DateTime.tryParse('${json['fecha_hora'] ?? ''}') ?? DateTime(1970),
     );
   }
 }

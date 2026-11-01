@@ -21,7 +21,7 @@ function createNotificationsRepository(pool = postgres.pool) {
        LEFT JOIN preferencia_notificacion pn ON pn.fk_usuario = u.id
        LEFT JOIN ubicacion ur ON ur.fk_reporte = r.id
        LEFT JOIN ubicacion ua ON ua.fk_avistamiento = a.id
-       WHERE a.id = $1`, [sightingId]
+       WHERE a.id = $1 AND a.estado IS DISTINCT FROM 'ELIMINADO'`, [sightingId]
     );
     return result.rows[0] || null;
   }

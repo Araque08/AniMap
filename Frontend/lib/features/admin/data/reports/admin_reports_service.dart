@@ -1,4 +1,3 @@
-
 import 'dart:convert';
 
 import 'package:http/http.dart' as http;
@@ -28,12 +27,9 @@ class AdminReportsService {
   final AuthenticatedHttpClient client;
   final String baseUrl;
 
-  AdminReportsService({
-    AuthenticatedHttpClient? client,
-    String? baseUrl,
-  })  : client = client ?? AuthenticatedHttpClient.instance,
-        baseUrl =
-            baseUrl ?? '${ApiConfig.current.baseUrl}/admin-reports';
+  AdminReportsService({AuthenticatedHttpClient? client, String? baseUrl})
+    : client = client ?? AuthenticatedHttpClient.instance,
+      baseUrl = baseUrl ?? '${ApiConfig.current.baseUrl}/admin/reports';
 
   // ========================================================
   // INTERPRETAR RESPUESTAS
@@ -71,17 +67,14 @@ class AdminReportsService {
     }
 
     if (response.statusCode == 404) {
-      throw const AdminReportsException(
-        'El reporte solicitado no existe.',
-      );
+      throw const AdminReportsException('El reporte solicitado no existe.');
     }
 
     if (response.statusCode < 200 ||
         response.statusCode >= 300 ||
         data['ok'] != true) {
       throw AdminReportsException(
-        data['message']?.toString() ??
-            'No fue posible realizar la consulta.',
+        data['message']?.toString() ?? 'No fue posible realizar la consulta.',
       );
     }
 
@@ -107,9 +100,9 @@ class AdminReportsService {
         query['estado'] = estado.trim().toUpperCase();
       }
 
-      final uri = Uri.parse(baseUrl).replace(
-        queryParameters: query.isEmpty ? null : query,
-      );
+      final uri = Uri.parse(
+        baseUrl,
+      ).replace(queryParameters: query.isEmpty ? null : query);
 
       final response = await client.get(uri);
 
@@ -118,9 +111,7 @@ class AdminReportsService {
       final reports = data['reports'];
 
       if (reports is! List) {
-        throw const AdminReportsException(
-          'La lista de reportes no es válida.',
-        );
+        throw const AdminReportsException('La lista de reportes no es válida.');
       }
 
       return reports
@@ -133,13 +124,9 @@ class AdminReportsService {
         'Tu sesión expiró. Inicia sesión nuevamente.',
       );
     } on SessionConnectionException {
-      throw const AdminReportsException(
-        'No hay conexión con el servidor.',
-      );
+      throw const AdminReportsException('No hay conexión con el servidor.');
     } catch (_) {
-      throw const AdminReportsException(
-        'No fue posible cargar los reportes.',
-      );
+      throw const AdminReportsException('No fue posible cargar los reportes.');
     }
   }
 
@@ -149,9 +136,7 @@ class AdminReportsService {
 
   Future<Map<String, dynamic>> getReport(int reportId) async {
     try {
-      final response = await client.get(
-        Uri.parse('$baseUrl/$reportId'),
-      );
+      final response = await client.get(Uri.parse('$baseUrl/$reportId'));
 
       final data = _decode(response);
 
@@ -161,9 +146,7 @@ class AdminReportsService {
         );
       }
 
-      return Map<String, dynamic>.from(
-        data['report'] as Map,
-      );
+      return Map<String, dynamic>.from(data['report'] as Map);
     } on AdminReportsException {
       rethrow;
     } on SessionInvalidException {
@@ -171,16 +154,11 @@ class AdminReportsService {
         'Tu sesión expiró. Inicia sesión nuevamente.',
       );
     } on SessionConnectionException {
-      throw const AdminReportsException(
-        'No hay conexión con el servidor.',
-      );
+      throw const AdminReportsException('No hay conexión con el servidor.');
     } catch (_) {
-      throw const AdminReportsException(
-        'No fue posible consultar el reporte.',
-      );
+      throw const AdminReportsException('No fue posible consultar el reporte.');
     }
   }
-
 
   // ========================================================
   // HU-076: ACTUALIZAR ESTADO DEL REPORTE Y LA MASCOTA
@@ -200,11 +178,9 @@ class AdminReportsService {
       }
 
       // Preparar los estados.
-      final reportStatus =
-      estadoReporte.trim().toUpperCase();
+      final reportStatus = estadoReporte.trim().toUpperCase();
 
-      final petStatus =
-      estadoMascota.trim().toUpperCase();
+      final petStatus = estadoMascota.trim().toUpperCase();
 
       // Validar combinaciones permitidas.
       const allowedCombinations = <String, List<String>>{
@@ -212,24 +188,18 @@ class AdminReportsService {
         'FINALIZADO': ['ACTIVA', 'ENCONTRADA'],
       };
 
-      if (allowedCombinations[reportStatus]
-          ?.contains(petStatus) !=
-          true) {
+      if (allowedCombinations[reportStatus]?.contains(petStatus) != true) {
         throw const AdminReportsException(
           'Los estados seleccionados no son compatibles.',
         );
       }
 
       // Preparar la solicitud HTTP.
-      final uri = Uri.parse(
-        '$baseUrl/$reportId/status',
-      );
+      final uri = Uri.parse('$baseUrl/$reportId/status');
 
       final response = await client.patch(
         uri,
-        headers: const {
-          'Content-Type': 'application/json',
-        },
+        headers: const {'Content-Type': 'application/json'},
         body: jsonEncode({
           'estadoReporte': reportStatus,
           'estadoMascota': petStatus,
@@ -248,20 +218,14 @@ class AdminReportsService {
       }
 
       return Map<String, dynamic>.from(result);
-
     } on AdminReportsException {
       rethrow;
-
     } on SessionInvalidException {
       throw const AdminReportsException(
         'Tu sesión expiró. Inicia sesión nuevamente.',
       );
-
     } on SessionConnectionException {
-      throw const AdminReportsException(
-        'No hay conexión con el servidor.',
-      );
-
+      throw const AdminReportsException('No hay conexión con el servidor.');
     } catch (_) {
       throw const AdminReportsException(
         'No fue posible actualizar los estados.',
@@ -269,16 +233,13 @@ class AdminReportsService {
     }
   }
 
-
   // ========================================================
   // CONSULTAR POSIBLES REPORTES DUPLICADOS
   // ========================================================
 
   Future<Map<String, dynamic>> getPossibleDuplicates() async {
     try {
-      final response = await client.get(
-        Uri.parse('$baseUrl/duplicates'),
-      );
+      final response = await client.get(Uri.parse('$baseUrl/duplicates'));
 
       final data = _decode(response);
 
@@ -292,14 +253,10 @@ class AdminReportsService {
 
       return {
         'total': (data['total'] as num?)?.toInt() ?? 0,
-        'prioridadAlta':
-        (data['prioridadAlta'] as num?)?.toInt() ?? 0,
-        'prioridadMedia':
-        (data['prioridadMedia'] as num?)?.toInt() ?? 0,
+        'prioridadAlta': (data['prioridadAlta'] as num?)?.toInt() ?? 0,
+        'prioridadMedia': (data['prioridadMedia'] as num?)?.toInt() ?? 0,
         'duplicados': duplicates
-            .map(
-              (item) => Map<String, dynamic>.from(item as Map),
-        )
+            .map((item) => Map<String, dynamic>.from(item as Map))
             .toList(),
       };
     } on AdminReportsException {
@@ -309,16 +266,13 @@ class AdminReportsService {
         'Tu sesión expiró. Inicia sesión nuevamente.',
       );
     } on SessionConnectionException {
-      throw const AdminReportsException(
-        'No hay conexión con el servidor.',
-      );
+      throw const AdminReportsException('No hay conexión con el servidor.');
     } catch (_) {
       throw const AdminReportsException(
         'No fue posible analizar los reportes duplicados.',
       );
     }
   }
-
 
   // ========================================================
   // HU-047: CONFIRMAR ELIMINACIÓN DE AVISTAMIENTO DUPLICADO
@@ -332,16 +286,13 @@ class AdminReportsService {
   }) async {
     try {
       // Validar los identificadores.
-      if (registro1Id <= 0 ||
-          registro2Id <= 0 ||
-          registro1Id == registro2Id) {
+      if (registro1Id <= 0 || registro2Id <= 0 || registro1Id == registro2Id) {
         throw const AdminReportsException(
           'Debes seleccionar dos avistamientos diferentes.',
         );
       }
 
-      if (conservarId != registro1Id &&
-          conservarId != registro2Id) {
+      if (conservarId != registro1Id && conservarId != registro2Id) {
         throw const AdminReportsException(
           'Selecciona cuál avistamiento deseas conservar.',
         );
@@ -359,9 +310,7 @@ class AdminReportsService {
       // Enviar la decisión al backend.
       final response = await client.post(
         Uri.parse('$baseUrl/duplicates/confirm'),
-        headers: const {
-          'Content-Type': 'application/json',
-        },
+        headers: const {'Content-Type': 'application/json'},
         body: jsonEncode({
           'registro1Id': registro1Id,
           'registro2Id': registro2Id,
@@ -378,9 +327,7 @@ class AdminReportsService {
         );
       }
 
-      return Map<String, dynamic>.from(
-        data['data'] as Map,
-      );
+      return Map<String, dynamic>.from(data['data'] as Map);
     } on AdminReportsException {
       rethrow;
     } on SessionInvalidException {
@@ -388,15 +335,11 @@ class AdminReportsService {
         'Tu sesión expiró. Inicia sesión nuevamente.',
       );
     } on SessionConnectionException {
-      throw const AdminReportsException(
-        'No hay conexión con el servidor.',
-      );
+      throw const AdminReportsException('No hay conexión con el servidor.');
     } catch (_) {
       throw const AdminReportsException(
         'No fue posible confirmar el duplicado.',
       );
     }
   }
-
-
 }

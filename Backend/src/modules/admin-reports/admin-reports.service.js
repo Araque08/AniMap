@@ -159,6 +159,7 @@ function createAdminReportsService(pool = db.pool) {
             SELECT COUNT(*)::int
             FROM avistamiento av
             WHERE av.fk_reporte_perdida = r.id
+              AND av.estado IS DISTINCT FROM 'ELIMINADO'
           ) AS "totalAvistamientos"
 
         FROM reporte r
@@ -194,7 +195,7 @@ function createAdminReportsService(pool = db.pool) {
     return result.rows[0];
   }
 
-  
+
   // ========================================================
   // HU-076: ACTUALIZAR ESTADOS DE REPORTE Y MASCOTA
   // ========================================================
@@ -312,7 +313,7 @@ function createAdminReportsService(pool = db.pool) {
         petResult.rows[0].estado;
 
       // Si existe otro reporte activo, impedir conflictos.
-      if (reportStatus === 'ACTIVO') {
+      {
         const activeResult = await client.query(
           `
             SELECT id
@@ -347,7 +348,7 @@ function createAdminReportsService(pool = db.pool) {
       }
 
       // Actualizar el estado del reporte.
-      
+
         const updatedReport = await client.query(
         `
             UPDATE reporte

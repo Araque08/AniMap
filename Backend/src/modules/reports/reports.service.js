@@ -80,7 +80,7 @@ const REPORT_SELECT = `
     ub.direccion, ub.place_id,
     fp.storage_ref AS foto_storage_ref, fp.url_preview AS foto_url_preview,
     (SELECT COUNT(*)::int FROM avistamiento av
-     WHERE av.fk_reporte_perdida = r.id) AS avistamientos_count
+     WHERE av.fk_reporte_perdida = r.id AND av.estado IS DISTINCT FROM 'ELIMINADO') AS avistamientos_count
   FROM reporte r
   INNER JOIN mascota m ON m.id = r.fk_mascota
   INNER JOIN especie e ON e.id = m.fk_especie

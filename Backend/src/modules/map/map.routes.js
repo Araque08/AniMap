@@ -152,44 +152,41 @@ router.get('/reports', optionalAuthMiddleware, async (req, res) => {
       No dependen necesariamente de una mascota registrada, porque pueden ser
       reportes comunitarios de animales vistos en la zona.
     */
-    
-const avistamientosResult = filters.status === 'found' ? { rows: [] } : await pool.query(`
-  SELECT
-    a.id AS avistamiento_id,
-    a.descripcion,
-    to_char(a.fecha_hora, 'YYYY-MM-DD"T"HH24:MI:SS.MS') || 'Z'
-      AS fecha_hora,
-    a.fk_reporte_perdida,
-    ub.metodo,
-    ub.lat,
-    ub.lng,
-    ub.direccion,
-    r.id AS reporte_id,
-    m.nombre AS mascota_nombre,
-    m.color AS mascota_color,
-    e.nombre AS especie_nombre,
-    raza.nombre AS raza_nombre,
-    fa.storage_ref AS foto_storage_ref,
-    fa.url_preview AS foto_url_preview
-  FROM avistamiento a
-  INNER JOIN ubicacion ub
-    ON ub.fk_avistamiento = a.id
-  LEFT JOIN reporte r ON r.id = a.fk_reporte_perdida
-  LEFT JOIN mascota m ON m.id = r.fk_mascota
-  LEFT JOIN especie e ON e.id = m.fk_especie
-  LEFT JOIN raza ON raza.id = m.fk_raza
-  LEFT JOIN LATERAL (
-    SELECT storage_ref, url_preview
-    FROM foto_avistamiento
-    WHERE fk_avistamiento = a.id
-    ORDER BY id
-    LIMIT 1
-  ) fa ON TRUE
-  WHERE a.estado IS DISTINCT FROM 'ELIMINADO'
-    ${sightingFilter.sql}
-  ORDER BY a.fecha_hora DESC;
-`, sightingFilter.values);
-
+    const avistamientosResult = filters.status === 'found' ? { rows: [] } : await pool.query(`
+      SELECT
+        a.id AS avistamiento_id,
+        a.descripcion,
+        to_char(a.fecha_hora, 'YYYY-MM-DD"T"HH24:MI:SS.MS') || 'Z'
+          AS fecha_hora,
+        a.fk_reporte_perdida,
+        ub.metodo,
+        ub.lat,
+        ub.lng,
+        ub.direccion,
+        r.id AS reporte_id,
+        m.nombre AS mascota_nombre,
+        m.color AS mascota_color,
+        e.nombre AS especie_nombre,
+        raza.nombre AS raza_nombre,
+        fa.storage_ref AS foto_storage_ref,
+        fa.url_preview AS foto_url_preview
+      FROM avistamiento a
+      INNER JOIN ubicacion ub
+        ON ub.fk_avistamiento = a.id
+      LEFT JOIN reporte r ON r.id = a.fk_reporte_perdida
+      LEFT JOIN mascota m ON m.id = r.fk_mascota
+      LEFT JOIN especie e ON e.id = m.fk_especie
+      LEFT JOIN raza ON raza.id = m.fk_raza
+      LEFT JOIN LATERAL (
+        SELECT storage_ref, url_preview
+        FROM foto_avistamiento
+        WHERE fk_avistamiento = a.id
+        ORDER BY id
+        LIMIT 1
+      ) fa ON TRUE
+      WHERE a.estado IS DISTINCT FROM 'ELIMINADO' ${sightingFilter.sql}
+      ORDER BY a.fecha_hora DESC;
+    `, sightingFilter.values);
 
     const reportes = reportesResult.rows.map((row) => {
       const isOwner =

@@ -2,6 +2,7 @@ const express = require('express');
 const multer = require('multer');
 const authMiddleware = require('../../middleware/auth.middleware');
 const validateBody = require('../../middleware/validate.middleware');
+const optionalAuth = require('../../middleware/optional-auth.middleware');
 const controller = require('./sightings.controller');
 const { createSightingSchema } = require('./sightings.schemas');
 
@@ -52,7 +53,7 @@ function uploadOptionalPhoto(req, res, next) {
   });
 }
 
-router.get('/linkable-reports', controller.listLinkableReports);
+router.get('/linkable-reports', optionalAuth, controller.listLinkableReports);
 router.get('/images/:imageId', controller.getPublicImage);
 router.get('/:id', controller.getPublicSighting);
 router.post(

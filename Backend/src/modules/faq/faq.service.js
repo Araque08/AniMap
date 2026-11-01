@@ -183,7 +183,7 @@ function createFaqService(pool = db.pool) {
     });
   }
 
-  
+
   async function createCategory(data, adminId) {
     const name = requiredText(data.nombre, 'Nombre', 100);
 

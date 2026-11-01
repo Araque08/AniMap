@@ -9,18 +9,19 @@ class LoginPage extends StatefulWidget {
   // SessionGate already replaces this page when authentication changes.
   final bool navigateOnSuccess;
 
-  const LoginPage({
-    super.key,
-    this.authService,
-    this.navigateOnSuccess = true,
-  });
+  const LoginPage({super.key, this.authService, this.navigateOnSuccess = true});
 
   @override
   State<LoginPage> createState() => _LoginPageState();
 }
 
-class _LoginPageState extends State<LoginPage> {
+class _LoginPageState extends State<LoginPage> with WidgetsBindingObserver {
   final _formKey = GlobalKey<FormState>();
+  final _emailFieldKey = GlobalKey();
+  final _passwordFieldKey = GlobalKey();
+  final _emailFocus = FocusNode();
+  final _passwordFocus = FocusNode();
+  bool _revealScheduled = false;
 
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
@@ -36,10 +37,40 @@ class _LoginPageState extends State<LoginPage> {
   void initState() {
     super.initState();
     _authService = widget.authService ?? AuthService();
+    WidgetsBinding.instance.addObserver(this);
+    _emailFocus.addListener(_revealFocusedField);
+    _passwordFocus.addListener(_revealFocusedField);
+  }
+
+  @override
+  void didChangeMetrics() => _revealFocusedField();
+
+  void _revealFocusedField() {
+    if (!mounted || _revealScheduled) return;
+    _revealScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _revealScheduled = false;
+      if (!mounted || MediaQuery.viewInsetsOf(context).bottom == 0) return;
+      final fieldContext = _emailFocus.hasFocus
+          ? _emailFieldKey.currentContext
+          : _passwordFocus.hasFocus
+          ? _passwordFieldKey.currentContext
+          : null;
+      if (fieldContext == null) return;
+      Scrollable.ensureVisible(
+        fieldContext,
+        alignment: 0.5,
+        duration: const Duration(milliseconds: 180),
+        curve: Curves.easeOut,
+      );
+    });
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _emailFocus.dispose();
+    _passwordFocus.dispose();
     _emailController.dispose();
     _passwordController.dispose();
     super.dispose();
@@ -160,21 +191,21 @@ class _LoginPageState extends State<LoginPage> {
       /* Fondo de la pagina*/
       backgroundColor: backgroundColor,
 
-// Ajusta el contenido cuando aparece el teclado.
+      // Ajusta el contenido cuando aparece el teclado.
       resizeToAvoidBottomInset: true,
 
       body: Stack(
+        fit: StackFit.expand,
         children: [
           const Positioned(left: 0, right: 0, bottom: 0, child: _BottomWaves()),
           SafeArea(
             child: SingleChildScrollView(
               padding: const EdgeInsets.symmetric(horizontal: 35, vertical: 5),
+              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
               child: Form(
                 key: _formKey,
-                child: SingleChildScrollView(
-                  keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-                  child: Column(
-                    children: [
+                child: Column(
+                  children: [
                     const SizedBox(height: 20),
                     Image.asset(
                       'assets/images/Logo_Principal_AniMap.png',
@@ -280,10 +311,13 @@ class _LoginPageState extends State<LoginPage> {
                     const SizedBox(height: 30),
                     /* Creacion del campo de texto para el correo electronico*/
                     SizedBox(
+                      key: _emailFieldKey,
                       width: 330,
                       height: 75,
                       child: TextFormField(
                         controller: _emailController,
+                        focusNode: _emailFocus,
+                        onTapOutside: (_) => FocusScope.of(context).unfocus(),
                         keyboardType: TextInputType.emailAddress,
                         enabled: !_isLoading,
                         decoration: _inputDecoration(
@@ -314,10 +348,13 @@ class _LoginPageState extends State<LoginPage> {
                     const SizedBox(height: 18),
                     /* Creacion del campo de contraseña */
                     SizedBox(
+                      key: _passwordFieldKey,
                       width: 330,
                       height: 75,
                       child: TextFormField(
                         controller: _passwordController,
+                        focusNode: _passwordFocus,
+                        onTapOutside: (_) => FocusScope.of(context).unfocus(),
                         obscureText: _obscurePassword,
                         enabled: !_isLoading,
                         decoration: _inputDecoration(
@@ -486,7 +523,6 @@ class _LoginPageState extends State<LoginPage> {
                     const SizedBox(height: 30),
                   ],
                 ),
-              ),
               ),
             ),
           ),

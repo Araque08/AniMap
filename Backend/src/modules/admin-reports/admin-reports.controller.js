@@ -63,7 +63,7 @@ async function updateReportStatus(req, res, next) {
       });
     }
 
-    const { estadoReporte, estadoMascota } = req.body;
+    const { estadoReporte, estadoMascota } = req.body || {};
 
     if (
       typeof estadoReporte !== 'string' ||

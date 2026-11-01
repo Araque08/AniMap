@@ -1,7 +1,7 @@
-
 import 'dart:convert';
 
 import 'package:http/http.dart' as http;
+import 'report_datetime.dart';
 
 import '../../../config/api_config.dart';
 import '../../auth/data/authenticated_http_client.dart';
@@ -59,15 +59,10 @@ class MascotaReporte {
       ubicacion: json['location']?.toString() ?? '',
       referencia: json['reference']?.toString() ?? '',
       descripcion: json['description']?.toString() ?? '',
-      fecha: DateTime.tryParse(
-        json['dateText']?.toString() ?? '',
-      ),
+      fecha: reportDateTimeInBogota(json['dateText']),
       imagenUrl: resolverImagen(json['imageUrl']),
       imagenes: rutasImagenes is List
-          ? rutasImagenes
-          .map(resolverImagen)
-          .whereType<String>()
-          .toList()
+          ? rutasImagenes.map(resolverImagen).whereType<String>().toList()
           : [],
       tipo: json['type']?.toString() ?? '',
       latitud: (json['lat'] as num?)?.toDouble(),
@@ -86,36 +81,29 @@ class MascotaReporte {
 // Servicio para consultar reportes reales del backend.
 class MascotasPerdidasService {
   final http.Client _client;
+  late final AuthenticatedHttpClient _authenticatedClient;
 
   MascotasPerdidasService({http.Client? client})
-      : _client = client ?? http.Client();
+    : _client = client ?? http.Client() {
+    _authenticatedClient = AuthenticatedHttpClient(client: _client);
+  }
 
   Future<List<MascotaReporte>> obtenerReportes() async {
-    final uri = Uri.parse(
-      '${ApiConfig.current.baseUrl}/map/reports',
-    );
+    final uri = Uri.parse('${ApiConfig.current.baseUrl}/map/reports');
 
     try {
-      final respuesta = await AuthenticatedHttpClient
-          .instance
-          .get(
-        uri,
-        optionalAuthentication: true,
-      )
+      final respuesta = await _authenticatedClient
+          .get(uri, optionalAuthentication: true)
           .timeout(const Duration(seconds: 15));
 
       if (respuesta.statusCode != 200) {
-        throw Exception(
-          'Error del servidor: ${respuesta.statusCode}',
-        );
+        throw Exception('Error del servidor: ${respuesta.statusCode}');
       }
 
       final dynamic resultado = jsonDecode(respuesta.body);
 
       if (resultado is! Map<String, dynamic>) {
-        throw const FormatException(
-          'Respuesta del servidor no válida',
-        );
+        throw const FormatException('Respuesta del servidor no válida');
       }
 
       if (resultado['ok'] != true) {
@@ -134,14 +122,13 @@ class MascotasPerdidasService {
       }
 
       return datos
-          .map((item) => MascotaReporte.fromJson(
-        Map<String, dynamic>.from(item as Map),
-      ))
+          .map(
+            (item) =>
+                MascotaReporte.fromJson(Map<String, dynamic>.from(item as Map)),
+          )
           .toList();
     } catch (error) {
-      throw Exception(
-        'No se pudieron cargar los reportes: $error',
-      );
+      throw Exception('No se pudieron cargar los reportes: $error');
     }
   }
 
@@ -149,18 +136,14 @@ class MascotasPerdidasService {
   Future<List<MascotaReporte>> obtenerMascotasPerdidas() async {
     final reportes = await obtenerReportes();
 
-    return reportes
-        .where((reporte) => reporte.estaPerdida)
-        .toList();
+    return reportes.where((reporte) => reporte.estaPerdida).toList();
   }
 
   // Avistamientos registrados por la comunidad.
   Future<List<MascotaReporte>> obtenerAvistamientos() async {
     final reportes = await obtenerReportes();
 
-    return reportes
-        .where((reporte) => reporte.esAvistamiento)
-        .toList();
+    return reportes.where((reporte) => reporte.esAvistamiento).toList();
   }
 
   void dispose() {

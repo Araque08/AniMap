@@ -71,6 +71,7 @@ function similarity(a, b) {
 // ==========================================================
 
 function analyzePair(row, type) {
+  if ([row.lat1, row.lng1, row.lat2, row.lng2].some(value => value == null || value === '')) return null;
   const lat1 = Number(row.lat1);
   const lng1 = Number(row.lng1);
   const lat2 = Number(row.lat2);
@@ -236,7 +237,7 @@ function analyzePair(row, type) {
 
 function createDuplicateReportsService(pool = db.pool) {
 
-    
+
   // ========================================================
   // VALIDAR DOS AVISTAMIENTOS EN UNA TRANSACCIÓN
   // ========================================================
@@ -455,7 +456,7 @@ function createDuplicateReportsService(pool = db.pool) {
         LEFT JOIN mascota m
           ON m.id = r.fk_mascota
 
-        
+
         WHERE
         a1.estado IS DISTINCT FROM 'ELIMINADO'
         AND a2.estado IS DISTINCT FROM 'ELIMINADO'
@@ -525,4 +526,3 @@ module.exports = {
   createDuplicateReportsService,
   duplicateReportsService: createDuplicateReportsService(),
 };
-

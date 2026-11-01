@@ -110,22 +110,20 @@ class _CreateSightingPageState extends State<CreateSightingPage> {
     super.dispose();
   }
 
-
   Future<void> _loadReports() async {
     try {
       final reports =
-      await (widget.reportsLoader ??
-          SightingsService.getLinkableReports)();
+          await (widget.reportsLoader ?? SightingsService.getLinkableReports)();
 
       if (!mounted) return;
 
       final reporteInicial = widget.reporteInicialId;
 
-      final existeReporte = reporteInicial != null &&
+      final existeReporte =
+          reporteInicial != null &&
           reports.any(
-                (reporte) =>
-            int.tryParse(reporte['id'].toString()) ==
-                reporteInicial,
+            (reporte) =>
+                int.tryParse(reporte['id'].toString()) == reporteInicial,
           );
 
       setState(() {
@@ -146,7 +144,6 @@ class _CreateSightingPageState extends State<CreateSightingPage> {
       }
     }
   }
-
 
   AddressLocationSelection? get _currentAddressSelection {
     final location = _selectedLocation;
@@ -413,8 +410,8 @@ class _CreateSightingPageState extends State<CreateSightingPage> {
         false;
   }
 
-  void _goToReportSelector() {
-    Navigator.pushNamedAndRemoveUntil(context, '/create-report', (_) => false);
+  void _goToReportSearch() {
+    Navigator.pushNamedAndRemoveUntil(context, '/search-reports', (_) => false);
   }
 
   @override
@@ -615,7 +612,7 @@ class _CreateSightingPageState extends State<CreateSightingPage> {
         bottomNavigationBar: BottomMenuAnimap(
           currentIndex: 1,
           onBeforeNavigate: _confirmDiscard,
-          onReportTap: _goToReportSelector,
+          onReportTap: _goToReportSearch,
         ),
       ),
     );

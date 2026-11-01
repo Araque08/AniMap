@@ -69,7 +69,7 @@ async function confirmSightingDuplicate({
     await client.query('BEGIN');
 
     // Bloquear ambos registros para evitar cambios simultáneos.
-    
+
 const result = await client.query(
   `
     SELECT id, fk_usuario, estado

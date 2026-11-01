@@ -21,26 +21,10 @@ class AdminHomePage extends StatelessWidget {
     this.bitacoraToken,
   });
 
-  // Permite adaptar la lectura del token a versiones del gestor de sesión.
-  // No almacena ni imprime credenciales.
-  Future<String?> _tokenDeSesion() async {
-    if (bitacoraToken?.trim().isNotEmpty == true) return bitacoraToken!.trim();
-    final dynamic sesion = sessionManager;
-    if (sesion == null) return null;
-
-    Future<String?> probar(Future<dynamic> Function() lector) async {
-      try {
-        final value = await lector();
-        if (value is String && value.trim().isNotEmpty) return value.trim();
-      } catch (_) { /* API no disponible en esta versión */ }
-      return null;
-    }
-
-    return await probar(() async => sesion.accessToken) ??
-        await probar(() async => sesion.token) ??
-        await probar(() async => sesion.getAccessToken()) ??
-        await probar(() async => sesion.getToken());
-  }
+  Future<String?> _tokenDeSesion() async =>
+      bitacoraToken?.trim().isNotEmpty == true
+      ? bitacoraToken!.trim()
+      : (sessionManager ?? SessionManager.instance).accessToken;
 
   // =========================================================
   // COLORES PRINCIPALES
@@ -66,14 +50,8 @@ class AdminHomePage extends StatelessWidget {
 
       body: SafeArea(
         child: ListView(
-          padding: const EdgeInsets.fromLTRB(
-            20,
-            18,
-            20,
-            30,
-          ),
+          padding: const EdgeInsets.fromLTRB(20, 18, 20, 30),
           children: [
-
             // =================================================
             // CABECERA
             // =================================================
@@ -124,9 +102,7 @@ class AdminHomePage extends StatelessWidget {
                         padding: const EdgeInsets.all(12),
                         decoration: BoxDecoration(
                           borderRadius: BorderRadius.circular(15),
-                          border: Border.all(
-                            color: const Color(0xFFE5ECE8),
-                          ),
+                          border: Border.all(color: const Color(0xFFE5ECE8)),
                         ),
                         child: const Icon(
                           Icons.logout_rounded,
@@ -145,15 +121,11 @@ class AdminHomePage extends StatelessWidget {
             // =================================================
             // TARJETA PRINCIPAL
             // =================================================
-
             Container(
               padding: const EdgeInsets.all(24),
               decoration: BoxDecoration(
                 gradient: const LinearGradient(
-                  colors: [
-                    green,
-                    darkGreen,
-                  ],
+                  colors: [green, darkGreen],
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                 ),
@@ -168,7 +140,6 @@ class AdminHomePage extends StatelessWidget {
               ),
               child: const Row(
                 children: [
-
                   // ICONO
                   _HeaderIcon(),
 
@@ -208,7 +179,6 @@ class AdminHomePage extends StatelessWidget {
             // =================================================
             // TÍTULO SECCIÓN
             // =================================================
-
             const Text(
               'Gestión',
               style: TextStyle(
@@ -222,10 +192,7 @@ class AdminHomePage extends StatelessWidget {
 
             const Text(
               'Selecciona una sección para administrarla.',
-              style: TextStyle(
-                fontSize: 14,
-                color: textSecondary,
-              ),
+              style: TextStyle(fontSize: 14, color: textSecondary),
             ),
 
             const SizedBox(height: 18),
@@ -233,20 +200,17 @@ class AdminHomePage extends StatelessWidget {
             // =================================================
             // PREGUNTAS FRECUENTES
             // =================================================
-
             _AdminLink(
               title: 'Preguntas frecuentes',
               subtitle:
-              'Administra el contenido y las categorías del centro de ayuda.',
+                  'Administra el contenido y las categorías del centro de ayuda.',
               icon: Icons.help_outline_rounded,
               iconBackground: lightGreen,
               iconColor: green,
               onTap: () {
                 Navigator.push(
                   context,
-                  MaterialPageRoute(
-                    builder: (_) => const AdminFaqPage(),
-                  ),
+                  MaterialPageRoute(builder: (_) => const AdminFaqPage()),
                 );
               },
             ),
@@ -261,23 +225,17 @@ class AdminHomePage extends StatelessWidget {
             // Más adelante se conectará con la página de
             // administración de usuarios.
             // =================================================
-
             _AdminLink(
               title: 'Gestión de usuarios',
               subtitle:
-              'Consulta y administra los usuarios registrados en AniMap.',
+                  'Consulta y administra los usuarios registrados en AniMap.',
               icon: Icons.people_alt_outlined,
-              iconBackground:
-              const Color(0xFFEAF1F8),
-              iconColor:
-              const Color(0xFF4779A8),
+              iconBackground: const Color(0xFFEAF1F8),
+              iconColor: const Color(0xFF4779A8),
               onTap: () {
                 Navigator.push(
                   context,
-                  MaterialPageRoute(
-                    builder: (_) =>
-                    const AdminUsersPage(),
-                  ),
+                  MaterialPageRoute(builder: (_) => const AdminUsersPage()),
                 );
               },
             ),
@@ -287,11 +245,10 @@ class AdminHomePage extends StatelessWidget {
             // =================================================
             // BITÁCORA ADMINISTRATIVA
             // =================================================
-
             _AdminLink(
               title: 'Bitácora administrativa',
               subtitle:
-              'Consulta el historial de acciones realizadas por los administradores.',
+                  'Consulta el historial de acciones realizadas por los administradores.',
               icon: Icons.history_rounded,
               iconBackground: const Color(0xFFEDEAF8),
               iconColor: const Color(0xFF7565AC),
@@ -302,10 +259,8 @@ class AdminHomePage extends StatelessWidget {
                 Navigator.push(
                   context,
                   MaterialPageRoute(
-                    builder: (_) => AdminBitacoraPage(
-                      baseUrl: url,
-                      token: token ?? '',
-                    ),
+                    builder: (_) =>
+                        AdminBitacoraPage(baseUrl: url, token: token ?? ''),
                   ),
                 );
               },
@@ -320,32 +275,26 @@ class AdminHomePage extends StatelessWidget {
             // También se deja preparada visualmente.
             // Después se conectará con su página correspondiente.
             // =================================================
-
-
             _AdminLink(
               title: 'Reportes',
               subtitle:
-              'Consulta, busca y administra los reportes registrados en AniMap.',
+                  'Consulta, busca y administra los reportes registrados en AniMap.',
               icon: Icons.flag_outlined,
               iconBackground: const Color(0xFFFFF2E4),
               iconColor: const Color(0xFFD68738),
               onTap: () {
                 Navigator.push(
-                context,
-                  MaterialPageRoute(
-                  builder: (_) => const AdminReportsPage(),
-                  ),
+                  context,
+                  MaterialPageRoute(builder: (_) => const AdminReportsPage()),
                 );
               },
             ),
-
 
             const SizedBox(height: 30),
 
             // =================================================
             // TEXTO INFERIOR
             // =================================================
-
             const Center(
               child: Text(
                 'AniMap • Panel administrativo',
@@ -378,9 +327,7 @@ class _HeaderIcon extends StatelessWidget {
       decoration: BoxDecoration(
         color: Colors.white.withValues(alpha: 0.16),
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(
-          color: Colors.white.withValues(alpha: 0.20),
-        ),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.20)),
       ),
       child: const Icon(
         Icons.admin_panel_settings_rounded,
@@ -403,8 +350,6 @@ class _AdminLink extends StatelessWidget {
   final Color iconBackground;
   final Color iconColor;
 
-  final String? status;
-
   final VoidCallback? onTap;
 
   const _AdminLink({
@@ -414,7 +359,6 @@ class _AdminLink extends StatelessWidget {
     required this.iconBackground,
     required this.iconColor,
     required this.onTap,
-    this.status,
   });
 
   @override
@@ -431,13 +375,10 @@ class _AdminLink extends StatelessWidget {
           padding: const EdgeInsets.all(17),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(21),
-            border: Border.all(
-              color: const Color(0xFFE4EBE7),
-            ),
+            border: Border.all(color: const Color(0xFFE4EBE7)),
           ),
           child: Row(
             children: [
-
               // =================================================
               // ICONO
               // =================================================
@@ -449,11 +390,7 @@ class _AdminLink extends StatelessWidget {
                   color: iconBackground,
                   borderRadius: BorderRadius.circular(16),
                 ),
-                child: Icon(
-                  icon,
-                  color: iconColor,
-                  size: 27,
-                ),
+                child: Icon(icon, color: iconColor, size: 27),
               ),
 
               const SizedBox(width: 15),
@@ -461,12 +398,10 @@ class _AdminLink extends StatelessWidget {
               // =================================================
               // INFORMACIÓN
               // =================================================
-
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-
                     Row(
                       children: [
                         Expanded(
@@ -479,27 +414,6 @@ class _AdminLink extends StatelessWidget {
                             ),
                           ),
                         ),
-
-                        if (status != null)
-                          Container(
-                            margin: const EdgeInsets.only(left: 8),
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 9,
-                              vertical: 5,
-                            ),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFF1F4F2),
-                              borderRadius: BorderRadius.circular(20),
-                            ),
-                            child: Text(
-                              status!,
-                              style: const TextStyle(
-                                color: Color(0xFF7D8982),
-                                fontSize: 10,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                          ),
                       ],
                     ),
 
@@ -524,7 +438,6 @@ class _AdminLink extends StatelessWidget {
               // =================================================
               // FLECHA / BLOQUEADO
               // =================================================
-
               Icon(
                 enabled
                     ? Icons.chevron_right_rounded
