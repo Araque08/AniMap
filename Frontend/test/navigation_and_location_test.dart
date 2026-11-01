@@ -20,7 +20,7 @@ void main() {
           ),
           routes: {
             '/home': (_) => const Scaffold(body: Text('destino-inicio')),
-            '/create-report': (_) =>
+            '/search-reports': (_) =>
                 const Scaffold(body: Text('destino-reporte')),
             '/profile': (_) => const Scaffold(body: Text('destino-perfil')),
           },
@@ -58,8 +58,23 @@ void main() {
     );
     await expectDestination(
       currentIndex: 1,
+      icon: Icons.pets_rounded,
+      destination: 'destino-reporte',
+    );
+    await expectDestination(
+      currentIndex: 2,
+      icon: Icons.pets_rounded,
+      destination: 'destino-reporte',
+    );
+    await expectDestination(
+      currentIndex: 1,
       icon: Icons.person_rounded,
       destination: 'destino-perfil',
+    );
+    await expectDestination(
+      currentIndex: 1,
+      icon: Icons.home_rounded,
+      destination: 'destino-inicio',
     );
     await expectDestination(
       currentIndex: 2,

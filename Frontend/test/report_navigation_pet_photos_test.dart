@@ -5,7 +5,9 @@ import 'package:animap/features/pet/presentation/pages/pet_photos_management_pag
 import 'package:animap/features/report/data/geofence_service.dart';
 import 'package:animap/features/report/presentation/pages/create_lost_report_page.dart';
 import 'package:animap/features/report/presentation/pages/report_type_selector_page.dart';
+import 'package:animap/features/report/presentation/pages/report_search_page.dart';
 import 'package:animap/features/sighting/presentation/pages/create_sighting_page.dart';
+import 'package:animap/features/user/presentation/pages/profile_page.dart';
 import 'package:animap/widgets/bottom_menu_animap.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -35,63 +37,252 @@ Future<GeofenceCheckResult> allowGeofence(double lat, double lng) async =>
       areaName: 'Salitre Occidental',
     );
 
+class _RouteObserver extends NavigatorObserver {
+  int pushes = 0;
+
+  @override
+  void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) {
+    pushes++;
+    super.didPush(route, previousRoute);
+  }
+}
+
 void main() {
-  testWidgets('9 selector Reportar conserva barra inferior y no se apila', (
-    tester,
-  ) async {
-    await tester.pumpWidget(const MaterialApp(home: ReportTypeSelectorPage()));
-    expect(find.byType(BottomMenuAnimap), findsOneWidget);
-    await tester.tap(find.byIcon(Icons.pets_rounded));
-    await tester.pump();
-    expect(find.byType(ReportTypeSelectorPage), findsOneWidget);
-  });
-
-  testWidgets('10-14 formularios tienen barra y Reportar vuelve al selector', (
+  testWidgets('selector Reportar abre Reportar y Buscar con la huella', (
     tester,
   ) async {
     await tester.pumpWidget(
       MaterialApp(
-        home: CreateLostReportPage(
-          petsLoader: () async => [
-            {
-              'id': 1,
-              'nombre': 'Luna',
-              'especie': 'Perro',
-              'raza': 'Criolla',
-              'tieneReporteActivo': false,
+        home: const ReportTypeSelectorPage(),
+        routes: {
+          '/search-reports': (_) =>
+              ReportarBuscarPage(reportsLoader: () async => []),
+        },
+      ),
+    );
+    expect(find.byType(BottomMenuAnimap), findsOneWidget);
+    await tester.tap(find.byIcon(Icons.pets_rounded));
+    await tester.pumpAndSettle();
+    expect(find.byType(ReportarBuscarPage), findsOneWidget);
+    expect(find.byType(ReportTypeSelectorPage), findsNothing);
+  });
+
+  testWidgets(
+    'formularios conservan barra y la huella abre Reportar y Buscar',
+    (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: CreateLostReportPage(
+            petsLoader: () async => [
+              {
+                'id': 1,
+                'nombre': 'Luna',
+                'especie': 'Perro',
+                'raza': 'Criolla',
+                'tieneReporteActivo': false,
+              },
+            ],
+            reportsLoader: () async => [],
+            geofenceChecker: allowGeofence,
+          ),
+          routes: {
+            '/search-reports': (_) =>
+                ReportarBuscarPage(reportsLoader: () async => []),
+          },
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.byType(BottomMenuAnimap), findsOneWidget);
+      await tester.tap(find.byIcon(Icons.pets_rounded));
+      await tester.pumpAndSettle();
+      expect(find.byType(ReportarBuscarPage), findsOneWidget);
+      expect(
+        tester.state<NavigatorState>(find.byType(Navigator)).canPop(),
+        isFalse,
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: CreateSightingPage(
+            reportsLoader: () async => [],
+            geofenceChecker: allowGeofence,
+          ),
+          key: UniqueKey(),
+          routes: {
+            '/search-reports': (_) =>
+                ReportarBuscarPage(reportsLoader: () async => []),
+          },
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.byType(BottomMenuAnimap), findsOneWidget);
+      await tester.tap(find.byIcon(Icons.pets_rounded));
+      await tester.pumpAndSettle();
+      expect(find.byType(ReportarBuscarPage), findsOneWidget);
+    },
+  );
+
+  testWidgets('Perfil abre Reportar y Buscar con la huella', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ProfilePage(
+          profileLoader: () async => {
+            'nombre': 'QA',
+            'email': 'qa@example.invalid',
+            'telefono': '3000000000',
+            'foto_url': null,
+          },
+        ),
+        routes: {
+          '/search-reports': (_) =>
+              ReportarBuscarPage(reportsLoader: () async => []),
+        },
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.descendant(
+        of: find.byType(BottomMenuAnimap),
+        matching: find.byIcon(Icons.pets_rounded),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byType(ReportarBuscarPage), findsOneWidget);
+    expect(find.byType(ProfilePage), findsNothing);
+  });
+
+  testWidgets('huella en Reportar y Buscar conserva la ruta y la búsqueda', (
+    tester,
+  ) async {
+    var loads = 0;
+    final observer = _RouteObserver();
+    await tester.pumpWidget(
+      MaterialApp(
+        navigatorObservers: [observer],
+        onGenerateInitialRoutes: (_) => [
+          MaterialPageRoute<void>(
+            settings: const RouteSettings(name: '/search-reports'),
+            builder: (_) => ReportarBuscarPage(
+              reportsLoader: () async {
+                loads++;
+                return [];
+              },
+            ),
+          ),
+        ],
+        routes: {
+          '/create-report': (_) => const ReportTypeSelectorPage(),
+          '/search-reports': (_) => ReportarBuscarPage(
+            reportsLoader: () async {
+              loads++;
+              return [];
             },
-          ],
-          reportsLoader: () async => [],
-          geofenceChecker: allowGeofence,
-        ),
-        routes: {'/create-report': (_) => const ReportTypeSelectorPage()},
+          ),
+        },
       ),
     );
     await tester.pumpAndSettle();
-    expect(find.byType(BottomMenuAnimap), findsOneWidget);
+    final pushes = observer.pushes;
+    final input = find.byType(TextField).first;
+    await tester.enterText(input, 'Luna');
     await tester.tap(find.byIcon(Icons.pets_rounded));
     await tester.pumpAndSettle();
-    expect(find.byType(ReportTypeSelectorPage), findsOneWidget);
-    expect(
-      tester.state<NavigatorState>(find.byType(Navigator)).canPop(),
-      isFalse,
-    );
-
-    await tester.pumpWidget(
-      MaterialApp(
-        home: CreateSightingPage(
-          reportsLoader: () async => [],
-          geofenceChecker: allowGeofence,
-        ),
-        routes: {'/create-report': (_) => const ReportTypeSelectorPage()},
-      ),
-    );
-    await tester.pumpAndSettle();
-    expect(find.byType(BottomMenuAnimap), findsOneWidget);
-    await tester.tap(find.byIcon(Icons.pets_rounded));
-    await tester.pumpAndSettle();
-    expect(find.byType(ReportTypeSelectorPage), findsOneWidget);
+    expect(observer.pushes, pushes);
+    expect(loads, 1);
+    expect(find.byType(ReportarBuscarPage), findsOneWidget);
+    expect(tester.widget<TextField>(input).controller!.text, 'Luna');
   });
+
+  for (final sighting in [false, true]) {
+    testWidgets(
+      'huella respeta Cancelar y Salir en formulario ${sighting ? 'avistamiento' : 'pérdida'}',
+      (tester) async {
+        final form = sighting
+            ? CreateSightingPage(
+                reportsLoader: () async => [],
+                geofenceChecker: allowGeofence,
+              )
+            : CreateLostReportPage(
+                petsLoader: () async => [
+                  {
+                    'id': 1,
+                    'nombre': 'Luna',
+                    'especie': 'Perro',
+                    'raza': 'Criolla',
+                    'tieneReporteActivo': false,
+                  },
+                ],
+                reportsLoader: () async => [],
+                geofenceChecker: allowGeofence,
+              );
+        await tester.pumpWidget(
+          MaterialApp(
+            home: form,
+            routes: {
+              '/search-reports': (_) =>
+                  ReportarBuscarPage(reportsLoader: () async => []),
+            },
+          ),
+        );
+        await tester.pumpAndSettle();
+        final input = find.byKey(
+          ValueKey(
+            sighting ? 'sighting-description' : 'lost-report-description',
+          ),
+        );
+        await tester.enterText(input, 'Cambio pendiente');
+        await tester.tap(find.byIcon(Icons.pets_rounded));
+        await tester.pumpAndSettle();
+        expect(find.text('¿Salir sin guardar?'), findsOneWidget);
+        await tester.tap(find.text('Cancelar'));
+        await tester.pumpAndSettle();
+        expect(find.byWidget(form), findsOneWidget);
+        expect(
+          tester.widget<TextFormField>(input).controller!.text,
+          'Cambio pendiente',
+        );
+        expect(find.byType(ReportarBuscarPage), findsNothing);
+        await tester.tap(find.byIcon(Icons.pets_rounded));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Salir'));
+        await tester.pumpAndSettle();
+        expect(find.byType(ReportarBuscarPage), findsOneWidget);
+      },
+    );
+  }
+
+  for (final sighting in [false, true]) {
+    testWidgets(
+      'Reportar y Buscar abre formulario ${sighting ? 'avistamiento' : 'pérdida'}',
+      (tester) async {
+        await tester.pumpWidget(
+          MaterialApp(
+            home: ReportarBuscarPage(reportsLoader: () async => []),
+            routes: {
+              '/create-lost-report': (_) => CreateLostReportPage(
+                petsLoader: () async => [],
+                reportsLoader: () async => [],
+              ),
+              '/create-sighting': (_) =>
+                  CreateSightingPage(reportsLoader: () async => []),
+            },
+          ),
+        );
+        await tester.pumpAndSettle();
+        final action = find.text(
+          sighting ? 'Registrar avistamiento' : 'Reportar mascota perdida',
+        );
+        await tester.ensureVisible(action);
+        await tester.tap(action);
+        await tester.pumpAndSettle();
+        expect(
+          find.byType(sighting ? CreateSightingPage : CreateLostReportPage),
+          findsOneWidget,
+        );
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
 
   testWidgets('15 cambios sin guardar muestran confirmación', (tester) async {
     await tester.pumpWidget(

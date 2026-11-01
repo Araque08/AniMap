@@ -14,7 +14,11 @@ class BottomMenuAnimap extends StatelessWidget {
 
   Future<void> _navigate(BuildContext context, int index) async {
     final reportOverride = index == 1 && onReportTap != null;
-    if (index == currentIndex && !reportOverride) return;
+    if (index == 1) {
+      if (ModalRoute.of(context)?.settings.name == '/search-reports') return;
+    } else if (index == currentIndex) {
+      return;
+    }
     if (onBeforeNavigate != null && !await onBeforeNavigate!(index)) return;
     if (!context.mounted) return;
     if (reportOverride) {
@@ -29,7 +33,7 @@ class BottomMenuAnimap extends StatelessWidget {
         routeName = '/home';
         break;
       case 1:
-        routeName = '/create-report';
+        routeName = '/search-reports';
         break;
       case 2:
         routeName = '/profile';

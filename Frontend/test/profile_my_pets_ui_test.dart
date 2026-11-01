@@ -137,7 +137,7 @@ void main() {
 
   for (final destination in [
     (Icons.home_rounded, '/home', 'Inicio'),
-    (Icons.pets_rounded, '/create-report', 'Reportar'),
+    (Icons.pets_rounded, '/search-reports', 'Reportar y Buscar'),
     (Icons.person_rounded, '/profile', 'Perfil'),
   ]) {
     testWidgets('menú inferior de Mis Mascotas abre ${destination.$3}', (
