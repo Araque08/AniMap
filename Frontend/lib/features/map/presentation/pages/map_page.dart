@@ -363,6 +363,7 @@ class _MapPageState extends State<MapPage> {
 
     _sightingMarkerIcon = await _createPawMarker(
       pinColor: markerColorForReportType(ReportType.sighting),
+      innerIcon: Icons.visibility,
     );
 
     _foundMarkerIcon = await _createPawMarker(
@@ -374,7 +375,10 @@ class _MapPageState extends State<MapPage> {
     }
   }
 
-  Future<BitmapDescriptor> _createPawMarker({required Color pinColor}) async {
+  Future<BitmapDescriptor> _createPawMarker({
+    required Color pinColor,
+    IconData? innerIcon,
+  }) async {
     const int width = 120;
     const int height = 150;
 
@@ -412,12 +416,32 @@ class _MapPageState extends State<MapPage> {
 
     canvas.drawCircle(const Offset(width / 2, 52), 36, innerPaint);
 
-    canvas.drawOval(const Rect.fromLTWH(44, 57, 32, 26), pawPaint);
+    if (innerIcon != null) {
+      final iconPainter = TextPainter(
+        text: TextSpan(
+          text: String.fromCharCode(innerIcon.codePoint),
+          style: TextStyle(
+            fontFamily: innerIcon.fontFamily,
+            package: innerIcon.fontPackage,
+            fontSize: 64,
+            color: Colors.white,
+          ),
+        ),
+        textDirection: TextDirection.ltr,
+      )..layout();
+      iconPainter.paint(
+        canvas,
+        Offset(width / 2 - iconPainter.width / 2, 52 - iconPainter.height / 2),
+      );
+      iconPainter.dispose();
+    } else {
+      canvas.drawOval(const Rect.fromLTWH(44, 57, 32, 26), pawPaint);
 
-    canvas.drawCircle(const Offset(34, 47), 7, pawPaint);
-    canvas.drawCircle(const Offset(48, 34), 7, pawPaint);
-    canvas.drawCircle(const Offset(72, 34), 7, pawPaint);
-    canvas.drawCircle(const Offset(86, 47), 7, pawPaint);
+      canvas.drawCircle(const Offset(34, 47), 7, pawPaint);
+      canvas.drawCircle(const Offset(48, 34), 7, pawPaint);
+      canvas.drawCircle(const Offset(72, 34), 7, pawPaint);
+      canvas.drawCircle(const Offset(86, 47), 7, pawPaint);
+    }
 
     final ui.Picture picture = recorder.endRecording();
     final ui.Image image = await picture.toImage(width, height);
