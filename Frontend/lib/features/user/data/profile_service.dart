@@ -169,4 +169,39 @@ class ProfileService {
 
     return body['message']?.toString() ?? 'No se pudo actualizar el perfil';
   }
+  // ======================================================
+// HU-006: ELIMINAR MI CUENTA
+// ======================================================
+
+  static Future<void> eliminarMiCuenta(String password) async {
+    try {
+      final url = Uri.parse('$baseUrl/profile');
+
+      final response = await AuthenticatedHttpClient.instance.delete(
+        url,
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode({
+          'password': password,
+        }),
+      );
+
+      final resultado = _decodeResponse(response);
+
+      if (response.statusCode != 200 || resultado['ok'] != true) {
+        throw ProfileException(
+          resultado['message']?.toString() ??
+              'No se pudo eliminar la cuenta',
+        );
+      }
+    } on ProfileException {
+      rethrow;
+    } catch (_) {
+      throw ProfileException(
+        'No se pudo confirmar la eliminación. '
+            'Verifica tu conexión y el estado de la cuenta.',
+      );
+    }
+  }
 }

@@ -159,6 +159,8 @@ class _LoginPageState extends State<LoginPage> {
     return Scaffold(
       /* Fondo de la pagina*/
       backgroundColor: backgroundColor,
+
+// Ajusta el contenido cuando aparece el teclado.
       resizeToAvoidBottomInset: true,
 
       body: Stack(
@@ -169,8 +171,10 @@ class _LoginPageState extends State<LoginPage> {
               padding: const EdgeInsets.symmetric(horizontal: 35, vertical: 5),
               child: Form(
                 key: _formKey,
-                child: Column(
-                  children: [
+                child: SingleChildScrollView(
+                  keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+                  child: Column(
+                    children: [
                     const SizedBox(height: 20),
                     Image.asset(
                       'assets/images/Logo_Principal_AniMap.png',
@@ -482,6 +486,7 @@ class _LoginPageState extends State<LoginPage> {
                     const SizedBox(height: 30),
                   ],
                 ),
+              ),
               ),
             ),
           ),
