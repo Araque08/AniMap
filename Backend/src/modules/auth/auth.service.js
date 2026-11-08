@@ -1,5 +1,6 @@
 const db = require('../../config/postgres_db');
 const env = require('../../config/env');
+const { revokeOwnerPush } = require('./push-registration.repository');
 
 const { hashText, compareHash, hashRefreshToken } = require('../../utils/hash');
 
@@ -488,6 +489,13 @@ async function loginUser(data, { pool = db.pool } = {}) {
       );
 
 
+    // Serialize account switches with FCM registration before creating the session.
+    await client.query("SELECT pg_advisory_xact_lock(hashtext('animap:fcm:session'))");
+    await client.query(
+      `UPDATE device_push_registration SET activo = FALSE, fcm_registration_id = NULL,
+         revocado_en = CURRENT_TIMESTAMP AT TIME ZONE 'UTC',
+         actualizado_en = CURRENT_TIMESTAMP AT TIME ZONE 'UTC'
+       WHERE device_id = $1 AND fk_usuario = $2`, [deviceId, user.id]);
     /*
       Cerramos sesiones anteriores del mismo dispositivo.
     */
@@ -1371,6 +1379,7 @@ async function resetPassword(data) {
         user.id
       ]
     );
+    await revokeOwnerPush(client, user.id);
 
 
     await client.query('COMMIT');

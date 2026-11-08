@@ -8,6 +8,7 @@ const errorMiddleware = require('./middleware/error.middleware');
 const app = express();
 
 app.disable('x-powered-by');
+app.set('trust proxy', require('./config/env').TRUST_PROXY_HOPS);
 
 app.use(helmet());
 app.use(cors({ origin: true, credentials: true }));

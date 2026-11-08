@@ -11,6 +11,7 @@ const {
   eliminarImagenesMascotaMongoPorIds,
   establecerPrincipalMongo,
   findActivePetImages,
+  preparePetImageRemoval,
   guardarImagenesMascota,
   eliminarImagenesMascotaMongo,
   restaurarImagenMascotaMongo,
@@ -76,6 +77,7 @@ function parseStringArray(value) {
 function imagePayload(document) {
   const value = document?.imagen || document?.buffer;
   if (Buffer.isBuffer(value)) return value;
+  if (value?._bsontype === 'Binary') return Buffer.from(value.value());
   if (Buffer.isBuffer(value?.buffer)) return value.buffer;
   return null;
 }
@@ -232,13 +234,8 @@ router.get('/images/:imageId', async (req, res) => {
       usuarioIdPg: req.auth.userId,
       estado: 'ACTIVA',
       });
-    const contenido = imagen?.imagen || imagen?.buffer;
-    const payload = Buffer.isBuffer(contenido)
-      ? contenido
-      : contenido?.buffer
-        ? Buffer.from(contenido.buffer)
-        : null;
-    if (!payload) {
+    const payload = imagePayload(imagen);
+    if (!payload?.length) {
       return res.status(404).json({ ok: false, message: 'Imagen no encontrada' });
     }
     res.set('Content-Type', imagen.mimeType || 'application/octet-stream');
@@ -497,7 +494,12 @@ router.put('/:id/images/batch', uploadImages, async (req, res) => {
     const checksums = new Set();
     for (const document of retainedDocuments) {
       const payload = imagePayload(document);
-      if (!payload) {
+      const mimeType = (document.mimeType || 'application/octet-stream').split(';')[0].trim().toLowerCase();
+      const allowedTypes = mimeType === 'application/octet-stream'
+        ? ['image/jpeg', 'image/png', 'image/webp'] : [mimeType];
+      if (!payload?.length || payload.length > MAX_IMAGE_SIZE ||
+          !allowedTypes.some(mimetype =>
+            isValidImage({ buffer: payload, mimetype }))) {
         await client.query('ROLLBACK');
         return res.status(409).json({ ok: false, message: 'Una foto existente no es válida' });
       }
@@ -517,6 +519,10 @@ router.put('/:id/images/batch', uploadImages, async (req, res) => {
       checksums.add(checksum);
     }
 
+    const removedIds = originalIds.filter((id) => !retainedIds.includes(id));
+    const removalBackup = await preparePetImageRemoval({
+      mascotaId, usuarioId: req.auth.userId, imageIds: removedIds,
+    });
     nuevasImagenes = files.length
       ? await guardarImagenesMascota({
           mascotaIdPg: mascotaId,
@@ -555,19 +561,19 @@ router.put('/:id/images/batch', uploadImages, async (req, res) => {
       imageId: finalPrincipalId,
     });
 
-    const removedIds = originalIds.filter((id) => !retainedIds.includes(id));
+    // Snapshot before deleting: Mongo may delete a document and then throw.
+    documentosEliminados.push(...removalBackup);
     for (const imageId of removedIds) {
       await client.query(
         'DELETE FROM foto_mascota WHERE fk_mascota = $1 AND storage_ref = $2',
         [mascotaId, imageId]
       );
-      documentosEliminados.push(
-        await eliminarImagenMascotaMongo({
-          mascotaId,
-          usuarioId: req.auth.userId,
-          imageId,
-        })
-      );
+      await eliminarImagenMascotaMongo({
+        mascotaId,
+        usuarioId: req.auth.userId,
+        imageId,
+        allowMissing: true,
+      });
     }
 
     await client.query('COMMIT');
@@ -578,20 +584,25 @@ router.put('/:id/images/batch', uploadImages, async (req, res) => {
     });
   } catch (error) {
     await client.query('ROLLBACK').catch(() => undefined);
+    let recoveryFailed = false;
     await eliminarImagenesMascotaMongoPorIds(
       nuevasImagenes.map((imagen) => imagen.id)
-    ).catch(() => undefined);
+    ).catch(() => { recoveryFailed = true; });
     for (const document of documentosEliminados) {
-      await restaurarImagenMascotaMongo(document).catch(() => undefined);
+      await restaurarImagenMascotaMongo(document, { onlyIfMissing: true })
+        .catch(() => { recoveryFailed = true; });
     }
     if (principalesMongoAnteriores) {
       await restaurarPrincipalesMongo({
         mascotaId,
         usuarioId: req.auth.userId,
         principalIds: principalesMongoAnteriores,
-      }).catch(() => undefined);
+      }).catch(() => { recoveryFailed = true; });
     }
-    console.error('Error guardando lote de fotos:', error);
+    if (error.code === 'PET_PHOTO_CONFLICT') {
+      return res.status(409).json({ ok: false, message: error.message });
+    }
+    console.error('Error guardando lote de fotos', { mascotaId, recoveryFailed });
     return res.status(500).json({
       ok: false,
       message: 'No fue posible guardar los cambios de fotos',

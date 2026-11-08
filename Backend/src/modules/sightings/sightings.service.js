@@ -427,7 +427,7 @@ async function getPublicImage(imageId) {
       client.release();
     }
     // Confirmed sightings and their images never enter compensation on push errors.
-    try { Promise.resolve(notifications.wake()).catch(() => undefined); } catch (_) {}
+    try { await notifications.wake(sighting.id); } catch (_) {}
     return sighting;
   }
 

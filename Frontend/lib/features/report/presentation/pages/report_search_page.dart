@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:animap/widgets/bottom_menu_animap.dart';
 import 'package:animap/features/report/data/mascotas_perdidas_service.dart';
+import '../../data/image_recognition_service.dart';
+import '../widgets/image_search_sheet.dart';
 
 class ReportarBuscarPage extends StatefulWidget {
   const ReportarBuscarPage({
@@ -13,6 +15,9 @@ class ReportarBuscarPage extends StatefulWidget {
     this.onPerfil,
     this.onAccionCentral,
     this.onImagenSeleccionada,
+    this.imagePicker,
+    this.imageSearch,
+    this.onImageMatch,
   });
 
   final Future<List<MascotaReporte>> Function()? reportsLoader;
@@ -22,6 +27,9 @@ class ReportarBuscarPage extends StatefulWidget {
   final VoidCallback? onPerfil;
   final VoidCallback? onAccionCentral;
   final ValueChanged<XFile>? onImagenSeleccionada;
+  final Future<XFile?> Function(ImageSource)? imagePicker;
+  final Future<RecognitionResults> Function(XFile)? imageSearch;
+  final ValueChanged<int>? onImageMatch;
 
   @override
   State<ReportarBuscarPage> createState() => _ReportarBuscarPageState();
@@ -437,33 +445,60 @@ class _ReportarBuscarPageState extends State<ReportarBuscarPage> {
 
   Future<void> _seleccionarImagen(ImageSource origen) async {
     try {
-      final imagen = await _picker.pickImage(
-        source: origen,
-        imageQuality: 80,
-        maxWidth: 1600,
-      );
+      final imagen = await _elegirImagen(origen);
 
       if (!mounted || imagen == null) return;
 
       widget.onImagenSeleccionada?.call(imagen);
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Imagen seleccionada. '
-            'La comparación automática está pendiente '
-            'de conectar al backend.',
+      final reportId = await showModalBottomSheet<int>(
+        context: context,
+        isScrollControlled: true,
+        useSafeArea: true,
+        showDragHandle: true,
+        builder: (_) => FractionallySizedBox(
+          heightFactor: 0.92,
+          child: ImageSearchSheet(
+            initialImage: imagen,
+            pickImage: _elegirImagen,
+            search: widget.imageSearch,
           ),
         ),
       );
+      if (!mounted || reportId == null) return;
+      if (widget.onImageMatch != null) {
+        widget.onImageMatch!(reportId);
+        return;
+      }
+      final reports =
+          await (widget.reportsLoader ?? _servicio.obtenerReportes)();
+      if (!mounted) return;
+      final matching = reports.where(
+        (report) => report.id == 'lost_$reportId' && report.estaPerdida,
+      );
+      if (matching.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('El reporte ya no está disponible.')),
+        );
+      } else {
+        _abrirDetalle(matching.first);
+      }
     } catch (e) {
       if (!mounted) return;
 
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('No se pudo seleccionar la imagen: $e')),
+        const SnackBar(
+          content: Text(
+            'No fue posible abrir la imagen o el reporte. Intenta nuevamente.',
+          ),
+        ),
       );
     }
   }
+
+  Future<XFile?> _elegirImagen(ImageSource source) =>
+      widget.imagePicker?.call(source) ??
+      _picker.pickImage(source: source, imageQuality: 80, maxWidth: 1600);
 
   void _abrirCamara() {
     showModalBottomSheet(

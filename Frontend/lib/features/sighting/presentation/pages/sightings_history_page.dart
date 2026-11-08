@@ -109,11 +109,13 @@ class SightingsHistoryPage extends StatefulWidget {
   const SightingsHistoryPage({
     super.key,
     required this.reportId,
+    this.initialSightingId,
     this.loader,
     this.mapBuilder,
   });
 
   final int reportId;
+  final int? initialSightingId;
   final SightingsHistoryLoader? loader;
   final SightingsHistoryMapBuilder? mapBuilder;
 
@@ -156,7 +158,16 @@ class _SightingsHistoryPageState extends State<SightingsHistoryPage> {
       if (!mounted) return;
       setState(() {
         _history = history;
-        _selectedSighting = null;
+        final candidates = widget.initialSightingId == null
+            ? const <Map<String, dynamic>>[]
+            : _sightingsFrom(history)
+                  .where(
+                    (sighting) =>
+                        int.tryParse(sighting['id'].toString()) ==
+                        widget.initialSightingId,
+                  )
+                  .toList(growable: false);
+        _selectedSighting = candidates.isEmpty ? null : candidates.first;
         _loading = false;
       });
     } catch (error) {
@@ -166,6 +177,13 @@ class _SightingsHistoryPageState extends State<SightingsHistoryPage> {
         _loading = false;
       });
     }
+  }
+
+  List<Map<String, dynamic>> _sightingsFrom(Map<String, dynamic> history) {
+    final values = history['sightings'] as List<dynamic>? ?? const [];
+    return values
+        .map((item) => Map<String, dynamic>.from(item as Map))
+        .toList(growable: false);
   }
 
   Future<Map<String, dynamic>> _defaultLoader(int reportId, String period) {
@@ -275,7 +293,9 @@ class _SightingsHistoryPageState extends State<SightingsHistoryPage> {
         _reportContext(report),
         if (total > 0) ...[_viewSelector(), _periodSelector()],
         Expanded(
-          child: total == 0
+          child: _selectedSighting != null
+              ? _selectedSightingDetail()
+              : total == 0
               ? _emptyHistory()
               : _sightings.isEmpty
               ? _emptyPeriod()
@@ -286,6 +306,32 @@ class _SightingsHistoryPageState extends State<SightingsHistoryPage> {
       ],
     );
   }
+
+  Widget _selectedSightingDetail() => ListView(
+    key: ValueKey('selected-sighting-${_selectedSighting!['id']}'),
+    padding: const EdgeInsets.all(14),
+    children: [
+      Card(
+        child: ListTile(
+          leading: const Icon(Icons.visibility_outlined),
+          title: Text(
+            formatReportDateTimeInBogota(_selectedSighting!['fechaHora']),
+          ),
+          subtitle: Text(_selectedSighting!['descripcion']?.toString() ?? ''),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: () => _openDetail(_selectedSighting!),
+        ),
+      ),
+      Align(
+        alignment: Alignment.centerLeft,
+        child: TextButton.icon(
+          onPressed: () => setState(() => _selectedSighting = null),
+          icon: const Icon(Icons.list),
+          label: const Text('Ver historial'),
+        ),
+      ),
+    ],
+  );
 
   Widget _reportContext(Map<String, dynamic> report) {
     final pet = Map<String, dynamic>.from(report['mascota'] as Map);

@@ -36,10 +36,10 @@ Al terminar, poner primero `FCM_PUSH_ENABLED=false` y reiniciar. Para retirar el
 ## Flujo
 
 1. `createSighting()` guarda avistamiento, ubicación, foto e intención de notificación en la misma transacción PostgreSQL. No llama a Firebase dentro de ella.
-2. Tras el COMMIT y la liberación de la conexión se despierta el procesador. Un fallo posterior no provoca rollback ni elimina fotos.
+2. Tras el COMMIT y la liberación de la conexión se despierta el procesador para ese avistamiento. En modo `inline`, la petición espera el intento FCM y su persistencia antes de responder. En modo `scheduled`, la petición no envía; Cloud Scheduler procesa la cola con OIDC.
 3. El procesador consulta el dueño a través de `avistamiento → reporte → usuario`, y vuelve a comprobar reporte, preferencias y sesiones antes del envío.
 4. Firebase recibe el campo `fid`, compatible con `register()` / `onRegistered` de Flutter Messaging 17. No se cambia la integración Android.
-5. El resultado se registra por dispositivo. La respuesta de creación del avistamiento no espera a Firebase.
+5. El resultado se registra por dispositivo. En modo `inline`, la respuesta espera a que termine el intento, no a la recepción visual en Android. En modo `scheduled`, Firebase se procesa fuera de la petición de creación.
 
 Con el módulo habilitado, si no puede persistirse la intención, falla la transacción aún no confirmada. Así no se confirma un avistamiento cuya intención se haya perdido. Un fallo de Firebase ocurre siempre después del COMMIT y no afecta esa creación.
 
@@ -69,7 +69,7 @@ Se respetan el interruptor general y los filtros de especie y tipo de evento. Pa
 
 ## Reinicios y reintentos
 
-El servidor consulta pendientes al iniciar y cada 30 segundos. Las intenciones confirmadas antes de un reinicio permanecen en PostgreSQL. También reconcilia resúmenes incompletos: una entrega pendiente se recupera aunque el estado general haya quedado desactualizado. Los errores transitorios usan hasta tres intentos totales, con espera exponencial de al menos 60 y 120 segundos, variación aleatoria y respeto de `Retry-After` cuando el SDK lo proporciona. Las entregas ya aceptadas no se vuelven a reclamar.
+En modo `inline`, el servidor consulta al iniciar y cada 30 segundos como respaldo local; cada nueva petición espera además el procesamiento dirigido de su avistamiento. Para Cloud Run con CPU suspendida entre solicitudes, usar `scheduled`: el worker OIDC consulta pendientes y reintentos por petición de Scheduler. Las intenciones confirmadas antes de un reinicio permanecen en PostgreSQL. También reconcilia resúmenes incompletos: una entrega pendiente se recupera aunque el estado general haya quedado desactualizado. Los errores transitorios usan hasta tres intentos totales, con espera exponencial de al menos 60 y 120 segundos, variación aleatoria y respeto de `Retry-After` cuando el SDK lo proporciona. Las entregas ya aceptadas no se vuelven a reclamar.
 
 Las restricciones únicas, el claim atómico con `SKIP LOCKED` y la etiqueta Android por notificación reducen duplicados entre procesos y dispositivos. No garantizan una única entrega física.
 

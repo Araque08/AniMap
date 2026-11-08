@@ -1,5 +1,6 @@
 const db = require('../../config/postgres_db');
 const { hashText } = require('../../utils/hash');
+const { revokeOwnerPush } = require('../auth/push-registration.repository');
 
 /*
   ============================================================
@@ -937,6 +938,9 @@ function createUsersService(
         );
       }
 
+      if (newStatus === 'SUSPENDIDO' || newStatus === 'ELIMINADO') {
+        await revokeOwnerPush(client, userId);
+      }
       let auditAction;
 
     if (newStatus === 'ACTIVO') {
@@ -1036,6 +1040,7 @@ function createUsersService(
         [userId]
       );
 
+      await revokeOwnerPush(client, userId);
       await writeAudit(
         client,
         adminId,

@@ -78,6 +78,7 @@ test('suspensión revoca sesiones en la misma transacción y no permite desactiv
   const { service, calls } = fixture();
   await service.setUserStatus(10, 'SUSPENDIDO', 1);
   assert.ok(calls.some(({ text, values }) => text.startsWith('UPDATE device_session') && values[0] === 10));
+  assert.ok(calls.some(({ text, values }) => text.startsWith('UPDATE device_push_registration') && values[0] === 10));
   assert.equal(calls.at(-1).text, 'COMMIT');
   const before = calls.length;
   await assert.rejects(service.setUserStatus(1, 'SUSPENDIDO', 1), error => error.statusCode === 409);

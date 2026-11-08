@@ -1,6 +1,8 @@
 const { MongoClient } = require('mongodb');
 
-const mongoClient = new MongoClient(process.env.MONGO_URI);
+const mongoClient = new MongoClient(process.env.MONGO_URI, {
+  maxPoolSize: 5, serverSelectionTimeoutMS: 10000,
+});
 
 let mongoDb = null;
 
@@ -16,4 +18,5 @@ async function getMongoDb() {
 
 module.exports = {
   getMongoDb,
+  closeMongoDb: () => mongoClient.close(),
 };

@@ -1,6 +1,7 @@
 const { randomUUID } = require('node:crypto');
 const db = require('../../config/postgres_db');
 const env = require('../../config/env');
+const { registerPush, revokePush } = require('./push-registration.repository');
 const { getSingleRole } = require('./auth.role.service');
 const {
   compareRefreshToken,
@@ -128,8 +129,10 @@ function createAuthSessionService({
       allowExpired: true,
     });
     const client = await pool.connect();
+    let transactionOpen = false;
     try {
       await client.query('BEGIN');
+      transactionOpen = true;
       const result = await lockSession(client, userId, deviceId);
       if (result.rowCount === 0) {
         throw createHttpError('Sesión no encontrada', 401, 'REFRESH_TOKEN_INVALID');
@@ -140,13 +143,20 @@ function createAuthSessionService({
         throw createHttpError('Refresh token inválido', 401, 'REFRESH_TOKEN_INVALID');
       }
       if (!session.vigente) {
+        // A verified refresh can withdraw push consent even after API inactivity.
+        // The session ID guard cannot revoke a newer login's registration.
+        await revokePush(client, userId, session.id);
+        await client.query('COMMIT');
+        transactionOpen = false;
         throw createHttpError('La sesión ya fue revocada', 401, 'SESSION_REVOKED');
       }
       await client.query('UPDATE device_session SET vigente = FALSE WHERE id = $1', [session.id]);
+      await revokePush(client, userId, session.id);
       await client.query('COMMIT');
+      transactionOpen = false;
       return { revoked: true };
     } catch (error) {
-      await client.query('ROLLBACK').catch(() => undefined);
+      if (transactionOpen) await client.query('ROLLBACK').catch(() => undefined);
       throw error;
     } finally {
       client.release();
@@ -189,14 +199,19 @@ function createAuthSessionService({
     }
 
     const result = await pool.query(
-      `UPDATE device_session
+      `WITH revoked AS (UPDATE device_session
        SET vigente = FALSE
        WHERE id = $1
          AND fk_usuario = $2
          AND vigente = TRUE
          AND expira_en > NOW()
          AND device_id <> $3
-       RETURNING id`,
+       RETURNING id), cleared AS (
+       UPDATE device_push_registration SET activo = FALSE, fcm_registration_id = NULL,
+         revocado_en = CURRENT_TIMESTAMP AT TIME ZONE 'UTC',
+         actualizado_en = CURRENT_TIMESTAMP AT TIME ZONE 'UTC'
+       WHERE fk_device_session IN (SELECT id FROM revoked)
+       RETURNING id) SELECT id FROM revoked`,
       [normalizedId, userId, currentDeviceId]
     );
     if (result.rowCount === 1) return { revoked: true };
@@ -237,8 +252,8 @@ function createAuthSessionService({
       }
       const newer = await client.query(
         `SELECT 1 FROM device_session
-         WHERE id > $1 AND (device_id = $2 OR fcm_registration_id = $3)
-         LIMIT 1`, [sessionId, deviceId, registrationId]
+         WHERE id > $1 AND ((device_id = $2 AND fk_usuario = $4) OR fcm_registration_id = $3)
+         LIMIT 1`, [sessionId, deviceId, registrationId, userId]
       );
       if (newer.rowCount > 0) {
         throw createHttpError('Existe una sesión más reciente del dispositivo',
@@ -259,6 +274,7 @@ function createAuthSessionService({
       if (updated.rowCount !== 1) {
         throw createHttpError('La sesión ya no está activa', 401, 'SESSION_REVOKED');
       }
+      await registerPush(client, { userId, sessionId, deviceId }, registrationId);
       await client.query('COMMIT');
       return { registered: true };
     } catch (error) {
@@ -273,17 +289,25 @@ function createAuthSessionService({
   }
 
   async function removeFcmRegistration({ userId, sessionId, deviceId }, registrationId) {
+    let client;
     try {
-      await pool.query(
+      client = await pool.connect();
+      await client.query('BEGIN');
+      await client.query(
         `UPDATE device_session SET fcm_registration_id = NULL,
            fcm_registration_updated_at = CURRENT_TIMESTAMP AT TIME ZONE 'UTC'
          WHERE id = $1 AND fk_usuario = $2 AND device_id = $3
            AND fcm_registration_id = $4`, [sessionId, userId, deviceId, registrationId]
       );
+      await revokePush(client, userId, sessionId, registrationId);
+      await client.query('COMMIT');
       return { registered: false };
     } catch (_) {
+      await client?.query('ROLLBACK').catch(() => undefined);
       throw createHttpError('No se pudo retirar el dispositivo de notificaciones',
         503, 'FCM_REGISTRATION_UNAVAILABLE');
+    } finally {
+      client?.release();
     }
   }
 

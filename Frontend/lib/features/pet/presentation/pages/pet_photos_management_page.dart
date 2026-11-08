@@ -56,6 +56,7 @@ class _EditablePetPhoto {
   final XFile? file;
   Uint8List? bytes;
   bool isPrincipal;
+  bool unavailable = false;
 
   bool get isExisting => source != null;
   String? get id => source?['id']?.toString();
@@ -79,6 +80,9 @@ class _PetPhotosManagementPageState extends State<PetPhotosManagementPage> {
   bool _allowPop = false;
 
   bool get _busy => _saving || _checkingPhotos;
+  int get _validPhotoCount =>
+      _photos.where((photo) => !photo.unavailable).length;
+  bool get _hasUnavailablePhotos => _photos.any((photo) => photo.unavailable);
 
   @override
   void initState() {
@@ -131,6 +135,19 @@ class _PetPhotosManagementPageState extends State<PetPhotosManagementPage> {
       var activeDuplicates = 0;
       final restorations = <_EditablePetPhoto>[];
       final additions = <_EditablePetPhoto>[];
+      // Validate every original, even if a duplicate is found early in the list.
+      if (validation.accepted.isNotEmpty) {
+        for (final photo in [..._photos, ..._removedOriginals]) {
+          if (!photo.isExisting || photo.unavailable) continue;
+          try {
+            await _bytesFor(photo);
+          } on PetPhotoReadException catch (error) {
+            if (!error.unavailable) rethrow;
+            photo.unavailable = true;
+          }
+          if (!mounted) return;
+        }
+      }
       for (final file in validation.accepted) {
         final bytes = await file.readAsBytes();
         if (!mounted) return;
@@ -168,6 +185,8 @@ class _PetPhotosManagementPageState extends State<PetPhotosManagementPage> {
         if (activeDuplicates == 1) 'Esta foto ya fue agregada.',
         if (activeDuplicates > 1)
           '$activeDuplicates fotos ya fueron agregadas.',
+        if (_hasUnavailablePhotos)
+          'Una foto existente ya no está disponible. Recarga la galería o retírala y agrega un reemplazo antes de guardar.',
         if (restorations.isNotEmpty)
           restorations.length == 1
               ? 'Se restauró la foto original sin volver a subirla.'
@@ -193,6 +212,7 @@ class _PetPhotosManagementPageState extends State<PetPhotosManagementPage> {
     Uint8List selected,
   ) async {
     for (final candidate in candidates) {
+      if (candidate.unavailable) continue;
       final bytes = await _bytesFor(candidate);
       if (!mounted) return null;
       if (_sameBytes(bytes, selected)) return candidate;
@@ -220,7 +240,7 @@ class _PetPhotosManagementPageState extends State<PetPhotosManagementPage> {
   }
 
   void _setPrincipal(_EditablePetPhoto photo) {
-    if (_busy || photo.isPrincipal) return;
+    if (_busy || photo.isPrincipal || photo.unavailable) return;
     setState(() {
       for (final item in _photos) {
         item.isPrincipal = identical(item, photo);
@@ -241,7 +261,8 @@ class _PetPhotosManagementPageState extends State<PetPhotosManagementPage> {
         for (final item in _photos) {
           item.isPrincipal = false;
         }
-        _photos.first.isPrincipal = true;
+        final available = _photos.where((item) => !item.unavailable);
+        if (available.isNotEmpty) available.first.isPrincipal = true;
       }
       _movePrincipalFirst();
       _hasPendingChanges = true;
@@ -270,9 +291,15 @@ class _PetPhotosManagementPageState extends State<PetPhotosManagementPage> {
       );
       return;
     }
-    if (_photos.length < _minimumPhotos) {
+    if (_validPhotoCount < _minimumPhotos) {
       _showMessage(
-        'Debes mantener mínimo 15 fotografías. Actualmente tienes ${_photos.length}.',
+        'Debes mantener mínimo 15 fotografías. Actualmente tienes $_validPhotoCount.',
+      );
+      return;
+    }
+    if (_hasUnavailablePhotos) {
+      _showMessage(
+        'Hay fotos no disponibles. Recarga la galería o retíralas y agrega reemplazos antes de guardar.',
       );
       return;
     }
@@ -344,6 +371,11 @@ class _PetPhotosManagementPageState extends State<PetPhotosManagementPage> {
     }
   }
 
+  Future<void> _reloadGallery() async {
+    if (_busy || _loading) return;
+    if (await _confirmExit() && mounted) await _loadPhotos();
+  }
+
   void _showMessage(String message) {
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
@@ -369,6 +401,13 @@ class _PetPhotosManagementPageState extends State<PetPhotosManagementPage> {
             onPressed: _busy ? null : _leave,
             icon: const Icon(Icons.arrow_back),
           ),
+          actions: [
+            IconButton(
+              tooltip: 'Recargar galería',
+              onPressed: _busy || _loading ? null : _reloadGallery,
+              icon: const Icon(Icons.refresh),
+            ),
+          ],
         ),
         body: _loading
             ? const Center(child: CircularProgressIndicator())
@@ -378,7 +417,7 @@ class _PetPhotosManagementPageState extends State<PetPhotosManagementPage> {
                   Padding(
                     padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
                     child: Text(
-                      '${_photos.length} fotos · mínimo requerido: 15\n'
+                      '${_hasUnavailablePhotos ? '$_validPhotoCount fotos válidas · ${_photos.length - _validPhotoCount} no disponibles' : '${_photos.length} fotos · mínimo requerido: 15'}\n'
                       'Los cambios se aplican únicamente al pulsar Guardar cambios.',
                       style: const TextStyle(color: Color(0xFF5D6F65)),
                     ),
@@ -500,7 +539,7 @@ class _PetPhotosManagementPageState extends State<PetPhotosManagementPage> {
                 borderRadius: BorderRadius.circular(12),
                 child: InkWell(
                   key: ValueKey('principal-photo-${photo.localKey}'),
-                  onTap: _busy || photo.isPrincipal
+                  onTap: _busy || photo.isPrincipal || photo.unavailable
                       ? null
                       : () => _setPrincipal(photo),
                   borderRadius: BorderRadius.circular(12),
@@ -551,6 +590,17 @@ class _PetPhotosManagementPageState extends State<PetPhotosManagementPage> {
                       fontWeight: FontWeight.bold,
                       shadows: [Shadow(blurRadius: 4)],
                     ),
+                  ),
+                ),
+              ),
+            if (photo.unavailable)
+              const Center(
+                child: ColoredBox(
+                  color: Color(0xFFE5E7EB),
+                  child: Text(
+                    'No disponible',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(fontSize: 10, color: Color(0xFF374151)),
                   ),
                 ),
               ),

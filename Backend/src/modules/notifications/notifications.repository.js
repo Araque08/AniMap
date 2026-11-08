@@ -77,23 +77,25 @@ function createNotificationsRepository(pool = postgres.pool) {
        WHERE n.tipo = 'AVISTAMIENTO_VINCULADO'
          AND (($2::integer IS NULL AND $3::integer IS NULL)
            OR (n.fk_usuario = $2 AND n.fk_reporte = $3))
+         AND ($4::integer IS NULL OR n.fk_avistamiento = $4)
          AND ((n.estado_envio IN ('PENDIENTE', 'PARCIAL')
            AND NOT EXISTS (SELECT 1 FROM notificacion_entrega d WHERE d.fk_notificacion = n.id))
            OR EXISTS (SELECT 1 FROM notificacion_entrega d
              WHERE d.fk_notificacion = n.id AND d.estado IN ('PENDIENTE', 'REINTENTO')
                AND d.intentos < 3
                AND d.proximo_intento_en <= CURRENT_TIMESTAMP AT TIME ZONE 'UTC'))
-       ORDER BY n.id LIMIT $1`, [limit, scope?.ownerId ?? null, scope?.reportId ?? null]
+       ORDER BY n.id LIMIT $1`, [limit, scope?.ownerId ?? null, scope?.reportId ?? null,
+        scope?.sightingId ?? null]
     );
     return result.rows;
   }
 
   async function listTargets(ownerId) {
     const result = await pool.query(
-      `SELECT ds.id, ds.fcm_registration_id AS "registrationId"
-       FROM device_session ds INNER JOIN usuario u ON u.id = ds.fk_usuario
-       WHERE ds.fk_usuario = $1 AND ds.vigente = TRUE
-         AND ds.expira_en > LOCALTIMESTAMP
+      `SELECT ds.fk_device_session AS id, ds.id AS "pushRegistrationId",
+         ds.fcm_registration_id AS "registrationId"
+       FROM device_push_registration ds INNER JOIN usuario u ON u.id = ds.fk_usuario
+       WHERE ds.fk_usuario = $1 AND ds.activo = TRUE
          AND ds.fcm_registration_id IS NOT NULL AND btrim(ds.fcm_registration_id) <> ''
          AND u.estado_cuenta = 'ACTIVO' AND u.is_verified = TRUE
        ORDER BY ds.id DESC`, [ownerId]
@@ -104,11 +106,12 @@ function createNotificationsRepository(pool = postgres.pool) {
   async function planDeliveries(notificationId, assignments) {
     if (!assignments.length) return;
     await pool.query(
-      `INSERT INTO notificacion_entrega (fk_notificacion, fk_device_session, registro_huella)
-       SELECT $1, x."sessionId", x.fingerprint
-       FROM jsonb_to_recordset($2::jsonb) AS x("sessionId" INTEGER, fingerprint TEXT)
+      `INSERT INTO notificacion_entrega (fk_notificacion, fk_device_session, fk_push_registration, registro_huella)
+       SELECT $1, x."sessionId", x."pushRegistrationId", x.fingerprint
+       FROM jsonb_to_recordset($2::jsonb) AS x("sessionId" INTEGER, "pushRegistrationId" BIGINT, fingerprint TEXT)
        ON CONFLICT (fk_notificacion, registro_huella) DO UPDATE
-         SET fk_device_session = EXCLUDED.fk_device_session
+         SET fk_device_session = EXCLUDED.fk_device_session,
+           fk_push_registration = EXCLUDED.fk_push_registration
          WHERE notificacion_entrega.estado IN ('PENDIENTE', 'REINTENTO')`,
       [notificationId, JSON.stringify(assignments)]
     );
@@ -129,6 +132,7 @@ function createNotificationsRepository(pool = postgres.pool) {
            iniciado_en = CURRENT_TIMESTAMP AT TIME ZONE 'UTC'
          FROM candidate c WHERE d.id = c.id
          RETURNING d.id, d.fk_device_session AS "sessionId",
+           d.fk_push_registration AS "pushRegistrationId",
            d.registro_huella AS fingerprint, d.intentos AS attempts`,
       [notificationId, scope?.ownerId ?? null, scope?.reportId ?? null]
     );
@@ -138,24 +142,25 @@ function createNotificationsRepository(pool = postgres.pool) {
   async function currentTarget(delivery, ownerId) {
     const result = await pool.query(
       `SELECT ds.id, ds.fcm_registration_id AS "registrationId",
-         to_char(ds.fcm_registration_updated_at, 'YYYY-MM-DD"T"HH24:MI:SS.US') AS "updatedAt"
-       FROM device_session ds INNER JOIN usuario u ON u.id = ds.fk_usuario
-       WHERE ds.id = $1 AND ds.fk_usuario = $2 AND ds.vigente = TRUE
-         AND ds.expira_en > LOCALTIMESTAMP AND ds.fcm_registration_id IS NOT NULL
+         to_char(ds.actualizado_en, 'YYYY-MM-DD"T"HH24:MI:SS.US') AS "updatedAt"
+       FROM device_push_registration ds INNER JOIN usuario u ON u.id = ds.fk_usuario
+       WHERE ds.id = $1 AND ds.fk_usuario = $2 AND ds.activo = TRUE
+         AND ds.fcm_registration_id IS NOT NULL
          AND encode(sha256(convert_to(ds.fcm_registration_id, 'UTF8')), 'hex') = $3
          AND u.estado_cuenta = 'ACTIVO' AND u.is_verified = TRUE`,
-      [delivery.sessionId, ownerId, delivery.fingerprint]
+      [delivery.pushRegistrationId, ownerId, delivery.fingerprint]
     );
     return result.rows[0] || null;
   }
 
   async function invalidateTarget(delivery, ownerId, original) {
     await pool.query(
-      `UPDATE device_session SET fcm_registration_id = NULL,
-         fcm_registration_updated_at = CURRENT_TIMESTAMP AT TIME ZONE 'UTC'
+      `UPDATE device_push_registration SET fcm_registration_id = NULL, activo = FALSE,
+         revocado_en = CURRENT_TIMESTAMP AT TIME ZONE 'UTC',
+         actualizado_en = CURRENT_TIMESTAMP AT TIME ZONE 'UTC'
        WHERE id = $1 AND fk_usuario = $2 AND fcm_registration_id = $3
-         AND fcm_registration_updated_at IS NOT DISTINCT FROM $4::timestamp`,
-      [delivery.sessionId, ownerId, original.registrationId, original.updatedAt]
+         AND actualizado_en IS NOT DISTINCT FROM $4::timestamp`,
+      [delivery.pushRegistrationId, ownerId, original.registrationId, original.updatedAt]
     );
   }
 
