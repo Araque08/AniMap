@@ -6,6 +6,7 @@ import '../../../config/api_config.dart';
 import '../../auth/data/authenticated_http_client.dart';
 import '../../auth/data/session_manager.dart';
 import '../../pet/data/mascotas_service.dart';
+import 'package:flutter/foundation.dart';
 
 class OwnReportDetails {
   const OwnReportDetails({
@@ -29,6 +30,9 @@ class ReportsException implements Exception {
 }
 
 class ReportsService {
+  // Avisa a las pantallas cuando se crea un nuevo reporte.
+  static final ValueNotifier<int> reportesActualizados =
+  ValueNotifier<int>(0);
   static String get baseUrl => '${ApiConfig.current.baseUrl}/reports';
 
   static const Map<String, String> _headers = {
@@ -159,6 +163,8 @@ class ReportsService {
     if (response.statusCode != 201 || data['ok'] != true) {
       throw ReportsException(_message(data, 'No se pudo crear el reporte'));
     }
+    // Notificar únicamente cuando el backend confirmó la creación.
+    reportesActualizados.value++;
   }
 
   static Future<void> updateReport({

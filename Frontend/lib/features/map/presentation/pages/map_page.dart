@@ -15,6 +15,7 @@ import '../../data/map_filter_selection.dart';
 import '../widgets/map_filters_dialog.dart';
 import '../../../report/data/report_datetime.dart';
 import '../../../report/data/device_location_service.dart';
+import '../../../report/data/reports_service.dart';
 
 typedef DeviceLocationLoader = Future<DeviceLocation> Function();
 
@@ -628,6 +629,19 @@ class _MapPageState extends State<MapPage> {
     });
   }
 
+  // Actualizar el mapa cuando se crea un reporte.
+  void _actualizarMapaPorNuevoReporte() {
+    if (!mounted) return;
+
+    // Mostrar la sección de reportes activos.
+    setState(() {
+      _selectedFilter = MapFilter.active;
+    });
+
+    // Consultar nuevamente los reportes del backend.
+    _loadMapReports();
+  }
+
   /* --------------------------------------------------------------------------
      CICLO DE VIDA
      -------------------------------------------------------------------------- */
@@ -636,16 +650,26 @@ class _MapPageState extends State<MapPage> {
   void initState() {
     super.initState();
 
-    _loadCustomMarkers();
+    // Escuchar la creación de nuevos reportes.
+    ReportsService.reportesActualizados.addListener(
+      _actualizarMapaPorNuevoReporte,
+    );
 
+    _loadCustomMarkers();
     _loadMapReports();
   }
 
   @override
   void dispose() {
+    // Dejar de escuchar cuando se cierra esta pantalla.
+    ReportsService.reportesActualizados.removeListener(
+      _actualizarMapaPorNuevoReporte,
+    );
+
     final controller = _mapController;
     _mapController = null;
     controller?.dispose();
+
     super.dispose();
   }
 

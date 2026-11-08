@@ -12,6 +12,9 @@ import android.os.Looper
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
+import android.os.SystemClock
+import android.view.KeyEvent
+import android.widget.Toast
 
 class MainActivity : FlutterActivity() {
     private val channelName = "animap/location"
@@ -21,8 +24,20 @@ class MainActivity : FlutterActivity() {
     private var activeListener: LocationListener? = null
     private var timeout: Runnable? = null
 
+    // Configuración del atajo de emergencia AniMap.
+    private val tiempoMaximoAtajo = 2000L
+    private var primeraPulsacion = 0L
+    private var contadorPulsaciones = 0
+
+    private val shortcutChannelName = "animap/emergency_shortcut"
+    private var shortcutChannel: MethodChannel? = null
+
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        shortcutChannel = MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            shortcutChannelName
+        )
         MethodChannel(
             flutterEngine.dartExecutor.binaryMessenger,
             channelName,
@@ -70,17 +85,6 @@ class MainActivity : FlutterActivity() {
 
         if (providers.isEmpty()) {
             finishWithError("LOCATION_DISABLED", "Activa la ubicación del dispositivo")
-            return
-        }
-
-        val lastLocation = providers
-            .mapNotNull { provider ->
-                runCatching { manager.getLastKnownLocation(provider) }.getOrNull()
-            }
-            .maxByOrNull { location -> location.time }
-
-        if (lastLocation != null) {
-            finishWithLocation(lastLocation)
             return
         }
 
@@ -161,4 +165,57 @@ class MainActivity : FlutterActivity() {
             finishWithError("LOCATION_PERMISSION", "Permiso de ubicación denegado")
         }
     }
+
+    override fun onKeyDown(
+        keyCode: Int,
+        event: KeyEvent
+    ): Boolean {
+
+        // Detectar únicamente pulsaciones nuevas del botón
+        // de subir volumen, evitando las repeticiones por
+        // mantenerlo presionado.
+        if (
+            keyCode == KeyEvent.KEYCODE_VOLUME_UP &&
+            event.repeatCount == 0
+        ) {
+            val ahora = SystemClock.elapsedRealtime()
+
+            // Iniciar una nueva secuencia si se superaron
+            // los dos segundos disponibles.
+            if (
+                contadorPulsaciones == 0 ||
+                ahora - primeraPulsacion > tiempoMaximoAtajo
+            ) {
+                primeraPulsacion = ahora
+                contadorPulsaciones = 1
+            } else {
+                contadorPulsaciones++
+            }
+
+            // Tres pulsaciones dentro de dos segundos.
+            if (contadorPulsaciones >= 3) {
+                contadorPulsaciones = 0
+                primeraPulsacion = 0L
+
+                Toast.makeText(
+                    this,
+                    "AniMap: atajo de reporte detectado",
+                    Toast.LENGTH_LONG
+                ).show()
+                shortcutChannel?.invokeMethod(
+                    "emergencyShortcutActivated",
+                    null
+                )
+            }
+        }
+
+        // Mantener el comportamiento normal del volumen.
+        return super.onKeyDown(keyCode, event)
+    }
+
+    override fun cleanUpFlutterEngine(flutterEngine: FlutterEngine) {
+        shortcutChannel = null
+        super.cleanUpFlutterEngine(flutterEngine)
+    }
+
 }
