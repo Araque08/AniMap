@@ -46,7 +46,7 @@ class _ReportarBuscarPageState extends State<ReportarBuscarPage> {
   String _especieFiltro = '';
   String _razaFiltro = '';
   String _colorFiltro = '';
-  DateTime? _fechaFiltro;
+  DateTimeRange? _rangoFechasFiltro;
   String? _error;
 
   @override
@@ -145,13 +145,24 @@ class _ReportarBuscarPageState extends State<ReportarBuscarPage> {
       }
 
       // Comparar únicamente día, mes y año.
-      if (_fechaFiltro != null) {
-        final fecha = mascota.fecha;
+      // Filtrar reportes por un rango de fechas.
+      if (_rangoFechasFiltro != null) {
+        final fecha = mascota.fecha?.toLocal();
 
-        if (fecha == null ||
-            fecha.year != _fechaFiltro!.year ||
-            fecha.month != _fechaFiltro!.month ||
-            fecha.day != _fechaFiltro!.day) {
+        if (fecha == null) return false;
+
+        final inicio = DateUtils.dateOnly(
+          _rangoFechasFiltro!.start,
+        );
+
+        final fin = DateUtils.dateOnly(
+          _rangoFechasFiltro!.end,
+        );
+
+        final fechaReporte = DateUtils.dateOnly(fecha);
+
+        if (fechaReporte.isBefore(inicio) ||
+            fechaReporte.isAfter(fin)) {
           return false;
         }
       }
@@ -181,7 +192,7 @@ class _ReportarBuscarPageState extends State<ReportarBuscarPage> {
     String especieTemporal = _especieFiltro;
     String razaTemporal = _razaFiltro;
     String colorTemporal = _colorFiltro;
-    DateTime? fechaTemporal = _fechaFiltro;
+    DateTimeRange? rangoTemporal = _rangoFechasFiltro;
 
     final reportesDisponibles = _reportes.where((mascota) {
       return _mostrarAvistamientos
@@ -189,16 +200,21 @@ class _ReportarBuscarPageState extends State<ReportarBuscarPage> {
           : mascota.estaPerdida;
     }).toList();
 
+
     List<String> opcionesCampo(int posicion) {
       final opciones = reportesDisponibles
-          .map((mascota) => _obtenerCampo(mascota, posicion))
-          .where((valor) => valor.isNotEmpty)
+          .map((mascota) => _obtenerCampo(mascota, posicion).trim())
+          .where((valor) =>
+      valor.isNotEmpty &&
+          valor.toLowerCase() != 'avistamiento independiente')
           .toSet()
           .toList();
 
       opciones.sort();
+
       return opciones;
     }
+
 
     final especies = opcionesCampo(0);
     final razas = opcionesCampo(1);
@@ -268,15 +284,19 @@ class _ReportarBuscarPageState extends State<ReportarBuscarPage> {
             }
 
             String fechaTexto() {
-              if (fechaTemporal == null) {
-                return 'Seleccionar fecha';
+              if (rangoTemporal == null) {
+                return 'Seleccionar rango de fechas';
               }
 
-              final f = fechaTemporal!;
-              final dia = f.day.toString().padLeft(2, '0');
-              final mes = f.month.toString().padLeft(2, '0');
+              String formatear(DateTime fecha) {
+                final dia = fecha.day.toString().padLeft(2, '0');
+                final mes = fecha.month.toString().padLeft(2, '0');
 
-              return '$dia/$mes/${f.year}';
+                return '$dia/$mes/${fecha.year}';
+              }
+
+              return '${formatear(rangoTemporal!.start)}'
+                  ' - ${formatear(rangoTemporal!.end)}';
             }
 
             return SafeArea(
@@ -345,36 +365,39 @@ class _ReportarBuscarPageState extends State<ReportarBuscarPage> {
 
                       const SizedBox(height: 8),
 
+
                       OutlinedButton.icon(
                         onPressed: () async {
                           final ahora = DateTime.now();
 
-                          final seleccion = await showDatePicker(
+                          final seleccion = await showDateRangePicker(
                             context: context,
-                            initialDate: fechaTemporal ?? ahora,
                             firstDate: DateTime(2020),
                             lastDate: ahora,
-                            helpText: 'Selecciona la fecha del reporte',
+                            initialDateRange: rangoTemporal,
+                            helpText: 'Selecciona un rango de fechas',
+                            saveText: 'Aplicar',
                           );
 
                           if (seleccion != null && modalContext.mounted) {
                             actualizarModal(() {
-                              fechaTemporal = seleccion;
+                              rangoTemporal = seleccion;
                             });
                           }
                         },
-                        icon: const Icon(Icons.calendar_month_outlined),
+                        icon: const Icon(Icons.date_range_outlined),
                         label: Text(fechaTexto()),
                       ),
 
-                      if (fechaTemporal != null)
+
+                      if (rangoTemporal != null)
                         TextButton(
                           onPressed: () {
                             actualizarModal(() {
-                              fechaTemporal = null;
+                              rangoTemporal = null;
                             });
                           },
-                          child: const Text('Quitar fecha'),
+                          child: const Text('Quitar rango de fechas'),
                         ),
 
                       const SizedBox(height: 20),
@@ -387,7 +410,7 @@ class _ReportarBuscarPageState extends State<ReportarBuscarPage> {
                               _especieFiltro = especieTemporal;
                               _razaFiltro = razaTemporal;
                               _colorFiltro = colorTemporal;
-                              _fechaFiltro = fechaTemporal;
+                              _rangoFechasFiltro = rangoTemporal;
                             });
 
                             Navigator.pop(modalContext);
@@ -411,7 +434,7 @@ class _ReportarBuscarPageState extends State<ReportarBuscarPage> {
                               _especieFiltro = '';
                               _razaFiltro = '';
                               _colorFiltro = '';
-                              _fechaFiltro = null;
+                              _rangoFechasFiltro = null;
                             });
 
                             Navigator.pop(modalContext);
@@ -857,16 +880,6 @@ class _ReportarBuscarPageState extends State<ReportarBuscarPage> {
                           fontWeight: FontWeight.bold,
                         ),
                       ),
-                    ),
-                  ),
-                  const Positioned(
-                    top: 8,
-                    right: 8,
-                    child: Icon(
-                      Icons.favorite_border,
-                      color: Colors.white,
-                      size: 25,
-                      shadows: [Shadow(color: Colors.black54, blurRadius: 5)],
                     ),
                   ),
                 ],

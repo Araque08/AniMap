@@ -1,6 +1,11 @@
 const db = require('../../config/postgres_db');
 const { hashText } = require('../../utils/hash');
 
+const {
+  eliminarImagenesUsuarioMongo,
+  restaurarImagenesUsuarioMongo,
+} = require('../pets/pets.images.repository');
+
 /*
   ============================================================
   ERRORES HTTP
@@ -92,12 +97,11 @@ function normalizePhone(value) {
     return null;
   }
 
-  const phone =
-    String(value).trim();
+  const phone = String(value).trim();
 
-  if (phone.length > 30) {
+  if (!/^\d{10}$/.test(phone)) {
     throw httpError(
-      'Teléfono inválido',
+      'El teléfono debe contener exactamente 10 dígitos numéricos',
       400,
       'INVALID_PHONE'
     );
@@ -983,85 +987,150 @@ function createUsersService(
   */
 
   async function deleteUser(
-    id,
-    adminId
-  ) {
-    const userId =
-      positiveId(id);
+  id,
+  adminId
+) {
+  const userId = positiveId(id);
+  const currentAdminId = positiveId(adminId);
 
-    const currentAdminId =
-      positiveId(adminId);
-
-    if (
-      userId === currentAdminId
-    ) {
-      throw httpError(
-        'No puedes eliminar tu propia cuenta',
-        409,
-        'CANNOT_DELETE_SELF'
-      );
-    }
-
-    const client =
-      await pool.connect();
-
-    try {
-      await client.query(
-        'BEGIN'
-      );
-
-      await ensureUserExists(
-        client,
-        userId,
-        true
-      );
-
-      await client.query(
-        `
-          UPDATE usuario
-          SET estado_cuenta = 'ELIMINADO'
-          WHERE id = $1
-        `,
-        [userId]
-      );
-
-      await client.query(
-        `
-          UPDATE device_session
-          SET vigente = FALSE
-          WHERE
-            fk_usuario = $1
-            AND vigente = TRUE
-        `,
-        [userId]
-      );
-
-      await writeAudit(
-        client,
-        adminId,
-        'ELIMINAR',
-        userId
-      );
-
-      await client.query(
-        'COMMIT'
-      );
-
-      return {
-        deleted: true,
-        logicalDelete: true,
-        id: userId,
-      };
-    } catch (error) {
-      await client
-        .query('ROLLBACK')
-        .catch(() => undefined);
-
-      throw error;
-    } finally {
-      client.release();
-    }
+  /*
+    El administrador que está usando el panel
+    no puede eliminar su propia cuenta.
+  */
+  if (userId === currentAdminId) {
+    throw httpError(
+      'No puedes eliminar tu propia cuenta',
+      409,
+      'CANNOT_DELETE_SELF'
+    );
   }
+
+  const client = await pool.connect();
+
+  /*
+    Guardaremos aquí las imágenes eliminadas de Mongo
+    por si PostgreSQL falla y necesitamos restaurarlas.
+  */
+  let imagenesMongo = [];
+  let imagenesEliminadas = 0;
+
+  try {
+    await client.query('BEGIN');
+
+    /*
+      1. Verificamos que el usuario exista.
+    */
+    const user = await ensureUserExists(
+      client,
+      userId,
+      true
+    );
+
+    /*
+      2. Eliminamos físicamente las imágenes
+      del usuario en MongoDB.
+
+      La función devuelve una copia de los documentos,
+      lo que nos permite restaurarlos si PostgreSQL falla.
+    */
+    const mongoResult =
+      await eliminarImagenesUsuarioMongo(userId);
+
+    imagenesMongo =
+      mongoResult.documentos ?? [];
+
+    imagenesEliminadas =
+      mongoResult.deletedCount ?? 0;
+
+    /*
+      3. Registramos la acción administrativa.
+    */
+    await writeAudit(
+      client,
+      adminId,
+      'ELIMINAR',
+      userId
+    );
+
+    /*
+      4. Eliminamos físicamente al usuario.
+
+      Las tablas relacionadas que tengan
+      ON DELETE CASCADE se eliminarán automáticamente.
+    */
+    const result = await client.query(
+      `
+        DELETE FROM usuario
+        WHERE id = $1
+        RETURNING id
+      `,
+      [userId]
+    );
+
+    if (result.rowCount !== 1) {
+      throw httpError(
+        'Usuario no encontrado',
+        404,
+        'USER_NOT_FOUND'
+      );
+    }
+
+    /*
+      5. Confirmamos PostgreSQL.
+    */
+    await client.query('COMMIT');
+
+    return {
+      deleted: true,
+      id: userId,
+      nombre: user.nombre,
+      imagenesEliminadas,
+    };
+  } catch (error) {
+    /*
+      Revertimos PostgreSQL.
+    */
+    await client
+      .query('ROLLBACK')
+      .catch(() => undefined);
+
+    /*
+      Si ya habíamos eliminado imágenes de Mongo,
+      intentamos restaurarlas.
+    */
+    if (imagenesMongo.length > 0) {
+      try {
+        await restaurarImagenesUsuarioMongo(
+          imagenesMongo
+        );
+      } catch (restoreError) {
+        console.error(
+          'Error restaurando imágenes del usuario en MongoDB:',
+          restoreError
+        );
+      }
+    }
+
+    /*
+      23503 = foreign_key_violation.
+
+      Esto puede ocurrir, por ejemplo, si intentamos
+      eliminar un administrador que aparece como
+      responsable de acciones históricas en la bitácora.
+    */
+    if (error.code === '23503') {
+      throw httpError(
+        'No se puede eliminar este usuario porque tiene información administrativa asociada.',
+        409,
+        'USER_DELETE_CONFLICT'
+      );
+    }
+
+    throw error;
+  } finally {
+    client.release();
+  }
+}
 
   return {
     listUsers,

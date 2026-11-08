@@ -157,6 +157,59 @@ async function confirmDuplicate(req, res, next) {
 }
 
 
+/*
+  ============================================================
+  ELIMINAR REPORTE - ADMINISTRADOR
+  ============================================================
+*/
+
+async function deleteReport(req, res, next) {
+  try {
+    const reportId = Number(req.params.id);
+    const { motivo } = req.body || {};
+
+    // Validar el identificador.
+    if (!Number.isSafeInteger(reportId) || reportId <= 0) {
+      return res.status(400).json({
+        ok: false,
+        message: 'ID de reporte inválido',
+      });
+    }
+
+    // Validar el motivo de eliminación.
+    if (
+      typeof motivo !== 'string' ||
+      motivo.trim().length < 10 ||
+      motivo.trim().length > 255
+    ) {
+      return res.status(400).json({
+        ok: false,
+        message:
+          'El motivo debe tener entre 10 y 255 caracteres',
+      });
+    }
+
+    // Ejecutar la eliminación utilizando la identidad
+    // del administrador autenticado.
+    const result = await adminReportsService.deleteReport(
+      reportId,
+      req.auth.userId,
+      motivo.trim()
+    );
+
+    return res.status(200).json({
+      ok: true,
+      message: 'Reporte eliminado correctamente',
+      data: result,
+    });
+
+  } catch (error) {
+    return next(error);
+  }
+}
+
+
+
 
 // ==========================================================
 // EXPORTAR CONTROLADORES
@@ -168,4 +221,5 @@ module.exports = {
   updateReportStatus,
   getPossibleDuplicates,
   confirmDuplicate,
+  deleteReport,
 };

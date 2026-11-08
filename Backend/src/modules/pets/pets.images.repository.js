@@ -304,6 +304,90 @@ async function eliminarImagenesMascotaMongo({ mascotaId, usuarioId, estadoOrigin
   }
 }
 
+async function eliminarImagenesUsuarioMongo(usuarioId) {
+  const collection = await getCollection();
+
+  const userId = Number(usuarioId);
+
+  if (!Number.isInteger(userId) || userId <= 0) {
+    throw new Error('ID de usuario inválido');
+  }
+
+  // Guardamos copia temporal por si PostgreSQL falla después.
+  const documentos = await collection
+    .find({
+      usuarioIdPg: userId,
+    })
+    .toArray();
+
+  if (documentos.length === 0) {
+    return {
+      deletedCount: 0,
+      documentos: [],
+    };
+  }
+
+  const ids = documentos.map(
+    (documento) => documento._id
+  );
+
+  const result = await collection.deleteMany({
+    usuarioIdPg: userId,
+    _id: {
+      $in: ids,
+    },
+  });
+
+  if (result.deletedCount !== documentos.length) {
+    // Intentamos dejar Mongo exactamente como estaba.
+    for (const documento of documentos) {
+      await collection.replaceOne(
+        {
+          _id: documento._id,
+        },
+        documento,
+        {
+          upsert: true,
+        }
+      );
+    }
+
+    throw new Error(
+      'No fue posible eliminar todas las imágenes del usuario'
+    );
+  }
+
+  return {
+    deletedCount: result.deletedCount,
+    documentos,
+  };
+}
+
+async function restaurarImagenesUsuarioMongo(
+  documentos
+) {
+  if (
+    !Array.isArray(documentos) ||
+    documentos.length === 0
+  ) {
+    return;
+  }
+
+  const collection = await getCollection();
+
+  for (const documento of documentos) {
+    await collection.replaceOne(
+      {
+        _id: documento._id,
+      },
+      documento,
+      {
+        upsert: true,
+      }
+    );
+  }
+}
+
 module.exports = {
   eliminarImagenMascotaMongo,
   eliminarImagenesMascotaMongoPorIds,
@@ -317,4 +401,7 @@ module.exports = {
   reconcilePetPhotos,
   resolvePetPhotoRecovery,
   cleanupPetPhotoRecovery,
+
+  eliminarImagenesUsuarioMongo,
+  restaurarImagenesUsuarioMongo,
 };

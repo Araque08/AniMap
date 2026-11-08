@@ -439,11 +439,150 @@ function createAdminReportsService(pool = db.pool) {
     }
   }
 
+  
+  // ========================================================
+  // ELIMINAR REPORTE ADMINISTRATIVAMENTE
+  // ========================================================
 
-    return {
+  async function deleteReport(reportId, adminId, motivo) {
+    const id = positiveId(reportId);
+    const administratorId = positiveId(adminId);
+    const reason = String(motivo || '').trim();
+
+    if (reason.length < 10 || reason.length > 255) {
+      throw httpError(
+        'El motivo debe tener entre 10 y 255 caracteres',
+        400,
+        'INVALID_DELETE_REASON'
+      );
+    }
+
+    const client = await pool.connect();
+
+    try {
+      await client.query('BEGIN');
+
+      // Consultar y bloquear el reporte.
+      const result = await client.query(
+        `
+          SELECT
+            r.id,
+            r.fk_usuario,
+            r.fk_mascota,
+            r.estado,
+            m.nombre AS mascota_nombre
+          FROM reporte r
+          INNER JOIN mascota m
+            ON m.id = r.fk_mascota
+          WHERE r.id = $1
+          FOR UPDATE OF r
+        `,
+        [id]
+      );
+
+      if (result.rowCount === 0) {
+        throw httpError(
+          'El reporte no existe',
+          404,
+          'REPORT_NOT_FOUND'
+        );
+      }
+
+      const report = result.rows[0];
+
+      // Evitar perder relaciones con avistamientos.
+      const sightings = await client.query(
+        `
+          SELECT COUNT(*)::int AS total
+          FROM avistamiento
+          WHERE fk_reporte_perdida = $1
+        `,
+        [id]
+      );
+
+      if (Number(sightings.rows[0].total) > 0) {
+        throw httpError(
+          'Este reporte tiene avistamientos vinculados. ' +
+          'No se puede eliminar sin revisar su historial.',
+          409,
+          'REPORT_HAS_SIGHTINGS'
+        );
+      }
+
+      // Eliminar únicamente el reporte.
+      // No se elimina la mascota ni sus fotografías.
+      const deleted = await client.query(
+        `
+          DELETE FROM reporte
+          WHERE id = $1
+          RETURNING id
+        `,
+        [id]
+      );
+
+      if (deleted.rowCount !== 1) {
+        throw httpError(
+          'No fue posible eliminar el reporte',
+          409,
+          'REPORT_DELETE_CONFLICT'
+        );
+      }
+
+      // Registrar quién eliminó el reporte y por qué.
+      await client.query(
+        `
+          INSERT INTO bitacora_administrativa (
+            fk_admin,
+            modulo,
+            accion,
+            entidad_afectada,
+            id_entidad_afectada,
+            motivo,
+            detalle
+          )
+          VALUES (
+            $1,
+            'REPORTES',
+            'ELIMINAR_REPORTE',
+            'reporte',
+            $2,
+            $3,
+            $4
+          )
+        `,
+        [
+          administratorId,
+          id,
+          reason,
+          'Mascota: ' + report.mascota_nombre +
+          ' | Propietario ID: ' + report.fk_usuario +
+          ' | Estado anterior: ' + report.estado,
+        ]
+      );
+
+      await client.query('COMMIT');
+
+      return {
+        id,
+        mascotaId: report.fk_mascota,
+        eliminado: true,
+        message: 'Reporte eliminado correctamente',
+      };
+
+    } catch (error) {
+      await client.query('ROLLBACK').catch(() => undefined);
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+
+  return {
     listReports,
     getReportById,
     updateReportStatus,
+    deleteReport,
   };
 }
 

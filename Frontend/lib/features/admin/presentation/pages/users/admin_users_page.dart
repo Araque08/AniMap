@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../data/users/user_service.dart';
+import 'package:flutter/services.dart';
 
 class AdminUsersPage
     extends StatefulWidget {
@@ -347,19 +348,30 @@ class _AdminUsersPageState
                         ),
 
                         TextFormField(
-                          controller:
-                          phoneController,
-                          enabled:
-                          !saving,
-                          keyboardType:
-                          TextInputType
-                              .phone,
-                          decoration:
-                          _inputDecoration(
+                          controller: phoneController,
+                          enabled: !saving,
+                          keyboardType: TextInputType.number,
+                          inputFormatters: [
+                            FilteringTextInputFormatter.digitsOnly,
+                            LengthLimitingTextInputFormatter(10),
+                          ],
+                          decoration: _inputDecoration(
                             'Teléfono',
-                            Icons
-                                .phone_outlined,
+                            Icons.phone_outlined,
                           ),
+                          validator: (value) {
+                            final phone = value?.trim() ?? '';
+
+                            if (phone.isEmpty) {
+                              return 'Ingresa el número telefónico';
+                            }
+
+                            if (!RegExp(r'^\d{10}$').hasMatch(phone)) {
+                              return 'El teléfono debe tener exactamente 10 dígitos';
+                            }
+
+                            return null;
+                          },
                         ),
 
                         if (!editing) ...[
@@ -572,51 +584,43 @@ class _AdminUsersPageState
   Future<void> _deleteUser(
       Map<String, dynamic> user,
       ) async {
-    final confirmed =
-    await showDialog<bool>(
+    final confirmed = await showDialog<bool>(
       context: context,
-      builder: (context) =>
-          AlertDialog(
-            title:
-            const Text(
-              'Eliminar usuario',
+      builder: (context) => AlertDialog(
+        title: const Text(
+          'Eliminar usuario permanentemente',
+        ),
+        content: Text(
+          '¿Deseas eliminar permanentemente la cuenta de ${user['nombre']}?\n\n'
+              'Esta acción eliminará el usuario y la información relacionada que corresponda. '
+              'No podrá recuperarse desde el panel administrativo.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(
+              context,
+              false,
             ),
-            content: Text(
-              '¿Deseas eliminar la cuenta de ${user['nombre']}?\n\n'
-                  'La cuenta quedará inactiva y no podrá iniciar sesión.',
+            child: const Text(
+              'Cancelar',
             ),
-            actions: [
-              TextButton(
-                onPressed: () =>
-                    Navigator.pop(
-                      context,
-                      false,
-                    ),
-                child:
-                const Text(
-                  'Cancelar',
-                ),
-              ),
-              FilledButton(
-                style:
-                FilledButton.styleFrom(
-                  backgroundColor:
-                  const Color(
-                    0xFFB95050,
-                  ),
-                ),
-                onPressed: () =>
-                    Navigator.pop(
-                      context,
-                      true,
-                    ),
-                child:
-                const Text(
-                  'Eliminar',
-                ),
-              ),
-            ],
           ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: const Color(
+                0xFFB95050,
+              ),
+            ),
+            onPressed: () => Navigator.pop(
+              context,
+              true,
+            ),
+            child: const Text(
+              'Eliminar permanentemente',
+            ),
+          ),
+        ],
+      ),
     );
 
     if (confirmed != true) {
@@ -1246,14 +1250,12 @@ class _AdminUsersPageState
                           : 'Activar',
                     ),
                   ),
-                  const PopupMenuItem(
-                    value:
-                    'delete',
-                    child:
-                    Text(
-                      'Eliminar',
-                    ),
-                  ),
+                      const PopupMenuItem(
+                        value: 'delete',
+                        child: Text(
+                          'Eliminar permanentemente',
+                        ),
+                      ),
                 ],
               ),
             ],

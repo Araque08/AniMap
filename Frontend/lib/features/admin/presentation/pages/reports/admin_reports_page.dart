@@ -32,7 +32,13 @@ class _AdminReportsPageState extends State<AdminReportsPage> {
 
   bool _loading = true;
   String? _error;
+
+// Filtro por estado
   String? _estado;
+
+// Filtro por rango de fechas
+  DateTimeRange? _rangoFechas;
+
   int _generation = 0;
 
   @override
@@ -47,6 +53,46 @@ class _AdminReportsPageState extends State<AdminReportsPage> {
     _searchController.dispose();
     super.dispose();
   }
+
+
+  List<Map<String, dynamic>> _filtrarPorFechas(
+      List<Map<String, dynamic>> reportes,
+      ) {
+    if (_rangoFechas == null) {
+      return reportes;
+    }
+
+    final inicio = DateUtils.dateOnly(
+      _rangoFechas!.start,
+    );
+
+    final fin = DateUtils.dateOnly(
+      _rangoFechas!.end,
+    );
+
+    return reportes.where((reporte) {
+      final fechaTexto = reporte['creadoEn']?.toString();
+
+      if (fechaTexto == null || fechaTexto.isEmpty) {
+        return false;
+      }
+
+      final fecha = DateTime.tryParse(fechaTexto);
+
+      if (fecha == null) {
+        return false;
+      }
+
+      final fechaReporte = DateUtils.dateOnly(
+        fecha.toLocal(),
+      );
+
+      return !fechaReporte.isBefore(inicio) &&
+          !fechaReporte.isAfter(fin);
+    }).toList();
+  }
+
+
 
   Future<void> _loadReports() async {
     final generation = ++_generation;
@@ -65,7 +111,7 @@ class _AdminReportsPageState extends State<AdminReportsPage> {
       if (!mounted || generation != _generation) return;
 
       setState(() {
-        _reports = reports;
+        _reports = _filtrarPorFechas(reports);
         _loading = false;
       });
     } catch (error) {
@@ -77,6 +123,7 @@ class _AdminReportsPageState extends State<AdminReportsPage> {
       });
     }
   }
+
 
   String _value(dynamic value) {
     if (value == null || value.toString().trim().isEmpty) {
@@ -159,6 +206,180 @@ class _AdminReportsPageState extends State<AdminReportsPage> {
   }
 
 
+  Future<void> _confirmarEliminacionReporte(
+      BuildContext detalleContext,
+      int reportId,
+      ) async {
+    final motivoController = TextEditingController();
+    bool eliminando = false;
+
+    try {
+      final eliminado = await showDialog<bool>(
+        context: detalleContext,
+        barrierDismissible: false,
+        builder: (confirmContext) {
+          return StatefulBuilder(
+            builder: (context, actualizarDialogo) {
+              final motivo = motivoController.text.trim();
+              final motivoValido =
+                  motivo.length >= 10 && motivo.length <= 255;
+
+              Future<void> eliminar() async {
+                if (eliminando || !motivoValido) return;
+
+                actualizarDialogo(() {
+                  eliminando = true;
+                });
+
+                try {
+                  await _service.deleteReport(
+                    reportId: reportId,
+                    motivo: motivo,
+                  );
+
+                  if (!confirmContext.mounted) return;
+
+                  Navigator.pop(confirmContext, true);
+                } catch (error) {
+                  if (!confirmContext.mounted) return;
+
+                  actualizarDialogo(() {
+                    eliminando = false;
+                  });
+
+                  ScaffoldMessenger.of(
+                    confirmContext,
+                  ).showSnackBar(
+                    SnackBar(
+                      content: Text(error.toString()),
+                      backgroundColor: Colors.redAccent,
+                    ),
+                  );
+                }
+              }
+
+              return PopScope(
+                canPop: !eliminando,
+                child: AlertDialog(
+                  title: const Text(
+                    'Eliminar reporte',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  content: SingleChildScrollView(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment:
+                      CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '¿Deseas eliminar el reporte #$reportId?',
+                        ),
+                        const SizedBox(height: 12),
+                        const Text(
+                          'Esta acción eliminará el reporte '
+                              'de la base de datos y quedará '
+                              'registrada en la bitácora '
+                              'administrativa.',
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: Colors.redAccent,
+                          ),
+                        ),
+                        const SizedBox(height: 18),
+                        TextField(
+                          controller: motivoController,
+                          enabled: !eliminando,
+                          maxLines: 3,
+                          maxLength: 255,
+                          onChanged: (_) {
+                            actualizarDialogo(() {});
+                          },
+                          decoration: InputDecoration(
+                            labelText: 'Motivo de eliminación',
+                            hintText:
+                            'Explica por qué se eliminará...',
+                            border: const OutlineInputBorder(),
+                            helperText:
+                            'Mínimo 10 caracteres',
+                            helperMaxLines: 2,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  actions: [
+                    TextButton(
+                      onPressed: eliminando
+                          ? null
+                          : () => Navigator.pop(
+                        confirmContext,
+                        false,
+                      ),
+                      child: const Text('Cancelar'),
+                    ),
+                    FilledButton.icon(
+                      onPressed:
+                      eliminando || !motivoValido
+                          ? null
+                          : eliminar,
+                      style: FilledButton.styleFrom(
+                        backgroundColor: Colors.redAccent,
+                        foregroundColor: Colors.white,
+                      ),
+                      icon: eliminando
+                          ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      )
+                          : const Icon(Icons.delete_outline),
+                      label: Text(
+                        eliminando
+                            ? 'Eliminando...'
+                            : 'Eliminar reporte',
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
+          );
+        },
+      );
+
+      if (eliminado == true && mounted) {
+        // Cerrar el detalle del reporte.
+        if (detalleContext.mounted) {
+          Navigator.pop(detalleContext, false);
+        }
+
+        // Actualizar la lista administrativa.
+        await _loadReports();
+
+        if (!mounted) return;
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Reporte eliminado correctamente. '
+                  'La acción quedó registrada en la bitácora.',
+            ),
+            backgroundColor: green,
+          ),
+        );
+      }
+    } finally {
+      motivoController.dispose();
+    }
+  }
+
+
+
   // ========================================================
   // HU-076: VER DETALLE Y MODIFICAR ESTADOS
   // ========================================================
@@ -176,6 +397,10 @@ class _AdminReportsPageState extends State<AdminReportsPage> {
           report['mascotaEstado']?.toString().toUpperCase() ??
               'PERDIDA';
 
+      if (estadoMascota == 'ENCONTRADA') {
+        estadoMascota = 'ACTIVA';
+      }
+
       bool saving = false;
 
       final changed = await showDialog<bool>(
@@ -186,7 +411,7 @@ class _AdminReportsPageState extends State<AdminReportsPage> {
             builder: (context, setDialogState) {
               const combinations = <String, List<String>>{
                 'ACTIVO': ['PERDIDA'],
-                'FINALIZADO': ['ACTIVA', 'ENCONTRADA'],
+                'FINALIZADO': ['ACTIVA'],
               };
 
               final validCombination =
@@ -314,73 +539,93 @@ class _AdminReportsPageState extends State<AdminReportsPage> {
 
                           const SizedBox(height: 15),
 
-                          DropdownButtonFormField<String>(
-                            key: ValueKey('report-$estadoReporte'),
-                            initialValue: estadoReporte,
-                            decoration: _inputDecoration(
-                              'Estado del reporte',
-                              Icons.flag_outlined,
-                            ),
-                            items: const [
-                              DropdownMenuItem(
-                                value: 'ACTIVO',
-                                child: Text('Activo'),
-                              ),
-                              DropdownMenuItem(
-                                value: 'FINALIZADO',
-                                child: Text('Finalizado'),
-                              ),
-                            ],
-                            onChanged: saving
-                                ? null
-                                : (value) {
-                              if (value == null) return;
-
-                              setDialogState(() {
-                                estadoReporte = value;
-
-                                if (value == 'ACTIVO') {
-                                  estadoMascota = 'PERDIDA';
-                                } else if (estadoMascota == 'PERDIDA') {
-                                  estadoMascota = 'ENCONTRADA';
-                                }
-                              });
-                            },
+                        const Text(
+                          'Estado del reporte',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700,
+                            color: textPrimary,
                           ),
+                        ),
 
-                          const SizedBox(height: 15),
+                        const SizedBox(height: 8),
 
-                          DropdownButtonFormField<String>(
-                            key: ValueKey('pet-$estadoMascota'),
-                            initialValue: estadoMascota,
-                            decoration: _inputDecoration(
-                              'Estado de la mascota',
-                              Icons.pets_outlined,
-                            ),
-                            items: const [
-                              DropdownMenuItem(
-                                value: 'PERDIDA',
-                                child: Text('Perdida'),
-                              ),
-                              DropdownMenuItem(
-                                value: 'ACTIVA',
-                                child: Text('Activa'),
-                              ),
-                              DropdownMenuItem(
-                                value: 'ENCONTRADA',
-                                child: Text('Encontrada'),
-                              ),
-                            ],
-                            onChanged: saving
-                                ? null
-                                : (value) {
-                              if (value == null) return;
-
-                              setDialogState(() {
-                                estadoMascota = value;
-                              });
-                            },
+                        DropdownButtonFormField<String>(
+                          key: ValueKey('report-$estadoReporte'),
+                          isExpanded: true,
+                          initialValue: estadoReporte,
+                          decoration: _inputDecoration(
+                            'Selecciona el estado del reporte',
+                            Icons.flag_outlined,
                           ),
+                          items: const [
+                            DropdownMenuItem(
+                              value: 'ACTIVO',
+                              child: Text('Activo'),
+                            ),
+                            DropdownMenuItem(
+                              value: 'FINALIZADO',
+                              child: Text('Finalizado'),
+                            ),
+                          ],
+                          onChanged: saving
+                              ? null
+                              : (value) {
+                            if (value == null) return;
+
+                            setDialogState(() {
+                              estadoReporte = value;
+
+                              if (value == 'ACTIVO') {
+                                estadoMascota = 'PERDIDA';
+                              } else {
+                                estadoMascota = 'ACTIVA';
+                              }
+                            });
+                          },
+                        ),
+
+                        const SizedBox(height: 18),
+
+                        const Text(
+                          'Estado de la mascota',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700,
+                            color: textPrimary,
+                          ),
+                        ),
+
+                        const SizedBox(height: 8),
+
+                        DropdownButtonFormField<String>(
+                          key: ValueKey('pet-$estadoMascota'),
+                          isExpanded: true,
+                          initialValue: estadoMascota,
+                          decoration: _inputDecoration(
+                            'Selecciona el estado de la mascota',
+                            Icons.pets_outlined,
+                          ),
+                          items: const [
+                            DropdownMenuItem(
+                              value: 'PERDIDA',
+                              child: Text('Perdida'),
+                            ),
+                            DropdownMenuItem(
+                              value: 'ACTIVA',
+                              child: Text('Activa'),
+                            ),
+                          ],
+                          onChanged: saving
+                              ? null
+                              : (value) {
+                            if (value == null) return;
+
+                            setDialogState(() {
+                              estadoMascota = value;
+                            });
+                          },
+                        ),
 
                           if (!validCombination) ...[
                             const SizedBox(height: 12),
@@ -396,7 +641,24 @@ class _AdminReportsPageState extends State<AdminReportsPage> {
                       ),
                     ),
                   ),
+
                   actions: [
+                    TextButton.icon(
+                      onPressed: saving
+                          ? null
+                          : () {
+                        _confirmarEliminacionReporte(
+                          dialogContext,
+                          id,
+                        );
+                      },
+                      icon: const Icon(Icons.delete_outline),
+                      label: const Text('Eliminar reporte'),
+                      style: TextButton.styleFrom(
+                        foregroundColor: Colors.redAccent,
+                      ),
+                    ),
+
                     TextButton(
                       onPressed: saving
                           ? null
@@ -1444,13 +1706,6 @@ class _AdminReportsPageState extends State<AdminReportsPage> {
           'Gestión de reportes',
           style: TextStyle(fontWeight: FontWeight.w800),
         ),
-        actions: [
-          IconButton(
-            tooltip: 'Actualizar',
-            onPressed: _loadReports,
-            icon: const Icon(Icons.refresh_rounded),
-          ),
-        ],
       ),
       body: RefreshIndicator(
         color: green,
@@ -1511,8 +1766,78 @@ class _AdminReportsPageState extends State<AdminReportsPage> {
               },
             ),
 
+
+            const SizedBox(height: 15),
+
+// FILTRO POR RANGO DE FECHAS
+            OutlinedButton.icon(
+              onPressed: () async {
+                final ahora = DateTime.now();
+
+                final rangoSeleccionado = await showDateRangePicker(
+                  context: context,
+                  firstDate: DateTime(2020),
+                  lastDate: ahora,
+                  initialDateRange: _rangoFechas,
+                  helpText: 'Selecciona el rango de fechas',
+                  saveText: 'Aplicar',
+                );
+
+                if (rangoSeleccionado != null && mounted) {
+                  setState(() {
+                    _rangoFechas = rangoSeleccionado;
+                  });
+
+                  await _loadReports();
+                }
+              },
+              icon: const Icon(
+                Icons.date_range_outlined,
+                color: green,
+              ),
+              label: Text(
+                _rangoFechas == null
+                    ? 'Filtrar por rango de fechas'
+                    : '${_rangoFechas!.start.day}/'
+                    '${_rangoFechas!.start.month}/'
+                    '${_rangoFechas!.start.year} - '
+                    '${_rangoFechas!.end.day}/'
+                    '${_rangoFechas!.end.month}/'
+                    '${_rangoFechas!.end.year}',
+              ),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: green,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 15,
+                ),
+                side: const BorderSide(color: green),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+            ),
+
+            // QUITAR EL RANGO SELECCIONADO
+            if (_rangoFechas != null) ...[
+              const SizedBox(height: 5),
+              TextButton.icon(
+                onPressed: () async {
+                  setState(() {
+                    _rangoFechas = null;
+                  });
+
+                  await _loadReports();
+                },
+                icon: const Icon(Icons.filter_alt_off_outlined),
+                label: const Text('Limpiar filtro de fechas'),
+              ),
+            ],
+
             const SizedBox(height: 20),
+
             _duplicatesSection(),
+
             if (_loading)
               const Center(
                 child: Padding(

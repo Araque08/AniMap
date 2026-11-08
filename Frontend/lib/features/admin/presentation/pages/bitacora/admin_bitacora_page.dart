@@ -161,9 +161,12 @@ class _AdminBitacoraPageState extends State<AdminBitacoraPage> {
           _moduloSeleccionado == 'Todos' || r.modulo == _moduloSeleccionado;
       final coincideFecha =
           _fechaSeleccionada == null ||
-          (r.fechaHora.year == _fechaSeleccionada!.year &&
-              r.fechaHora.month == _fechaSeleccionada!.month &&
-              r.fechaHora.day == _fechaSeleccionada!.day);
+              (_horaColombia(r.fechaHora).year ==
+                  _fechaSeleccionada!.year &&
+                  _horaColombia(r.fechaHora).month ==
+                      _fechaSeleccionada!.month &&
+                  _horaColombia(r.fechaHora).day ==
+                      _fechaSeleccionada!.day);
       final contenido =
           '${r.administrador} ${r.fkAdmin} ${r.accion} ${r.modulo} '
                   '${r.entidadAfectada} ${r.idEntidadAfectada ?? ''} ${r.motivo ?? ''} ${r.detalle ?? ''}'
@@ -175,11 +178,34 @@ class _AdminBitacoraPageState extends State<AdminBitacoraPage> {
     }).toList();
   }
 
-  String _fecha(DateTime fecha) =>
-      '${fecha.day.toString().padLeft(2, '0')}/${fecha.month.toString().padLeft(2, '0')}/${fecha.year}';
+  // Convierte una fecha UTC al horario de Colombia (UTC-5).
+  // No depende de la zona horaria configurada en el celular.
+  DateTime _horaColombia(DateTime fecha) {
+    return fecha.toUtc().subtract(
+      const Duration(hours: 5),
+    );
+  }
 
-  String _hora(DateTime fecha) =>
-      '${fecha.hour.toString().padLeft(2, '0')}:${fecha.minute.toString().padLeft(2, '0')}';
+
+
+  String _fecha(DateTime fecha) {
+    final colombia = _horaColombia(fecha);
+
+    final dia = colombia.day.toString().padLeft(2, '0');
+    final mes = colombia.month.toString().padLeft(2, '0');
+
+    return '$dia/$mes/${colombia.year}';
+  }
+
+  String _hora(DateTime fecha) {
+    final colombia = _horaColombia(fecha);
+
+    final hora = colombia.hour.toString().padLeft(2, '0');
+    final minuto = colombia.minute.toString().padLeft(2, '0');
+
+    return '$hora:$minuto';
+  }
+
 
   Future<void> _elegirFecha() async {
     final fecha = await showDatePicker(

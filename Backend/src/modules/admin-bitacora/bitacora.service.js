@@ -86,9 +86,14 @@ async function listarBitacora({
         b.accion,
         b.entidad_afectada,
         b.id_entidad_afectada,
+        
         b.motivo,
         b.detalle,
-        b.fecha_hora
+        to_char(
+          b.fecha_hora,
+          'YYYY-MM-DD"T"HH24:MI:SS.MS'
+        ) || 'Z' AS fecha_hora
+
 
       FROM bitacora_administrativa b
 

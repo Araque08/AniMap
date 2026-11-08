@@ -233,6 +233,74 @@ class AdminReportsService {
     }
   }
 
+
+  // ========================================================
+  // ELIMINAR REPORTE - ADMINISTRADOR
+  // ========================================================
+
+  Future<Map<String, dynamic>> deleteReport({
+    required int reportId,
+    required String motivo,
+  }) async {
+    try {
+      // Validar el identificador.
+      if (reportId <= 0) {
+        throw const AdminReportsException(
+          'El identificador del reporte no es válido.',
+        );
+      }
+
+      // El motivo es obligatorio.
+      final reason = motivo.trim();
+
+      if (reason.length < 10 || reason.length > 255) {
+        throw const AdminReportsException(
+          'El motivo debe tener entre 10 y 255 caracteres.',
+        );
+      }
+
+      // Enviar la solicitud al backend.
+      final response = await client.delete(
+        Uri.parse('$baseUrl/$reportId'),
+        headers: const {
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode({
+          'motivo': reason,
+        }),
+      );
+
+      // Validar la respuesta del servidor.
+      final data = _decode(response);
+
+      if (data['data'] is! Map) {
+        throw const AdminReportsException(
+          'El servidor no confirmó la eliminación.',
+        );
+      }
+
+      return Map<String, dynamic>.from(
+        data['data'] as Map,
+      );
+
+    } on AdminReportsException {
+      rethrow;
+    } on SessionInvalidException {
+      throw const AdminReportsException(
+        'Tu sesión expiró. Inicia sesión nuevamente.',
+      );
+    } on SessionConnectionException {
+      throw const AdminReportsException(
+        'No hay conexión con el servidor.',
+      );
+    } catch (_) {
+      throw const AdminReportsException(
+        'No fue posible eliminar el reporte.',
+      );
+    }
+  }
+
+
   // ========================================================
   // CONSULTAR POSIBLES REPORTES DUPLICADOS
   // ========================================================
