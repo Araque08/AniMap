@@ -43,3 +43,18 @@ reconciliación; revisar estos casos antes de que se acumulen, sin borrarlas por
 No existe una transacción distribuida entre PostgreSQL y MongoDB. El journal permite
 recuperación tras reinicio, pero una caída de MongoDB requiere esperar disponibilidad.
 La pérdida del propio almacenamiento MongoDB requiere respaldos del proveedor.
+
+## Lote de edición de fotografías
+
+El journal anterior corresponde a la eliminación de la mascota, no a
+`PUT /api/pets/:id/images/batch`. El lote conserva en memoria las fotos que
+el usuario retira, antes de borrarlas, e intenta restaurarlas si falla la
+operación. Solo permite retirar una referencia ausente mediante una selección
+explícita y valida al menos 15 fotos reales antes de guardar.
+
+Si MongoDB tampoco permite completar la compensación, se responde con error y
+se registra `recoveryFailed`. Este lote no tiene un respaldo persistente propio:
+no garantiza recuperación automática ante una caída del proceso, un COMMIT de
+resultado incierto o una restauración fallida. Esos casos requieren revisar ambas
+bases y los respaldos disponibles; el comando de recuperación anterior no repara
+lotes de edición. No ejecutar reparaciones sobre datos reales sin autorización.

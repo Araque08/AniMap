@@ -8,9 +8,10 @@ import '../../auth/data/session_manager.dart';
 import 'pet_image_selection.dart';
 
 class PetPhotoReadException implements Exception {
-  const PetPhotoReadException(this.message);
+  const PetPhotoReadException(this.message, {this.unavailable = false});
 
   final String message;
+  final bool unavailable;
 
   @override
   String toString() => message;
@@ -328,7 +329,10 @@ class MascotasService {
         _ =>
           'No pudimos descargar una foto existente (HTTP ${response.statusCode}). Inténtalo nuevamente.',
       };
-      throw PetPhotoReadException(message);
+      throw PetPhotoReadException(
+        message,
+        unavailable: response.statusCode == 404,
+      );
     }
     final contentType = (response.headers['content-type'] ?? '')
         .split(';')
@@ -349,6 +353,7 @@ class MascotasService {
     )) {
       throw const PetPhotoReadException(
         'El servidor no devolvió una foto JPG, PNG o WEBP válida. Recarga la galería e inténtalo nuevamente.',
+        unavailable: true,
       );
     }
     return bytes;
