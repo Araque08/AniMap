@@ -1,0 +1,11 @@
+**
+!Dockerfile
+!package.json
+!package-lock.json
+!src/
+!src/**
+**/.env*
+**/*.pem
+**/*.key
+**/*credentials*.json
+**/*service-account*.json

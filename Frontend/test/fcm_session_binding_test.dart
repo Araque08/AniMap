@@ -126,6 +126,15 @@ void main() {
     },
   );
 
+  test('expirar la sesión de API no retira el consentimiento push', () async {
+    await login();
+    binding.onRegistration('fixture-fid-independent');
+    await binding.pending;
+    await session.clearLocalSession();
+    await binding.pending;
+    expect(requests.map((r) => r.method), ['PUT']);
+  });
+
   test(
     'cambio de usuario autentica cada operacion con su JWT capturado',
     () async {

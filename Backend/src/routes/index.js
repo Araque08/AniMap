@@ -34,6 +34,8 @@ const bitacoraRoutes = require('../modules/admin-bitacora/bitacora.routes');
   Por eso, cualquier ruta definida aquí realmente queda disponible como /api/...
 */
 const router = express.Router();
+router.post('/internal/notifications/process',
+  require('../modules/notifications/notifications.worker').createWorkerHandler());
 
 /*
   Ruta de prueba para verificar que la API está funcionando.
@@ -96,6 +98,7 @@ router.use('/geocoding', geocodingRoutes);
 router.use('/notification-preferences', notificationPreferencesRoutes);
 router.use('/faqs', faqRoutes);
 router.use('/users', usersRoutes);
+router.use('/recognition', require('../modules/recognition/recognition.routes').createRecognitionRouter());
 
 /*
   Exporto el router principal para que app.js lo pueda montar en /api.

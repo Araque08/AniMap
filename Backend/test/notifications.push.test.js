@@ -17,6 +17,15 @@ function fixture(overrides = {}) {
 
 const testScope = { testMode: true, testOwnerId: '28', testReportId: '8' };
 
+test('wake inline procesa el avistamiento solicitado antes de resolver', async () => {
+  const h = harness();
+  await h.service.recordIntent({}, 41);
+  const result = await h.service.wake(41);
+  assert.deepEqual(result, { enabled: true, completed: true });
+  assert.equal(h.calls.length, 1);
+  assert.equal(h.notifications[0].state, 'ACEPTADA_FCM');
+});
+
 test('modo QA: solo el par destinatario/reporte autorizado registra y envia', async () => {
   const h = harness(testScope);
   await h.service.recordIntent({}, 41); await h.service.drain();
@@ -161,7 +170,9 @@ function harness({ event = fixture(), targets, send, enabled = true, ...testConf
     async pendingNotifications(limit, scope) {
       return notifications.filter(n => {
         const children = deliveries.filter(d => d.notificationId === n.id);
-        return (!scope || (n.ownerId === scope.ownerId && n.reportId === scope.reportId))
+        return (!scope || ((scope.ownerId == null || n.ownerId === scope.ownerId)
+          && (scope.reportId == null || n.reportId === scope.reportId)))
+          && (scope?.sightingId == null || n.sightingId === scope.sightingId)
           && ((!children.length && ['PENDIENTE', 'PARCIAL'].includes(n.state))
           || children.some(d => ['PENDIENTE', 'REINTENTO'].includes(d.state) && d.nextAt <= now));
       });
@@ -233,12 +244,12 @@ test('vinculado: persiste un evento, dirige FID al dueño y registra aceptación
   assert.equal(h.calls.length, 1);
   assert.equal(h.calls[0].fid, 'fixture-fid-A');
   assert.deepEqual(h.calls[0].data, { type: 'AVISTAMIENTO_VINCULADO',
-    notificationId: '1', sightingId: '41', reportId: '8' });
+    notificationId: '1', sightingId: '41', reportId: '8', ownerId: '28' });
   assert.equal(h.deliveries[0].state, 'ACEPTADA_FCM');
   assert.ok(h.deliveries[0].acceptedAt);
   assert.equal(h.deliveries[0].receivedAt, undefined);
   assert.ok(!JSON.stringify(h.deliveries).includes('fixture-fid-A'));
-  assert.ok(!JSON.stringify(h.calls[0]).includes('ownerId'));
+  assert.ok(!JSON.stringify(h.calls[0]).includes('authorId'));
 });
 
 test('independiente no genera intención', async () => {

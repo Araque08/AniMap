@@ -1,5 +1,6 @@
 const db = require('../../config/postgres_db');
 const { hashText } = require('../../utils/hash');
+const { revokeOwnerPush } = require('../auth/push-registration.repository');
 
 const {
   eliminarImagenesUsuarioMongo,
@@ -941,6 +942,9 @@ function createUsersService(
         );
       }
 
+      if (newStatus === 'SUSPENDIDO' || newStatus === 'ELIMINADO') {
+        await revokeOwnerPush(client, userId);
+      }
       let auditAction;
 
     if (newStatus === 'ACTIVO') {
@@ -1003,6 +1007,7 @@ function createUsersService(
       409,
       'CANNOT_DELETE_SELF'
     );
+
   }
 
   const client = await pool.connect();

@@ -51,6 +51,7 @@ class SessionManager extends ChangeNotifier {
   Future<String>? _refreshInFlight;
   Future<void> _tokenStorageTail = Future<void>.value();
   int _sessionEpoch = 0;
+  int _logoutGeneration = 0;
   int? _authenticatedEpoch;
   VoidCallback? onSessionInvalid;
   void Function(String role)? onRoleChanged;
@@ -67,6 +68,7 @@ class SessionManager extends ChangeNotifier {
   String? get role => _role;
   SessionStatus get status => _status;
   bool get isAuthenticated => _status == SessionStatus.authenticated;
+  int get logoutGeneration => _logoutGeneration;
   int? get authenticatedSessionGeneration =>
       isAuthenticated && _authenticatedEpoch == _sessionEpoch
       ? _sessionEpoch
@@ -109,9 +111,15 @@ class SessionManager extends ChangeNotifier {
   Future<void> bootstrap() async {
     final epoch = _sessionEpoch;
     _setStatus(SessionStatus.checking);
+    if (kDebugMode) debugPrint('Session bootstrap started');
     try {
       final refreshToken = await storage.read(refreshTokenKey);
       _requireEpoch(epoch);
+      if (kDebugMode) {
+        debugPrint(
+          'Session bootstrap stored refresh token: ${refreshToken != null && refreshToken.isNotEmpty}',
+        );
+      }
       if (refreshToken == null || refreshToken.isEmpty) {
         _accessToken = null;
         _role = null;
@@ -119,11 +127,37 @@ class SessionManager extends ChangeNotifier {
         return;
       }
       await _refresh(refreshToken, epoch, notifyInvalid: false);
-    } on SessionInvalidException {
-      if (_sessionEpoch == epoch) await clearLocalSession();
-    } on SessionConnectionException {
+    } on SessionInvalidException catch (error) {
+      if (kDebugMode) {
+        final responseCode = error.code;
+        final safeCode =
+            responseCode != null &&
+                RegExp(r'^[A-Z][A-Z0-9_]{0,63}$').hasMatch(responseCode)
+            ? responseCode
+            : 'UNSPECIFIED';
+        debugPrint('Session bootstrap invalid: code=$safeCode');
+      }
+      if (_sessionEpoch == epoch) {
+        if (kDebugMode) {
+          // Keep the user's stored refresh token intact while diagnosing QA.
+          _setStatus(SessionStatus.connectionError);
+        } else {
+          await clearLocalSession();
+        }
+      }
+    } on SessionConnectionException catch (error) {
+      if (kDebugMode) {
+        debugPrint(
+          'Session bootstrap connection failure: ${error.runtimeType}',
+        );
+      }
       if (_sessionEpoch == epoch) _setStatus(SessionStatus.connectionError);
-    } catch (_) {
+    } catch (error) {
+      if (kDebugMode) {
+        debugPrint(
+          'Session bootstrap unexpected failure: ${error.runtimeType}',
+        );
+      }
       if (_sessionEpoch == epoch) _setStatus(SessionStatus.connectionError);
     }
   }
@@ -157,6 +191,9 @@ class SessionManager extends ChangeNotifier {
   }) async {
     http.Response response;
     try {
+      if (kDebugMode) {
+        debugPrint('Session refresh request -> $authBaseUrl/refresh');
+      }
       response = await _client
           .post(
             Uri.parse('$authBaseUrl/refresh'),
@@ -164,7 +201,10 @@ class SessionManager extends ChangeNotifier {
             body: jsonEncode({'refreshToken': refreshToken}),
           )
           .timeout(const Duration(seconds: 15));
-    } catch (_) {
+    } catch (error) {
+      if (kDebugMode) {
+        debugPrint('Session refresh transport failure: ${error.runtimeType}');
+      }
       _requireEpoch(epoch);
       throw const SessionConnectionException(
         'No fue posible conectar con el servidor. Intenta nuevamente.',
@@ -173,6 +213,17 @@ class SessionManager extends ChangeNotifier {
 
     _requireEpoch(epoch);
     final body = _decode(response);
+    final responseCode = body['code']?.toString();
+    if (kDebugMode) {
+      final safeCode =
+          responseCode != null &&
+              RegExp(r'^[A-Z][A-Z0-9_]{0,63}$').hasMatch(responseCode)
+          ? responseCode
+          : 'UNSPECIFIED';
+      debugPrint(
+        'Session refresh response: HTTP ${response.statusCode}; code=$safeCode',
+      );
+    }
     if (response.statusCode == 200 && body['ok'] == true) {
       final accessToken = body['data']?['accessToken']?.toString();
       final nextRefreshToken = body['data']?['refreshToken']?.toString();
@@ -209,7 +260,7 @@ class SessionManager extends ChangeNotifier {
       return accessToken;
     }
 
-    final code = body['code']?.toString();
+    final code = responseCode;
     if ((response.statusCode == 401 || response.statusCode == 403) &&
         _terminalCodes.contains(code)) {
       await _invalidateLocalSession(notify: notifyInvalid);
@@ -225,6 +276,7 @@ class SessionManager extends ChangeNotifier {
   }
 
   Future<LogoutResult> logout() async {
+    _logoutGeneration++;
     final epoch = ++_sessionEpoch;
     _refreshInFlight = null;
     notifyListeners();

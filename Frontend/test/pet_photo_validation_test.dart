@@ -552,6 +552,152 @@ void main() {
     },
   );
 
+  testWidgets(
+    '404 permite preparar reemplazo, pero exige retirar la referencia explícitamente',
+    (tester) async {
+      var saves = 0;
+      respond = (request) async => request.url.path == photoUrl(14)
+          ? http.Response('', 404)
+          : http.Response.bytes(
+              png(int.parse(request.url.path.split('/').last, radix: 16)),
+              200,
+              headers: {'content-type': 'image/png'},
+            );
+      await tester.pumpWidget(
+        MaterialApp(
+          home: PetPhotosManagementPage(
+            mascotaId: 1,
+            photosLoader: ({required mascotaId}) async => photos(),
+            photosPicker: () async => [picked(99)],
+            batchSaver:
+                ({
+                  required mascotaId,
+                  required originalImageIds,
+                  required retainedImageIds,
+                  required newImages,
+                  principalExistingId,
+                  principalNewIndex,
+                }) async {
+                  saves++;
+                  expect(
+                    originalImageIds.toSet(),
+                    photos().map((p) => p['id']).toSet(),
+                  );
+                  expect(retainedImageIds, hasLength(14));
+                  expect(retainedImageIds, isNot(contains(imageId(14))));
+                  expect(newImages, hasLength(1));
+                  expect(principalExistingId, imageId(0));
+                },
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('add-managed-photos')));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('15 fotos válidas'), findsOneWidget);
+      await tester.pump(const Duration(seconds: 5));
+      await tester.pumpAndSettle();
+      await tester.scrollUntilVisible(
+        find.byKey(ValueKey('delete-photo-${imageId(14)}')),
+        250,
+        scrollable: find.descendant(
+          of: find.byKey(const ValueKey('pet-photos-grid')),
+          matching: find.byType(Scrollable),
+        ),
+      );
+      expect(find.text('No disponible'), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('save-photo-changes')));
+      await tester.pumpAndSettle();
+      expect(saves, 0);
+      await tester.pump(const Duration(seconds: 5));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(ValueKey('delete-photo-${imageId(14)}')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('save-photo-changes')));
+      await tester.pumpAndSettle();
+      expect(saves, 1);
+    },
+  );
+
+  testWidgets(
+    'recargar reintenta una referencia 404 sin descartarla ni contar menos de 15 válidas',
+    (tester) async {
+      var missing = true;
+      var loads = 0;
+      var saves = 0;
+      respond = (request) async => missing && request.url.path == photoUrl(14)
+          ? http.Response('', 404)
+          : http.Response.bytes(
+              png(int.parse(request.url.path.split('/').last, radix: 16)),
+              200,
+              headers: {'content-type': 'image/png'},
+            );
+      await tester.pumpWidget(
+        MaterialApp(
+          home: PetPhotosManagementPage(
+            mascotaId: 1,
+            photosLoader: ({required mascotaId}) async {
+              loads++;
+              return photos();
+            },
+            photosPicker: () async => [picked(99)],
+            batchSaver:
+                ({
+                  required mascotaId,
+                  required originalImageIds,
+                  required retainedImageIds,
+                  required newImages,
+                  principalExistingId,
+                  principalNewIndex,
+                }) async {
+                  saves++;
+                },
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('add-managed-photos')));
+      await tester.pumpAndSettle();
+      await tester.pump(const Duration(seconds: 5));
+      await tester.pumpAndSettle();
+      await tester.scrollUntilVisible(
+        find.byKey(const ValueKey('delete-photo-new-foto-99.png')),
+        250,
+        scrollable: find.descendant(
+          of: find.byKey(const ValueKey('pet-photos-grid')),
+          matching: find.byType(Scrollable),
+        ),
+      );
+      await tester.tap(
+        find.byKey(const ValueKey('delete-photo-new-foto-99.png')),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('save-photo-changes')));
+      await tester.pumpAndSettle();
+      expect(saves, 0);
+      expect(find.textContaining('14 fotos válidas'), findsOneWidget);
+      await tester.tap(find.byTooltip('Recargar galería'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Cancelar'));
+      await tester.pumpAndSettle();
+      expect(loads, 1);
+      missing = false;
+      await tester.tap(find.byTooltip('Recargar galería'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Salir'));
+      await tester.pumpAndSettle();
+      expect(loads, 2);
+      await tester.tap(find.byKey(const ValueKey('add-managed-photos')));
+      await tester.pumpAndSettle();
+      expect(
+        find.textContaining('16 fotos · mínimo requerido: 15'),
+        findsOneWidget,
+      );
+      expect(find.text('No disponible'), findsNothing);
+      expect(saves, 0);
+    },
+  );
+
   testWidgets('error específico cabe a 320 px sin excepciones', (tester) async {
     tester.view.physicalSize = const Size(320, 700);
     tester.view.devicePixelRatio = 1;

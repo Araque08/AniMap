@@ -164,6 +164,22 @@ async function findActivePetImages({ mascotaId, usuarioId, imageIds }) {
   }).toArray();
 }
 
+// Missing documents can only be omitted by an explicit batch selection.
+async function preparePetImageRemoval({ mascotaId, usuarioId, imageIds }) {
+  if (!imageIds.length) return [];
+  const collection = await getCollection();
+  const documents = await collection.find({
+    _id: { $in: imageIds.map(id => new ObjectId(id)) },
+  }).toArray();
+  if (documents.some(document => document.mascotaIdPg !== Number(mascotaId) ||
+      document.usuarioIdPg !== Number(usuarioId) || document.estado !== 'ACTIVA')) {
+    const error = new Error('No se pudo validar el conjunto actual de fotos');
+    error.code = 'PET_PHOTO_CONFLICT';
+    throw error;
+  }
+  return documents;
+}
+
 async function guardarImagenesMascota({
   mascotaIdPg,
   usuarioIdPg,
@@ -265,7 +281,7 @@ async function establecerPrincipalMongo({ mascotaId, usuarioId, imageId }) {
   return anteriores.map((item) => item._id);
 }
 
-async function eliminarImagenMascotaMongo({ mascotaId, usuarioId, imageId }) {
+async function eliminarImagenMascotaMongo({ mascotaId, usuarioId, imageId, allowMissing = false }) {
   const collection = await getCollection();
   const objectId = imageId instanceof ObjectId ? imageId : new ObjectId(imageId);
   const filter = {
@@ -275,14 +291,33 @@ async function eliminarImagenMascotaMongo({ mascotaId, usuarioId, imageId }) {
     estado: 'ACTIVA',
   };
   const documento = await collection.findOne(filter);
-  if (!documento) throw new Error('La imagen no existe o no pertenece a la mascota');
+  if (!documento) {
+    if (allowMissing && !await collection.findOne({ _id: objectId }, { projection: { _id: 1 } })) return null;
+    throw new Error('La imagen no existe o no pertenece a la mascota');
+  }
   const result = await collection.deleteOne(filter);
   if (result.deletedCount !== 1) throw new Error('No fue posible eliminar la imagen');
   return documento;
 }
 
-async function restaurarImagenMascotaMongo(documento) {
+async function restaurarImagenMascotaMongo(documento, { onlyIfMissing = false } = {}) {
   const collection = await getCollection();
+  if (onlyIfMissing) {
+    await collection.updateOne({ _id: documento._id,
+      mascotaIdPg: documento.mascotaIdPg, usuarioIdPg: documento.usuarioIdPg,
+      estado: documento.estado,
+    }, { $setOnInsert: documento }, { upsert: true });
+    const restored = await collection.findOne({ _id: documento._id });
+    // Principal flags and updatedAt are restored separately by the batch route.
+    const contentHash = document => {
+      const { esPrincipal, updatedAt, ...content } = document;
+      return documentHash(content);
+    };
+    if (!restored || contentHash(restored) !== contentHash(documento)) {
+      throw recoveryError('PET_PHOTO_RESTORE_INCOMPLETE');
+    }
+    return;
+  }
   await collection.replaceOne({ _id: documento._id }, documento, { upsert: true });
 }
 
@@ -393,6 +428,7 @@ module.exports = {
   eliminarImagenesMascotaMongoPorIds,
   establecerPrincipalMongo,
   findActivePetImages,
+  preparePetImageRemoval,
   guardarImagenesMascota,
   eliminarImagenesMascotaMongo,
   restaurarImagenMascotaMongo,

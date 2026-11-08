@@ -10,12 +10,18 @@ import 'features/auth/data/session_manager.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   ApiConfig.initialize();
-  final binding = FcmSessionBinding(sessionManager: SessionManager.instance);
-  binding.start();
-  final firebase = FirebaseSetup(onRegistration: binding.onRegistration);
+  late final FirebaseSetup firebase;
+  final binding = FcmSessionBinding(
+    sessionManager: SessionManager.instance,
+    onAuthenticated: () => firebase.registerMessaging(),
+    onLogout: () => firebase.unregisterMessaging(),
+  );
+  firebase = FirebaseSetup(onRegistration: binding.onRegistration);
   await firebase.initialize();
-  runApp(const AniMapApp());
+  binding.start();
+  runApp(AniMapApp(firebase: firebase));
   WidgetsBinding.instance.addPostFrameCallback((_) {
+    unawaited(firebase.startMessageHandling());
     unawaited(firebase.registerMessaging());
   });
 }

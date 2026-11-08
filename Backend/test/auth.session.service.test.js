@@ -24,6 +24,7 @@ function createHarness(overrides = {}) {
       ...overrides,
     },
     updatedSessionIds: [],
+    revokedPushSessions: [],
     roles: ['USUARIO'],
   };
 
@@ -51,6 +52,10 @@ function createHarness(overrides = {}) {
       if (normalized.includes('SET vigente = FALSE')) {
         state.session.vigente = false;
         state.updatedSessionIds.push(params[0]);
+        return { rowCount: 1, rows: [] };
+      }
+      if (normalized.startsWith('UPDATE device_push_registration')) {
+        state.revokedPushSessions.push(params.slice(0, 2));
         return { rowCount: 1, rows: [] };
       }
       throw new Error(`Consulta inesperada en prueba: ${normalized.slice(0, 80)}`);
@@ -156,6 +161,7 @@ test('logout revoca solo la sesión identificada por el refresh token', async ()
   assert.deepEqual(result, { revoked: true });
   assert.equal(state.session.vigente, false);
   assert.deepEqual(state.updatedSessionIds, [41]);
+  assert.deepEqual(state.revokedPushSessions, [[7, 41]]);
 });
 
 test('logout acepta access vencido porque no depende del access token', async () => {
