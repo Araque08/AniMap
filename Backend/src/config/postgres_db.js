@@ -8,10 +8,14 @@ const pool = new Pool({
   user: env.DB_USER,
   password: env.DB_PASSWORD,
   ssl: env.DB_SSL ? { rejectUnauthorized: false } : false,
+  max: env.DB_POOL_MAX,
+  connectionTimeoutMillis: 5000,
+  idleTimeoutMillis: 30000,
+  query_timeout: 15000,
 });
 
-pool.on('error', (error) => {
-  console.error('PostgreSQL pool error:', error);
+pool.on('error', () => {
+  console.error('PostgreSQL: conexión del pool no disponible.');
 });
 
 module.exports = {

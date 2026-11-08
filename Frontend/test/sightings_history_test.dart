@@ -67,11 +67,13 @@ Future<void> pumpHistory(
   WidgetTester tester, {
   required Future<Map<String, dynamic>> Function(int, String) loader,
   SightingsHistoryMapBuilder? mapBuilder,
+  int? initialSightingId,
 }) async {
   await tester.pumpWidget(
     MaterialApp(
       home: SightingsHistoryPage(
         reportId: 51,
+        initialSightingId: initialSightingId,
         loader: loader,
         mapBuilder: mapBuilder ?? fakeMap,
       ),
@@ -162,6 +164,26 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byType(SightingDetailPage), findsOneWidget);
     expect(find.text('Avistamiento exacto 99'), findsOneWidget);
+  });
+
+  testWidgets('notification destination selects and opens exact sighting', (
+    tester,
+  ) async {
+    await pumpHistory(
+      tester,
+      initialSightingId: 99,
+      loader: (_, _) async => history(
+        sightings: [
+          sighting(id: 98, description: 'Otro avistamiento'),
+          sighting(id: 99, description: 'Destino de notificación'),
+        ],
+      ),
+    );
+    expect(find.byKey(const ValueKey('selected-sighting-99')), findsOneWidget);
+    await tester.tap(find.text('Destino de notificación'));
+    await tester.pumpAndSettle();
+    expect(find.byType(SightingDetailPage), findsOneWidget);
+    expect(find.text('Destino de notificación'), findsOneWidget);
   });
 
   testWidgets('25 alternar a Mapa conserva una sola pantalla', (tester) async {

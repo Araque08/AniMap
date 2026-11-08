@@ -34,6 +34,8 @@ const bitacoraRoutes = require('../modules/admin-bitacora/bitacora.routes');
   Por eso, cualquier ruta definida aquí realmente queda disponible como /api/...
 */
 const router = express.Router();
+router.post('/internal/notifications/process',
+  require('../modules/notifications/notifications.worker').createWorkerHandler());
 
 /*
   Ruta de prueba para verificar que la API está funcionando.

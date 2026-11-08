@@ -19,6 +19,15 @@ class _Messaging extends Fake implements FirebaseMessaging {
   int registerCalls = 0;
   bool listeningBeforeRegister = false;
   bool failRegistration = false;
+  int unregisterCalls = 0;
+  @override
+  Future<void> unregister() async {
+    unregisterCalls++;
+  }
+
+  @override
+  Future<NotificationSettings> getNotificationSettings() async =>
+      _Settings(permission);
 
   @override
   Stream<String> get onRegistered => registrations.stream;
@@ -121,6 +130,61 @@ void main() {
     expect(messaging.registrations.hasListener, isFalse);
     expect(logs, contains('FCM Android: notification permission not granted.'));
   });
+
+  test(
+    'mensajes abiertos, en primer plano e inicial se encaminan sin registrar datos',
+    () async {
+      final foreground = StreamController<RemoteMessage>.broadcast();
+      final opened = StreamController<RemoteMessage>.broadcast();
+      final seenForeground = <RemoteMessage>[], seenOpened = <RemoteMessage>[];
+      final a = setup.foregroundMessages.listen(seenForeground.add);
+      final b = setup.openedMessages.listen(seenOpened.add);
+      const message = RemoteMessage(data: {'reportId': '8'});
+      await setup.initialize();
+      await setup.startMessageHandling(
+        foreground: foreground.stream,
+        opened: opened.stream,
+        initialMessage: () async => message,
+      );
+      foreground.add(message);
+      opened.add(message);
+      await Future<void>.delayed(Duration.zero);
+      expect(seenForeground, [message]);
+      expect(seenOpened, [message, message]);
+      expect(await setup.notificationsAllowed(), isTrue);
+      messaging.permission = AuthorizationStatus.denied;
+      expect(await setup.notificationsAllowed(), isFalse);
+      await a.cancel();
+      await b.cancel();
+      await foreground.close();
+      await opened.close();
+    },
+  );
+
+  test(
+    'permiso concedido después de denegarlo permite registrar al volver',
+    () async {
+      await setup.initialize();
+      messaging.permission = AuthorizationStatus.denied;
+      await setup.registerMessaging();
+      messaging.permission = AuthorizationStatus.authorized;
+      await setup.registerMessaging();
+      expect(messaging.registerCalls, 1);
+    },
+  );
+
+  test(
+    'logout retira registro SDK y un login posterior puede registrarlo de nuevo',
+    () async {
+      await setup.initialize();
+      await setup.registerMessaging();
+      await setup.unregisterMessaging();
+      expect(messaging.unregisterCalls, 1);
+      expect(messaging.registrations.hasListener, isFalse);
+      await setup.registerMessaging();
+      expect(messaging.registerCalls, 2);
+    },
+  );
 
   test(
     'entrega el identificador inicial y sus cambios sin publicarlos en logs',

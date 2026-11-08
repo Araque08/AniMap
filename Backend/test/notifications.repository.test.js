@@ -9,7 +9,7 @@ function setup(rows = []) {
 }
 
 test('modo QA: consultas de cola y ambas ramas de recuperacion exigen usuario y reporte', async () => {
-  const h = setup(); const scope = { ownerId: 28, reportId: 8 };
+  const h = setup(); const scope = { ownerId: 28, reportId: 8, sightingId: 41 };
   await h.repo.recoverAbandoned(scope); await h.repo.pendingNotifications(25, scope);
   await h.repo.claimDelivery(9, scope);
   const recovery = h.calls[0], pending = h.calls[1];
@@ -19,19 +19,21 @@ test('modo QA: consultas de cola y ambas ramas de recuperacion exigen usuario y 
   for (const sql of branches) {
     assert.match(sql, /n.fk_usuario = \$1/); assert.match(sql, /n.fk_reporte = \$2/);
   }
-  assert.deepEqual(pending.params, [25, 28, 8]);
+  assert.deepEqual(pending.params, [25, 28, 8, 41]);
   assert.match(pending.sql, /n.fk_usuario = \$2/); assert.match(pending.sql, /n.fk_reporte = \$3/);
+  assert.match(pending.sql, /n.fk_avistamiento = \$4/);
   assert.match(pending.sql, /n.fk_reporte AS "reportId"/);
   assert.deepEqual(h.calls[2].params, [9, 28, 8]);
   assert.match(h.calls[2].sql, /n.fk_usuario = \$2 AND n.fk_reporte = \$3/);
 });
 
-test('dispositivos: SQL limita dueño, sesiones vigentes/no vencidas y cuentas disponibles', async () => {
+test('dispositivos: registro push activo sobrevive al vencimiento de API y limita dueño/cuenta', async () => {
   const h = setup(); await h.repo.listTargets(28);
   const { sql, params } = h.calls[0];
   assert.deepEqual(params, [28]);
-  assert.match(sql, /ds.fk_usuario = \$1/); assert.match(sql, /ds.vigente = TRUE/);
-  assert.match(sql, /ds.expira_en > LOCALTIMESTAMP/);
+  assert.match(sql, /ds.fk_usuario = \$1/); assert.match(sql, /ds.activo = TRUE/);
+  assert.match(sql, /FROM device_push_registration ds/);
+  assert.doesNotMatch(sql, /expira_en|vigente/);
   assert.match(sql, /fcm_registration_id IS NOT NULL/);
   assert.match(sql, /btrim\(ds.fcm_registration_id\) <> ''/);
   assert.match(sql, /u.estado_cuenta = 'ACTIVO'/); assert.match(sql, /u.is_verified = TRUE/);
@@ -79,23 +81,23 @@ test('claim atómico no toma aceptadas, respeta plazo e intentos y permite vario
   assert.match(sql, /intentos = d.intentos \+ 1/);
 });
 
-test('antes del envío revalida sesión exacta, propietario, huella, cuenta y expiración', async () => {
-  const h = setup(); await h.repo.currentTarget({ sessionId: 215, fingerprint: 'a'.repeat(64) }, 28);
+test('antes del envío revalida registro push exacto, propietario, huella y cuenta', async () => {
+  const h = setup(); await h.repo.currentTarget({ pushRegistrationId: 215, fingerprint: 'a'.repeat(64) }, 28);
   const { sql, params } = h.calls[0];
   assert.deepEqual(params, [215, 28, 'a'.repeat(64)]);
-  assert.match(sql, /ds.id = \$1 AND ds.fk_usuario = \$2 AND ds.vigente = TRUE/);
-  assert.match(sql, /ds.expira_en > LOCALTIMESTAMP/);
+  assert.match(sql, /ds.id = \$1 AND ds.fk_usuario = \$2 AND ds.activo = TRUE/);
+  assert.doesNotMatch(sql, /expira_en|vigente/);
   assert.match(sql, /sha256\(convert_to\(ds.fcm_registration_id, 'UTF8'\)\)/);
   assert.match(sql, /u.is_verified = TRUE/);
 });
 
 test('invalidación condiciona ID, dueño, FID original y versión con precisión completa', async () => {
-  const h = setup(); await h.repo.invalidateTarget({ sessionId: 215 }, 28,
+  const h = setup(); await h.repo.invalidateTarget({ pushRegistrationId: 215 }, 28,
     { registrationId: 'fixture-fid-old', updatedAt: '2026-11-01T12:00:00.123456' });
   const { sql, params } = h.calls[0];
   assert.deepEqual(params, [215, 28, 'fixture-fid-old', '2026-11-01T12:00:00.123456']);
   assert.match(sql, /fcm_registration_id = \$3/);
-  assert.match(sql, /fcm_registration_updated_at IS NOT DISTINCT FROM \$4::timestamp/);
+  assert.match(sql, /actualizado_en IS NOT DISTINCT FROM \$4::timestamp/);
 });
 
 test('aceptación se registra sin confirmar recepción y no sobrescribe otro intento', async () => {

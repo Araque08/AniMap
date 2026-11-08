@@ -37,6 +37,7 @@ function createNotificationsService({
   repo = createNotificationsRepository(), enabled = env.FCM_PUSH_ENABLED,
   testMode = env.FCM_TEST_MODE, testOwnerId = env.FCM_TEST_OWNER_ID,
   testReportId = env.FCM_TEST_REPORT_ID,
+  processingMode = env.FCM_PROCESSING_MODE, budgetMs = 45000,
   sender = createFirebaseSender({ enabled }), now = Date.now, random = Math.random,
   logger = console,
 } = {}) {
@@ -47,7 +48,8 @@ function createNotificationsService({
     && Number.isSafeInteger(Number(value)) && Number(value) <= 2147483647;
   const configured = !testing || ((testMode === true || testMode === 'true')
     && validId(testOwnerId) && validId(testReportId));
-  const active = enabled && configured;
+  const active = enabled === true && configured
+    && ['inline', 'scheduled'].includes(processingMode);
   const scope = testing && configured
     ? Object.freeze({ ownerId: Number(testOwnerId), reportId: Number(testReportId) }) : null;
   const inScope = event => !scope || (event?.ownerId === scope.ownerId && event?.reportId === scope.reportId);
@@ -86,7 +88,8 @@ function createNotificationsService({
         notification: { title: 'Nuevo avistamiento de tu mascota',
           body: 'Registraron un avistamiento vinculado a tu reporte de pérdida.' },
         data: { type: 'AVISTAMIENTO_VINCULADO', notificationId: String(notification.id),
-          sightingId: String(event.sightingId), reportId: String(event.reportId) },
+          sightingId: String(event.sightingId), reportId: String(event.reportId),
+          ownerId: String(event.ownerId) },
         tag: `animap-notification-${notification.id}` });
       result = { state: 'ACEPTADA_FCM', messageId, acceptedAt: new Date(now()).toISOString() };
     } catch (error) {
@@ -103,10 +106,13 @@ function createNotificationsService({
     await repo.finishDelivery(delivery, result);
   }
 
-  async function processPending() {
+  async function processPending(sightingId = null) {
+    const deadline = now() + budgetMs;
+    let completed = true;
     for (const id of await repo.recoverAbandoned(scope)) await repo.summarize(id);
-    for (const notification of await repo.pendingNotifications(25, scope)) {
-      if (stopped) break;
+    const pendingScope = sightingId === null ? scope : { ...scope, sightingId };
+    for (const notification of await repo.pendingNotifications(25, pendingScope)) {
+      if (stopped || now() >= deadline) break;
       if (!inScope(notification)) continue;
       try {
         const event = await repo.loadEvent(repo.pool, notification.sightingId);
@@ -119,40 +125,49 @@ function createNotificationsService({
         for (const target of await repo.listTargets(event.ownerId)) {
           if (typeof target.registrationId !== 'string' || !target.registrationId.trim()) continue;
           const fingerprint = createHash('sha256').update(target.registrationId).digest('hex');
-          if (!unique.has(fingerprint)) unique.set(fingerprint, { sessionId: target.id, fingerprint });
+          if (!unique.has(fingerprint)) unique.set(fingerprint, {
+            sessionId: target.id, pushRegistrationId: target.pushRegistrationId, fingerprint });
         }
         if (!unique.size) {
           await repo.skipNotification(notification.id, 'SIN_DISPOSITIVOS');
           continue;
         }
         await repo.planDeliveries(notification.id, [...unique.values()]);
-        for (let count = 0; count < 100 && !stopped; count++) {
+        for (let count = 0; count < 100 && !stopped && now() < deadline; count++) {
           const delivery = await repo.claimDelivery(notification.id, scope);
           if (!delivery) break;
           await deliver(notification, delivery);
         }
         await repo.summarize(notification.id);
-      } catch (_) { warn('PUSH_PROCESSING_FAILED', notification.id); }
+      } catch (_) { completed = false; warn('PUSH_PROCESSING_FAILED', notification.id); }
     }
+    return { enabled: true, completed };
   }
 
-  function drain() {
-    if (!active || stopped) return Promise.resolve();
-    if (!inFlight) inFlight = processPending().catch(() => warn('PUSH_RECOVERY_FAILED'))
+  function drain(sightingId = null) {
+    if (!active || stopped) return Promise.resolve({ enabled: false, completed: true });
+    if (inFlight) {
+      return sightingId === null ? inFlight : inFlight.then(() => drain(sightingId));
+    }
+    inFlight = processPending(sightingId).catch(() => {
+      warn('PUSH_RECOVERY_FAILED'); return { enabled: true, completed: false };
+    })
       .finally(() => { inFlight = null; });
     return inFlight;
   }
 
-  function wake() {
-    if (!active || stopped) return;
-    // No provider call starts in the sighting's transaction or error/compensation block.
-    setImmediate(() => { void drain(); });
+  function wake(sightingId) {
+    if (!active || stopped || processingMode !== 'inline') {
+      return Promise.resolve({ enabled: false, completed: true });
+    }
+    // Target this sighting and let its HTTP request await all provider work.
+    return drain(sightingId);
   }
 
   function start() {
-    if (!active || timer) return;
+    if (!active || timer || processingMode !== 'inline') return;
     stopped = false;
-    wake();
+    void drain().catch(() => undefined);
     timer = setInterval(wake, 30000);
     timer.unref();
   }

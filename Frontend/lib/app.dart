@@ -1,4 +1,10 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
+import 'config/firebase_setup.dart';
+import 'features/notifications/push_notification_coordinator.dart';
+import 'features/report/data/reports_service.dart';
+import 'features/sighting/presentation/pages/sightings_history_page.dart';
 import 'features/auth/presentation/pages/login_page.dart';
 import 'features/auth/data/session_manager.dart';
 import 'features/auth/presentation/session_gate.dart';
@@ -16,21 +22,81 @@ import 'features/admin/presentation/pages/home/admin_home_page.dart';
 
 class AniMapApp extends StatefulWidget {
   final SessionManager? sessionManager;
+  final FirebaseSetup? firebase;
 
-  const AniMapApp({super.key, this.sessionManager});
+  const AniMapApp({super.key, this.sessionManager, this.firebase});
 
   @override
   State<AniMapApp> createState() => _AniMapAppState();
 }
 
-class _AniMapAppState extends State<AniMapApp> {
+class _AniMapAppState extends State<AniMapApp> with WidgetsBindingObserver {
   final GlobalKey<NavigatorState> _navigatorKey = GlobalKey<NavigatorState>();
   late final SessionManager _sessionManager;
+  final _messengerKey = GlobalKey<ScaffoldMessengerState>();
+  PushNotificationCoordinator? _push;
+  StreamSubscription<RemoteMessage>? _foregroundMessages, _openedMessages;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _sessionManager = widget.sessionManager ?? SessionManager.instance;
+    if (widget.firebase case final firebase?) {
+      _push = PushNotificationCoordinator(
+        session: _sessionManager,
+        loadReport: ReportsService.getOwnReportDetails,
+        onOpen: (id, sightingId) {
+          _messengerKey.currentState?.hideCurrentMaterialBanner();
+          _navigatorKey.currentState?.push(
+            MaterialPageRoute<void>(
+              builder: (_) => SightingsHistoryPage(
+                reportId: id,
+                initialSightingId: sightingId,
+              ),
+            ),
+          );
+        },
+        onForeground: (_, open) {
+          final messenger = _messengerKey.currentState;
+          messenger?.hideCurrentMaterialBanner();
+          messenger?.showMaterialBanner(
+            MaterialBanner(
+              leading: const Icon(Icons.visibility, color: Color(0xFF2F9669)),
+              content: const Text(
+                'Registraron un nuevo avistamiento de tu mascota.',
+              ),
+              actions: [
+                TextButton(onPressed: open, child: const Text('Ver')),
+                TextButton(
+                  onPressed: () => messenger.hideCurrentMaterialBanner(),
+                  child: const Text('Cerrar'),
+                ),
+              ],
+            ),
+          );
+        },
+        onUnavailable: () => _messengerKey.currentState?.showSnackBar(
+          const SnackBar(
+            content: Text(
+              'No fue posible abrir el reporte. Intenta nuevamente.',
+            ),
+          ),
+        ),
+      );
+      _foregroundMessages = firebase.foregroundMessages.listen((message) async {
+        final generation = _sessionManager.authenticatedSessionGeneration;
+        final allowed = await firebase.notificationsAllowed();
+        if (mounted &&
+            generation == _sessionManager.authenticatedSessionGeneration) {
+          _push?.foreground(message.data, allowed: allowed);
+        }
+      });
+      _openedMessages = firebase.openedMessages.listen(
+        (message) => _push?.tap(message.data),
+      );
+      _sessionManager.addListener(_hidePushWhenSignedOut);
+    }
     _sessionManager.onSessionInvalid = () {
       _navigatorKey.currentState?.pushNamedAndRemoveUntil(
         '/login',
@@ -45,8 +111,27 @@ class _AniMapAppState extends State<AniMapApp> {
     };
   }
 
+  void _hidePushWhenSignedOut() {
+    if (!_sessionManager.isAuthenticated ||
+        _sessionManager.authenticatedSessionGeneration == null) {
+      _messengerKey.currentState?.hideCurrentMaterialBanner();
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && widget.firebase != null) {
+      unawaited(widget.firebase!.registerMessaging());
+    }
+  }
+
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _sessionManager.removeListener(_hidePushWhenSignedOut);
+    unawaited(_foregroundMessages?.cancel());
+    unawaited(_openedMessages?.cancel());
+    _push?.dispose();
     if (_sessionManager.onSessionInvalid != null) {
       _sessionManager.onSessionInvalid = null;
     }
@@ -58,6 +143,7 @@ class _AniMapAppState extends State<AniMapApp> {
   Widget build(BuildContext context) {
     return MaterialApp(
       navigatorKey: _navigatorKey,
+      scaffoldMessengerKey: _messengerKey,
       debugShowCheckedModeBanner: false,
       title: 'AniMap',
       theme: ThemeData(

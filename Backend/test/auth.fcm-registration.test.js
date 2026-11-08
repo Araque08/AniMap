@@ -7,7 +7,7 @@ function harness() {
   const state = { sessions: [
     { id: 11, user: 7, device: 'installation-a', active: true, expired: false, registration: null },
     { id: 12, user: 8, device: 'installation-b', active: true, expired: false, registration: null },
-  ], fail: false, released: 0 };
+  ], push: [], fail: false, released: 0 };
   let backup;
   const client = {
     async query(sql, p = []) {
@@ -16,6 +16,21 @@ function harness() {
       if (s === 'COMMIT') { backup = null; return {}; }
       if (s === 'ROLLBACK') { state.sessions = backup || state.sessions; return {}; }
       if (s.includes('pg_advisory_xact_lock')) return {};
+      if (s.startsWith('INSERT INTO device_push_registration')) {
+        let row = state.push.find(x => x.user === p[0] && x.device === p[1]);
+        if (!row) { row = { user: p[0], device: p[1] }; state.push.push(row); }
+        if (!row.session || row.session <= p[2]) Object.assign(row, { session: p[2], registration: p[3], active: true });
+        return { rowCount: 1, rows: [] };
+      }
+      if (s.startsWith('UPDATE device_push_registration')) {
+        for (const row of state.push) {
+          const match = s.includes('fk_device_session = $2')
+            ? row.user === p[0] && row.session === p[1] && (p[2] == null || row.registration === p[2])
+            : row.registration === p[0] && (row.user !== p[1] || row.device !== p[2]);
+          if (match) { row.active = false; row.registration = null; }
+        }
+        return { rowCount: 1, rows: [] };
+      }
       if (s.startsWith('SELECT') && s.includes('ds.fk_usuario')) {
         const row = state.sessions.find(x => x.user === p[0] && x.device === p[1]);
         return { rowCount: row ? 1 : 0, rows: row ? [{ id: row.id,
@@ -29,7 +44,7 @@ function harness() {
       }
       if (s.startsWith('SELECT') && s.includes('fcm_registration_id =')) {
         const newer = state.sessions.some(x => x.id > p[0] &&
-          (x.device === p[1] || x.registration === p[2]));
+          ((x.device === p[1] && (p[3] == null || x.user === p[3])) || x.registration === p[2]));
         return { rowCount: newer ? 1 : 0, rows: [] };
       }
       if (s.startsWith('SELECT') && s.includes('FROM device_session')) {
@@ -96,8 +111,17 @@ test('cambio de usuario retira el identificador de la sesion anterior', async ()
 test('una solicitud tardia del mismo dispositivo no recupera la asociacion', async () => {
   const { service, state, auth } = harness();
   state.sessions[1].device = state.sessions[0].device;
+  state.sessions[1].user = state.sessions[0].user;
   await assert.rejects(service.setFcmRegistration(auth(), 'fixture-fid-new'), { code: 'FCM_SESSION_SUPERSEDED' });
   assert.equal(state.sessions[0].registration, null);
+});
+
+test('otro usuario no puede bloquear mi asociación usando el mismo deviceId con un FID diferente', async () => {
+  const { service, state, auth } = harness();
+  state.sessions[1].device = state.sessions[0].device;
+  await service.setFcmRegistration(auth(1), 'fixture-fid-user-b');
+  await service.setFcmRegistration(auth(), 'fixture-fid-user-a');
+  assert.equal(state.push.filter(x => x.active).length, 2);
 });
 
 for (const condition of ['active', 'expired', 'owner']) {
@@ -131,7 +155,29 @@ test('logout real del servicio vuelve inelegible la asociacion y rechaza volver 
   state.sessions[0].refreshHash = refresh;
   assert.deepEqual(await service.logoutSession(refresh), { revoked: true });
   assert.equal(state.sessions[0].active, false);
+  assert.equal(state.push[0].active, false);
   await assert.rejects(service.setFcmRegistration(auth(), 'fixture-fid-a'), { code: 'SESSION_REVOKED' });
+});
+
+test('inactividad de API conserva push; logout explícito aun con refresh vencido lo retira', async () => {
+  const { service, state, auth } = harness();
+  await service.setFcmRegistration(auth(), 'fixture-fid-independent');
+  state.sessions[0].expired = true;
+  assert.equal(state.push[0].active, true);
+  const refresh = signRefreshToken({ sub: 7, deviceId: state.sessions[0].device });
+  state.sessions[0].refreshHash = refresh;
+  await service.logoutSession(refresh);
+  assert.equal(state.push[0].active, false);
+});
+
+test('logout con prueba de sesión ya inactiva retira push sin cambiar el error HTTP existente', async () => {
+  const { service, state, auth } = harness();
+  await service.setFcmRegistration(auth(), 'fixture-fid-independent');
+  state.sessions[0].active = false;
+  const refresh = signRefreshToken({ sub: 7, deviceId: state.sessions[0].device });
+  state.sessions[0].refreshHash = refresh;
+  await assert.rejects(service.logoutSession(refresh), { code: 'SESSION_REVOKED' });
+  assert.equal(state.push[0].active, false);
 });
 
 test('fallo SQL revierte la transferencia y oculta detalles sensibles', async () => {

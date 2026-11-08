@@ -52,6 +52,19 @@ test('persiste la intención en la transacción y despierta envíos después de 
   assert.deepEqual(h.events, ['BEGIN', 'intent', 'COMMIT', 'release', 'wake']);
 });
 
+test('la solicitud espera el despacho inline tras COMMIT y release', async () => {
+  let finish;
+  const h = setup({ wake: () => new Promise(resolve => { finish = resolve; }) });
+  let completed = false;
+  const request = h.create().then(value => { completed = true; return value; });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(h.events, ['BEGIN', 'intent', 'COMMIT', 'release', 'wake']);
+  assert.equal(completed, false);
+  finish();
+  assert.equal((await request).id, 41);
+  assert.equal(completed, true);
+});
+
 test('un fallo síncrono del notificador posterior al COMMIT conserva avistamiento y foto', async () => {
   const h = setup({ wake() { throw new Error('mock notification failure'); } });
   assert.equal((await h.create()).id, 41);
