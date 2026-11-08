@@ -98,6 +98,7 @@ router.use('/geocoding', geocodingRoutes);
 router.use('/notification-preferences', notificationPreferencesRoutes);
 router.use('/faqs', faqRoutes);
 router.use('/users', usersRoutes);
+router.use('/recognition', require('../modules/recognition/recognition.routes').createRecognitionRouter());
 
 /*
   Exporto el router principal para que app.js lo pueda montar en /api.
