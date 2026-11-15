@@ -316,6 +316,7 @@ class _AniMapAppState extends State<AniMapApp> with WidgetsBindingObserver {
 
 
   Map<String, dynamic>? _comunitariaPendiente;
+  int? _administrativaPendienteId;
   final Set<int> _comunitariasAbiertas = <int>{};
   Timer? _avisoFirebaseTimer;
 
@@ -390,16 +391,37 @@ class _AniMapAppState extends State<AniMapApp> with WidgetsBindingObserver {
           body: message.notification?.body ?? '',
           onOpen: type == 'PERDIDA_CERCANA'
               ? () => _recibirAlertaComunitaria(message.data)
-              : null,
+              : type == 'ADMINISTRATIVA'
+                  ? () => _recibirNotificacionAdministrativa(
+                      message.data,
+                    )
+                  : null,
+
         );
       });
-      _openedMessages = firebase.openedMessages.listen((message) {
-        if (message.data['type'] == 'PERDIDA_CERCANA') {
-          _recibirAlertaComunitaria(message.data);
-        } else {
-          _push?.tap(message.data);
+
+        _openedMessages = firebase.openedMessages.listen((message) {
+          final data = message.data;
+          final tipo = data['type']?.toString();
+
+          // HU-064: Mascota perdida cerca del usuario.
+          if (tipo == 'PERDIDA_CERCANA') {
+            _recibirAlertaComunitaria(data);
+            return;
+          }
+
+          // HU-072: Abrir notificación enviada por administrador.
+
+        if (tipo == 'ADMINISTRATIVA') {
+          _recibirNotificacionAdministrativa(data);
+          return;
         }
-      });
+
+
+          // HU-016: Avistamientos vinculados.
+          _push?.tap(data);
+        });
+
       _sessionManager.addListener(_hidePushWhenSignedOut);
     }
     _sessionManager.onSessionInvalid = () {
@@ -416,6 +438,7 @@ class _AniMapAppState extends State<AniMapApp> with WidgetsBindingObserver {
     };
     // La navegación comunitaria se reintenta al recuperar la sesión.
     _sessionManager.addListener(_revisarComunitariaPendiente);
+    _sessionManager.addListener(_revisarAdministrativaPendiente);
   }
 
   void _hidePushWhenSignedOut() {
@@ -529,6 +552,7 @@ class _AniMapAppState extends State<AniMapApp> with WidgetsBindingObserver {
     }
     _sessionManager.onRoleChanged = null;
     _sessionManager.removeListener(_revisarComunitariaPendiente);
+    _sessionManager.removeListener(_revisarAdministrativaPendiente);
     _avisoFirebaseTimer?.cancel();
     _emergencyChannel.setMethodCallHandler(null);
     super.dispose();
@@ -557,6 +581,50 @@ class _AniMapAppState extends State<AniMapApp> with WidgetsBindingObserver {
     if (raw == null || raw.isEmpty) return true;
     final id = int.tryParse(raw);
     return id != null && id > 0 && id == _idUsuarioActual();
+  }
+
+
+  void _recibirNotificacionAdministrativa(
+    Map<String, dynamic> data,
+  ) {
+    if (data['type'] != 'ADMINISTRATIVA') return;
+
+    final id = int.tryParse(
+      data['notificationId']?.toString() ?? '',
+    );
+
+    if (id == null || id <= 0) return;
+
+    // Guardar la notificación mientras se recupera la sesión.
+    _administrativaPendienteId = id;
+    _revisarAdministrativaPendiente();
+  }
+
+  void _revisarAdministrativaPendiente() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted ||
+          !_sessionManager.isAuthenticated ||
+          _sessionManager.authenticatedSessionGeneration == null) {
+        return;
+      }
+
+      final id = _administrativaPendienteId;
+      final navigator = _navigatorKey.currentState;
+
+      if (id == null || navigator == null) return;
+
+      _administrativaPendienteId = null;
+
+      _messengerKey.currentState?.hideCurrentMaterialBanner();
+
+      navigator.push(
+        MaterialPageRoute<void>(
+          builder: (_) => NotificationsPage(
+            initialNotificationId: id,
+          ),
+        ),
+      );
+    });
   }
 
   void _recibirAlertaComunitaria(Map<String, dynamic> data) {

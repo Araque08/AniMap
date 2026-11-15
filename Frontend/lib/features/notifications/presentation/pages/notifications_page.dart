@@ -6,8 +6,15 @@ import '../../data/notification_history_service.dart';
 import '../../../map/presentation/pages/map_page.dart';
 import '../../data/notification_target_service.dart';
 
+
 class NotificationsPage extends StatefulWidget {
-  const NotificationsPage({super.key});
+  final int? initialNotificationId;
+
+  const NotificationsPage({
+    super.key,
+    this.initialNotificationId,
+  });
+
 
   @override
   State<NotificationsPage> createState() => _NotificationsPageState();
@@ -24,9 +31,12 @@ class _NotificationsPageState extends State<NotificationsPage> {
 
   final Set<int> _markingAsRead = {};
 
+
   bool _loading = true;
   bool _loadingMore = false;
   bool _hasMore = false;
+
+  bool _notificacionInicialAbierta = false;
 
   int _page = 0;
   String? _error;
@@ -102,6 +112,26 @@ class _NotificationsPageState extends State<NotificationsPage> {
         _loading = false;
         _loadingMore = false;
       });
+
+      final idInicial = widget.initialNotificationId;
+
+      if (idInicial != null && !_notificacionInicialAbierta) {
+        final indice = _notifications.indexWhere(
+          (notificacion) => notificacion.id == idInicial,
+        );
+
+        if (indice >= 0) {
+          final notificacion = _notifications[indice];
+
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (!mounted || _notificacionInicialAbierta) return;
+
+            _notificacionInicialAbierta = true;
+            _openNotification(notificacion);
+          });
+        }
+      }
+
     } catch (error) {
       if (!mounted) return;
 
