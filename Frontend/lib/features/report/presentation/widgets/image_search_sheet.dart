@@ -1,7 +1,9 @@
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import '../../../pet/data/pet_image_selection.dart';
 import '../../data/image_recognition_service.dart';
+import '../../../sighting/presentation/pages/create_sighting_page.dart';
 
 class ImageSearchSheet extends StatefulWidget {
   const ImageSearchSheet({
@@ -59,9 +61,24 @@ class _ImageSearchSheetState extends State<ImageSearchSheet> {
           'La fotografía está vacía o supera 5 MiB.',
         );
       }
+      final extension = ['jpg', 'png', 'webp']
+          .where((extension) => hasValidPetImageSignature(bytes, extension))
+          .firstOrNull;
+      if (extension == null) {
+        throw const RecognitionException(
+          'Selecciona una imagen JPG, JPEG, PNG o WEBP.',
+        );
+      }
+      // Android puede redimensionar a JPEG sin cambiar la extension del archivo.
+      final normalizedPhoto = XFile.fromData(
+        bytes,
+        name: 'consulta.$extension',
+        path: 'consulta.$extension',
+        mimeType: 'image/${extension == 'jpg' ? 'jpeg' : extension}',
+      );
       if (mounted && selection == _selection) {
         setState(() {
-          _photo = photo;
+          _photo = normalizedPhoto;
           _preview = bytes;
         });
       }
@@ -190,6 +207,23 @@ class _ImageSearchSheetState extends State<ImageSearchSheet> {
               )
             : const Icon(Icons.search),
         label: Text(_busy ? 'Buscando coincidencias…' : 'Buscar coincidencias'),
+      ),
+      const SizedBox(height: 8),
+      OutlinedButton.icon(
+        key: const ValueKey('publish-search-photo'),
+        onPressed: _busy || _picking || _photo == null
+            ? null
+            : () => Navigator.push(
+                context,
+                MaterialPageRoute<void>(
+                  builder: (_) => CreateSightingPage(initialPhoto: _photo),
+                ),
+              ),
+        icon: const Icon(Icons.add_location_alt_outlined),
+        label: const Text('Publicar avistamiento con esta foto'),
+      ),
+      const Text(
+        'Buscar no publica ni envía alertas. Para publicar, confirma la ubicación en el formulario.',
       ),
       if (_error != null)
         Padding(padding: const EdgeInsets.only(top: 16), child: Text(_error!)),

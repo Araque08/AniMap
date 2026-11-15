@@ -79,7 +79,24 @@ class SightingsService {
     String? direccion,
     String? placeId,
     XFile? foto,
+    String? solicitudId,
+    bool ubicacionConfirmada = false,
+    bool compartirContacto = false,
+    AuthenticatedHttpClient? client,
   }) async {
+    final authenticatedClient = client ?? AuthenticatedHttpClient.instance;
+    final session = authenticatedClient.sessionManager;
+    final generation = session.authenticatedSessionGeneration;
+    void requireSameAccount() {
+      if (!session.isAuthenticated ||
+          generation != session.authenticatedSessionGeneration) {
+        throw SightingsException(
+          'La sesión cambió. Abre un nuevo formulario para publicar.',
+        );
+      }
+    }
+
+    requireSameAccount();
     if (foto != null) {
       final validation = await validatePetImageSelection(
         selected: [foto],
@@ -94,9 +111,9 @@ class SightingsService {
       }
     }
 
-    final response = await AuthenticatedHttpClient.instance.sendMultipart((
-      token,
-    ) async {
+    requireSameAccount();
+    final response = await authenticatedClient.sendMultipart((token) async {
+      requireSameAccount();
       final request = http.MultipartRequest('POST', Uri.parse(baseUrl));
       request.headers['Authorization'] = 'Bearer $token';
       request.fields['descripcion'] = descripcion.trim();
@@ -116,14 +133,21 @@ class SightingsService {
         request.fields['placeId'] = placeId.trim();
       }
       if (foto != null) {
+        if (solicitudId != null) {
+          request.fields['solicitudId'] = solicitudId;
+        }
+        request.fields['ubicacionConfirmada'] = ubicacionConfirmada.toString();
+        request.fields['compartirContacto'] = compartirContacto.toString();
         request.files.add(
-          await http.MultipartFile.fromPath(
+          http.MultipartFile.fromBytes(
             'foto',
-            foto.path,
+            await foto.readAsBytes(),
+            filename: foto.name,
             contentType: _contentType(foto.name),
           ),
         );
       }
+      requireSameAccount();
       return request;
     });
     final body = _decode(response);

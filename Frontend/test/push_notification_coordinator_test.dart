@@ -22,6 +22,20 @@ class _Storage implements SessionStorage {
 }
 
 void main() {
+  test('photographic match payload needs a valid matchId', () {
+    final payload = <String, dynamic>{
+      'type': 'COINCIDENCIA_FOTOGRAFICA',
+      'matchId': '12',
+      'reportId': '8',
+      'sightingId': '41',
+      'notificationId': '1',
+      'ownerId': '7',
+    };
+    expect(PushNotice.parse(payload), isNotNull);
+    expect(PushNotice.parse({...payload, 'matchId': '-1'}), isNull);
+    expect(PushNotice.parse({...payload, 'matchId': null}), isNull);
+  });
+
   late SessionManager session;
   late PushNotificationCoordinator coordinator;
   late List<int> opened;
@@ -29,6 +43,8 @@ void main() {
   late int loads;
   late Future<OwnReportDetails> Function(int) load;
   late Future<Map<String, dynamic>> Function(int) history;
+  late Future<void> Function(int) matchLoader;
+  late List<int> matches;
   final data = <String, dynamic>{
     'type': 'AVISTAMIENTO_VINCULADO',
     'reportId': '8',
@@ -48,6 +64,8 @@ void main() {
       authBaseUrl: 'http://example.invalid/api/auth',
     );
     opened = [];
+    matches = [];
+    matchLoader = (_) async {};
     banners = 0;
     loads = 0;
     load = (_) async {
@@ -63,6 +81,8 @@ void main() {
       session: session,
       loadReport: (id) => load(id),
       loadHistory: (id) => history(id),
+      loadMatch: (id) => matchLoader(id),
+      onOpenMatch: matches.add,
       onOpen: (id, sightingId) => opened.addAll([id, sightingId]),
       onForeground: (_, _) => banners++,
     );
@@ -70,6 +90,46 @@ void main() {
   tearDown(() {
     coordinator.dispose();
     session.dispose();
+  });
+
+  test(
+    'photo match waits for login and opens only after private detail succeeds',
+    () async {
+      final payload = {
+        ...data,
+        'type': 'COINCIDENCIA_FOTOGRAFICA',
+        'matchId': '12',
+      };
+      final ready = Completer<void>();
+      matchLoader = (_) => ready.future;
+      coordinator.tap(payload);
+      await login(7);
+      expect(matches, isEmpty);
+      ready.complete();
+      await coordinator.pending;
+      expect(matches, [12]);
+      expect(opened, isEmpty);
+      expect(loads, 0);
+    },
+  );
+  test('photo match failure or account change cannot reveal detail', () async {
+    final payload = {
+      ...data,
+      'type': 'COINCIDENCIA_FOTOGRAFICA',
+      'matchId': '12',
+    };
+    await login(7);
+    matchLoader = (_) async => throw Exception('forbidden');
+    coordinator.tap(payload);
+    await coordinator.pending;
+    expect(matches, isEmpty);
+    final ready = Completer<void>();
+    matchLoader = (_) => ready.future;
+    coordinator.tap(payload);
+    await login(8);
+    ready.complete();
+    await coordinator.pending;
+    expect(matches, isEmpty);
   });
 
   test(
@@ -167,6 +227,23 @@ void main() {
       coordinator.tap(data);
       await coordinator.pending;
       expect(opened, isEmpty);
+    },
+  );
+  test(
+    'photo destination survives signed-out bootstrap and opens on matching login',
+    () async {
+      coordinator.tap({
+        ...data,
+        'type': 'COINCIDENCIA_FOTOGRAFICA',
+        'matchId': '12',
+      });
+      await session.bootstrap();
+      expect(matches, isEmpty);
+      await login(8);
+      expect(matches, isEmpty);
+      await login(7);
+      await coordinator.pending;
+      expect(matches, [12]);
     },
   );
 }
