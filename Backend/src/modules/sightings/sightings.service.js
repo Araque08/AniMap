@@ -2,6 +2,8 @@ const postgres = require('../../config/postgres_db');
 const defaultImages = require('./sightings.images.repository');
 const geofence = require('../geofence/geofence.service');
 const { notificationsService } = require('../notifications/notifications.service');
+const { matchService } = require('../recognition/recognition.matches.service');
+const { createHash } = require('node:crypto');
 
 function createHttpError(message, statusCode) {
   const error = new Error(message);
@@ -71,7 +73,8 @@ function createSightingsService(
   pool = postgres.pool,
   images = defaultImages,
   allowedArea = geofence,
-  notifications = notificationsService
+  notifications = notificationsService,
+  matches = matchService
 ) {
   async function querySighting(queryable, sightingId) {
     const result = await queryable.query(
@@ -331,11 +334,40 @@ async function getPublicImage(imageId) {
 
   async function createSighting(userId, data, file) {
     allowedArea.validateAllowedArea(data.lat, data.lng);
+    const analyze = Boolean(file && matches.enabled);
+    if (analyze && (data.ubicacionConfirmada !== true
+      || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(data.solicitudId || ''))) {
+      throw createHttpError('Confirma la ubicación y vuelve a enviar la publicación desde el formulario.', 400);
+    }
+    // A request key identifies one publication, not an animal or a reusable image.
+    // Canonical inputs make a response-lost retry safe without deduplicating
+    // distinct observations that intentionally use the same photograph.
+    const fingerprint = analyze ? createHash('sha256').update(JSON.stringify([
+      data.descripcion, data.reportId ?? null, data.metodo, Number(data.lat), Number(data.lng),
+      data.precisionM ?? null, data.direccion ?? null, data.placeId ?? null,
+      data.compartirContacto === true, file.mimetype,
+      createHash('sha256').update(file.buffer).digest('hex'),
+    ])).digest('hex') : null;
     const client = await pool.connect();
     let mongoImage = null;
     let sighting;
+    let replay = false;
     try {
       await client.query('BEGIN');
+
+      if (analyze) {
+        await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))',
+          [`photo-publication:${userId}:${data.solicitudId.toLowerCase()}`]);
+        const existing = await matches.findRequest(client, userId, data.solicitudId);
+        if (existing) {
+          if (existing.fingerprint !== fingerprint) throw createHttpError(
+            'Esta publicación ya fue enviada con otros datos. Abre un nuevo formulario para registrar otra observación.', 409);
+          sighting = await querySighting(client, existing.sightingId);
+          replay = true;
+        }
+      }
+
+      if (!replay) {
 
       if (data.reportId !== null) {
         const reportResult = await client.query(
@@ -414,8 +446,14 @@ async function getPublicImage(imageId) {
         );
       }
 
-      await notifications.recordIntent(client, sightingId);
+      if (analyze) {
+        await matches.enqueue(client, { sightingId, userId, requestId: data.solicitudId,
+          fingerprint, shareContact: data.compartirContacto === true });
+      } else {
+        await notifications.recordIntent(client, sightingId);
+      }
       sighting = await querySighting(client, sightingId);
+      }
       await client.query('COMMIT');
     } catch (error) {
       await client.query('ROLLBACK').catch(() => undefined);
@@ -427,7 +465,13 @@ async function getPublicImage(imageId) {
       client.release();
     }
     // Confirmed sightings and their images never enter compensation on push errors.
-    try { await notifications.wake(sighting.id); } catch (_) {}
+    if (analyze) {
+      // Persisted before COMMIT; a crash or a model outage is recovered by the
+      // same worker cycle. Never make a committed publication look unsuccessful.
+      try { void Promise.resolve(matches.wake()).catch(() => undefined); } catch (_) {}
+    } else {
+      try { await notifications.wake(sighting.id); } catch (_) {}
+    }
     return sighting;
   }
 

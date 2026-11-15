@@ -1,6 +1,25 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
+test('worker analiza fotos antes de entregar y comunica recuperacion incompleta', async () => {
+  const { createWorkerHandler } = require('../src/modules/notifications/notifications.worker');
+  const calls = [];
+  const run = async completed => {
+    const response = { status(code) { this.code = code; return this; }, json(body) { this.body = body; } };
+    const handler = createWorkerHandler({
+      audience: 'https://animap.example', serviceAccount: 'worker@example.iam.gserviceaccount.com',
+      verify: async () => ({ email: 'worker@example.iam.gserviceaccount.com', email_verified: true }),
+      analyzer: { async drain() { calls.push('analysis'); return { enabled: true, completed }; } },
+      service: { async drain() { calls.push('push'); return { enabled: false, completed: true }; } },
+    });
+    await handler({ get: () => 'Bearer fixture' }, response);
+    return response;
+  };
+  assert.equal((await run(true)).code, 200);
+  assert.deepEqual(calls, ['analysis', 'push']);
+  assert.equal((await run(false)).code, 503);
+});
+
 test('OIDC worker rejects missing configuration, invalid tokens and other identities before processing', async () => {
   const { createWorkerHandler } = require('../src/modules/notifications/notifications.worker');
   let calls = 0;

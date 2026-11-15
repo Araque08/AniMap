@@ -2,6 +2,7 @@ import 'dart:convert';
 import '../auth/data/session_manager.dart';
 import '../sighting/data/sightings_service.dart';
 import '../report/data/reports_service.dart';
+import '../report/data/photo_matches_service.dart';
 
 typedef PushHistoryLoader = Future<Map<String, dynamic>> Function(int reportId);
 
@@ -10,12 +11,14 @@ class PushNotice {
     this.notificationId,
     this.reportId,
     this.sightingId,
-    this.ownerId,
-  );
+    this.ownerId, [
+    this.matchId,
+  ]);
   final int notificationId;
   final int reportId;
   final int sightingId;
   final int ownerId;
+  final int? matchId;
 
   static PushNotice? parse(Map<String, dynamic> data) {
     int? id(String name) {
@@ -25,7 +28,9 @@ class PushNotice {
       return value != null && value <= 2147483647 ? value : null;
     }
 
-    if (data['type'] != 'AVISTAMIENTO_VINCULADO') return null;
+    final photoMatch = data['type'] == 'COINCIDENCIA_FOTOGRAFICA';
+    if (data['type'] != 'AVISTAMIENTO_VINCULADO' && !photoMatch) return null;
+    if (photoMatch && id('matchId') == null) return null;
     final notification = id('notificationId'),
         report = id('reportId'),
         owner = id('ownerId');
@@ -35,7 +40,13 @@ class PushNotice {
         id('sightingId') == null) {
       return null;
     }
-    return PushNotice(notification, report, id('sightingId')!, owner);
+    return PushNotice(
+      notification,
+      report,
+      id('sightingId')!,
+      owner,
+      photoMatch ? id('matchId') : null,
+    );
   }
 }
 
@@ -49,11 +60,15 @@ class PushNotificationCoordinator {
     required this.onForeground,
     this.loadHistory = _defaultLoadHistory,
     this.onUnavailable,
+    this.loadMatch = _defaultLoadMatch,
+    this.onOpenMatch,
   }) {
     _logout = session.logoutGeneration;
     session.addListener(_sessionChanged);
   }
   final SessionManager session;
+  final Future<void> Function(int) loadMatch;
+  final void Function(int)? onOpenMatch;
   final Future<OwnReportDetails> Function(int) loadReport;
   final PushHistoryLoader loadHistory;
   final void Function(int, int) onOpen;
@@ -68,6 +83,10 @@ class PushNotificationCoordinator {
 
   static Future<Map<String, dynamic>> _defaultLoadHistory(int reportId) =>
       SightingsService.getReportHistory(reportId: reportId);
+
+  static Future<void> _defaultLoadMatch(int id) async {
+    await PhotoMatchesService().detail(id);
+  }
 
   int? get _userId {
     if (!session.isAuthenticated) return null;
@@ -128,6 +147,16 @@ class PushNotificationCoordinator {
     }
     final generation = session.authenticatedSessionGeneration;
     try {
+      if (notice.matchId case final matchId?) {
+        await loadMatch(matchId);
+        if (!_disposed &&
+            generation == session.authenticatedSessionGeneration &&
+            notice.ownerId == _userId) {
+          _remember(_opened, notice.notificationId);
+          onOpenMatch?.call(matchId);
+        }
+        return;
+      }
       final results = await Future.wait([
         loadReport(notice.reportId),
         loadHistory(notice.reportId),

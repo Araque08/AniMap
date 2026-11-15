@@ -17,6 +17,94 @@ function fixture(overrides = {}) {
 
 const testScope = { testMode: true, testOwnerId: '28', testReportId: '8' };
 
+test('coincidencia conserva historial sin FCM y aplica preferencias y alcance QA', async () => {
+  const h = harness({ enabled: false, ...testScope });
+  h.repo.insertMatchIntent = async (_, event, reason, options) => {
+    h.notifications.push({ ...event, reason, ...options }); return 91;
+  };
+  assert.equal(h.service.allowsEvent(fixture()), true);
+  assert.equal(h.service.allowsEvent(fixture({ ownerId: 29 })), false);
+  assert.equal(await h.service.recordMatchIntent({}, fixture(), { similarity: 0.856 }), 91);
+  assert.equal(h.notifications[0].similarity, 0.856);
+  assert.equal(h.notifications[0].reason, null);
+  await h.service.recordMatchIntent({}, fixture({ notificationsEnabled: false }), { similarity: 0.85 });
+  assert.equal(h.notifications[1].reason, 'NOTIFICACIONES_DESACTIVADAS');
+  assert.equal(await h.service.recordMatchIntent({}, fixture({ ownerId: 29 }), { similarity: 0.85 }), null);
+  await h.service.drain(); assert.equal(h.calls.length, 0);
+  const invalid = harness({ enabled: false, ...testScope, testOwnerId: undefined });
+  assert.equal(invalid.service.allowsEvent(fixture()), false);
+  assert.equal(await invalid.service.recordMatchIntent({}, fixture(), { similarity: 0.85 }), null);
+});
+
+test('coincidencia usa su reporte y evidencia al enviar y revalida cada intento', async () => {
+  const h = harness();
+  h.repo.insertMatchIntent = async (_, event) => {
+    h.notifications.push({ id: 1, ...event, type: 'COINCIDENCIA_FOTOGRAFICA', state: 'PENDIENTE' }); return 1;
+  };
+  const event = fixture({ reportId: 18, matchId: 72, similarity: 0.856 });
+  h.repo.loadNotification = async () => event;
+  await h.service.recordMatchIntent({}, event, { similarity: event.similarity });
+  await h.service.drain();
+  assert.deepEqual(h.calls[0].notification, {
+    title: 'Posible coincidencia con tu mascota perdida',
+    body: 'Se publicó una fotografía que podría coincidir con tu mascota. Similitud visual: 86 %.',
+  });
+  assert.deepEqual(h.calls[0].data, { type: 'COINCIDENCIA_FOTOGRAFICA', matchId: '72',
+    notificationId: '1', sightingId: '41', reportId: '18', ownerId: '28' });
+  assert.equal(h.deliveries[0].state, 'ACEPTADA_FCM');
+});
+
+test('reporte cambiado entre plan y entrega impide enviar aun fuera de QA', async () => {
+  const h = harness(); const plan = h.repo.planDeliveries;
+  h.repo.planDeliveries = async (...args) => { await plan(...args); h.event.reportId = 9; };
+  await h.service.recordIntent({}, 41); await h.service.drain();
+  assert.equal(h.calls.length, 0); assert.equal(h.deliveries[0].state, 'OMITIDA');
+});
+
+test('coincidencia pendiente revalida sus preferencias y el reporte antes del reintento', async () => {
+  const h = harness({ send() { throw Object.assign(new Error('mock'), { code: 'messaging/server-unavailable' }); } });
+  const event = fixture({ reportId: 18, matchId: 72, similarity: 0.85 });
+  h.notifications.push({ id: 1, sightingId: 41, ownerId: 28, reportId: 18,
+    type: 'COINCIDENCIA_FOTOGRAFICA', state: 'PENDIENTE' });
+  h.repo.loadNotification = async () => event;
+  await h.service.drain();
+  assert.equal(h.calls.length, 1); assert.equal(h.deliveries[0].state, 'REINTENTO');
+  h.advance(60000); event.notificationsEnabled = false;
+  await h.service.drain();
+  assert.equal(h.calls.length, 1);
+  assert.equal(h.notifications[0].state, 'OMITIDA_NOTIFICACIONES_DESACTIVADAS');
+  assert.equal(h.deliveries[0].state, 'OMITIDA');
+});
+
+for (const [code, state] of [
+  ['messaging/server-unavailable', 'REINTENTO'],
+  ['messaging/installation-id-not-registered', 'FALLIDA_PERMANENTE'],
+]) test(`coincidencia fotográfica registra ${state} y recupera sin duplicar: ${code}`, async () => {
+  let fail = true;
+  const h = harness({ send() {
+    if (fail) throw Object.assign(new Error('mock provider failure'), { code });
+    return 'projects/animapbd/messages/mock';
+  } });
+  h.notifications.push({ id: 1, sightingId: 41, ownerId: 28, reportId: 8,
+    type: 'COINCIDENCIA_FOTOGRAFICA', state: 'PENDIENTE' });
+  h.repo.loadNotification = async () => fixture({ matchId: 72, similarity: .83 });
+  await h.service.drain(); assert.equal(h.deliveries[0].state, state);
+  fail = false; h.advance(60000); await h.restart().drain(); await h.restart().drain();
+  assert.equal(h.calls.length, state === 'REINTENTO' ? 2 : 1);
+  assert.equal(h.deliveries[0].state, state === 'REINTENTO' ? 'ACEPTADA_FCM' : 'FALLIDA_PERMANENTE');
+});
+
+test('coincidencia con aceptación incierta no repite el mensaje después del reinicio', async () => {
+  const h = harness();
+  h.notifications.push({ id: 1, sightingId: 41, ownerId: 28, reportId: 8,
+    type: 'COINCIDENCIA_FOTOGRAFICA', state: 'PENDIENTE' });
+  h.repo.loadNotification = async () => fixture({ matchId: 72, similarity: .83 });
+  h.repo.finishDelivery = async () => { throw new Error('mock lost persistence'); };
+  await h.service.drain(); assert.equal(h.calls.length, 1);
+  h.advance(900001); await h.restart().drain();
+  assert.equal(h.calls.length, 1); assert.equal(h.deliveries[0].state, 'INDETERMINADA');
+});
+
 test('wake inline procesa el avistamiento solicitado antes de resolver', async () => {
   const h = harness();
   await h.service.recordIntent({}, 41);

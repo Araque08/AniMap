@@ -9,7 +9,8 @@ function createRecognitionService({ repo = createRecognitionRepository(), worker
     : (process.env.RECOGNITION_SIMILARITY_THRESHOLD.trim() ? Number(process.env.RECOGNITION_SIMILARITY_THRESHOLD) : NaN),
   topK = 5, timeoutMs = 120000 } = {}) {
   let busy = false;
-  async function search(content, { signal } = {}) {
+  async function search(content, { signal, allMatches = false } = {}) {
+    repo.assertReady?.();
     if (busy) throw failure('RECOGNITION_BUSY');
     if (!Number.isFinite(threshold) || threshold < 0 || threshold > 1) throw failure('RECOGNITION_UNAVAILABLE');
     busy = true;
@@ -54,7 +55,10 @@ function createRecognitionService({ repo = createRecognitionRepository(), worker
           matches.push({ reportId: fresh.reportId,
             pet: { id: fresh.petId, nombre: fresh.nombre, especie: fresh.especie, raza: fresh.raza, color: fresh.color },
             photo: { id: fresh.photoId, url: `/api/map/images/${fresh.photoId}` }, similarity: photo.similarity });
-          if (matches.length >= topK) break;
+          // Published analysis applies recipient preferences and groups owners
+          // after recognition, so it must retain qualifying reports beyond the
+          // smaller exploratory response limit.
+          if (allMatches !== true && matches.length >= topK) break;
         }
         return { model: 'resnet50-imagenet1k-v2', threshold, searchedImages, skippedImages, matches };
       })()]);

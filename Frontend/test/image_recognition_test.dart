@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
+import 'package:animap/features/sighting/presentation/pages/create_sighting_page.dart';
 import 'package:animap/features/auth/data/session_manager.dart';
 import 'package:animap/features/auth/data/session_storage.dart';
 import 'package:animap/features/report/data/image_recognition_service.dart';
@@ -16,7 +17,12 @@ import 'package:image_picker/image_picker.dart';
 final bytes = base64Decode(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
 );
-XFile image() => XFile.fromData(bytes, name: 'qa.jpeg', mimeType: 'image/jpeg');
+XFile image() => XFile.fromData(
+  bytes,
+  name: 'qa.png',
+  mimeType: 'image/png',
+  path: 'qa.png',
+);
 const match = ImageMatch(
   reportId: 23,
   name: 'Mascota QA de nombre muy largo para comprobar el diseño',
@@ -116,6 +122,62 @@ void main() {
     );
     await tester.pumpAndSettle();
   }
+
+  testWidgets(
+    'publication accepts picker bytes whose extension changed during resizing',
+    (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: ImageSearchSheet(
+              initialImage: XFile.fromData(
+                bytes,
+                name: 'scaled_query.jpg',
+                path: 'scaled_query.jpg',
+              ),
+              pickImage: (_) async => null,
+              search: (_) async => results,
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.scrollUntilVisible(
+        find.byKey(const ValueKey('publish-search-photo')),
+        160,
+      );
+      await tester.tap(find.byKey(const ValueKey('publish-search-photo')));
+      await tester.pumpAndSettle();
+      final form = tester.widget<CreateSightingPage>(
+        find.byType(CreateSightingPage),
+      );
+      expect(form.initialPhoto!.name, endsWith('.png'));
+      expect(await form.initialPhoto!.readAsBytes(), bytes);
+      expect(find.textContaining('por formato no permitido'), findsNothing);
+    },
+  );
+
+  testWidgets('explicit publish opens sighting form with selected photo', (
+    tester,
+  ) async {
+    await sheet(tester);
+    await tester.scrollUntilVisible(
+      find.byKey(const ValueKey('publish-search-photo')),
+      160,
+    );
+    await tester.tap(find.byKey(const ValueKey('publish-search-photo')));
+    await tester.pumpAndSettle();
+    expect(find.text('Reportar avistamiento'), findsOneWidget);
+    await tester.scrollUntilVisible(
+      find.byKey(const ValueKey('sighting-photo-preview')),
+      160,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(
+      find.byKey(const ValueKey('sighting-photo-preview')),
+      findsOneWidget,
+    );
+  });
 
   testWidgets(
     'preview, one explicit request, duplicate tap blocked, results and disclaimer',

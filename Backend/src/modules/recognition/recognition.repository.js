@@ -1,20 +1,24 @@
 const { ObjectId, Binary } = require('mongodb');
 const postgres = require('../../config/postgres_db');
+const { createRecognitionQaScope } = require('./recognition.qa');
 function createRecognitionRepository({ pool = postgres.pool,
-  mongo = () => require('../../config/mongo_db').getMongoDb() } = {}) {
+  mongo = () => require('../../config/mongo_db').getMongoDb(), qaScope } = {}) {
+  const qa = createRecognitionQaScope(qaScope);
   async function activePhotos() {
+    qa.assertReady();
     const result = await pool.query({ text: `SELECT r.id AS "reportId", m.id AS "petId",
       r.fk_usuario AS "ownerId", f.storage_ref AS "photoId", m.nombre, m.color,
       e.nombre AS especie, z.nombre AS raza
       FROM reporte r JOIN mascota m ON m.id = r.fk_mascota AND m.fk_usuario = r.fk_usuario
       JOIN foto_mascota f ON f.fk_mascota = m.id
       JOIN especie e ON e.id = m.fk_especie LEFT JOIN raza z ON z.id = m.fk_raza
-      WHERE r.estado = 'ACTIVO' AND m.estado = 'PERDIDA' ORDER BY r.id, f.id`,
-      values: [], query_timeout: 5000 });
+      WHERE r.estado = 'ACTIVO' AND m.estado = 'PERDIDA'
+        ${qa.enabled ? 'AND r.id=$1 AND r.fk_usuario=$2' : ''} ORDER BY r.id, f.id`,
+      values: qa.enabled ? [qa.reportId, qa.ownerId] : [], query_timeout: 5000 });
     return result.rows;
   }
   async function photoBytes(photo) {
-    if (!ObjectId.isValid(photo.photoId)) return null;
+    if (!qa.allowsPhoto(photo) || !ObjectId.isValid(photo.photoId)) return null;
     const db = await mongo();
     const image = await db.collection('ImagenMascota').findOne({
       _id: new ObjectId(photo.photoId), mascotaIdPg: photo.petId,
@@ -25,6 +29,6 @@ function createRecognitionRepository({ pool = postgres.pool,
     if (content instanceof Binary) return Buffer.from(content.value());
     return null;
   }
-  return { activePhotos, photoBytes };
+  return { activePhotos, photoBytes, assertReady: qa.assertReady };
 }
 module.exports = { createRecognitionRepository };

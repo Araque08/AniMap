@@ -1,4 +1,6 @@
 import 'dart:typed_data';
+import 'dart:math';
+import '../../../auth/data/session_manager.dart';
 
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
@@ -49,6 +51,7 @@ class CreateSightingPage extends StatefulWidget {
   const CreateSightingPage({
     super.key,
     this.reporteInicialId,
+    this.initialPhoto,
     this.reportsLoader,
     this.sightingCreator,
     this.locationLoader,
@@ -60,6 +63,7 @@ class CreateSightingPage extends StatefulWidget {
   });
 
   final int? reporteInicialId;
+  final XFile? initialPhoto;
   final LinkableReportsLoader? reportsLoader;
   final SightingCreator? sightingCreator;
   final Future<DeviceLocation> Function()? locationLoader;
@@ -91,6 +95,10 @@ class _CreateSightingPageState extends State<CreateSightingPage> {
   String? _placeId;
   XFile? _photo;
   Uint8List? _photoBytes;
+  bool _locationConfirmed = false;
+  bool _shareContact = false;
+  late final String _requestId;
+  int? _formGeneration;
   bool _gettingGps = false;
   bool _saving = false;
   bool _submitted = false;
@@ -101,7 +109,19 @@ class _CreateSightingPageState extends State<CreateSightingPage> {
   @override
   void initState() {
     super.initState();
+    _requestId = _newRequestId();
+    _formGeneration = SessionManager.instance.authenticatedSessionGeneration;
     _loadReports();
+    if (widget.initialPhoto case final photo?) _setPhoto(photo);
+  }
+
+  static String _newRequestId() {
+    final random = Random.secure();
+    final bytes = List<int>.generate(16, (_) => random.nextInt(256));
+    bytes[6] = (bytes[6] & 15) | 64;
+    bytes[8] = (bytes[8] & 63) | 128;
+    final hex = bytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
+    return '${hex.substring(0, 8)}-${hex.substring(8, 12)}-${hex.substring(12, 16)}-${hex.substring(16, 20)}-${hex.substring(20)}';
   }
 
   @override
@@ -178,6 +198,7 @@ class _CreateSightingPageState extends State<CreateSightingPage> {
       setState(() {
         _selectedLocation = LatLng(location.latitude, location.longitude);
         _locationMethod = 'GPS';
+        _locationConfirmed = false;
         _accuracy = location.accuracy;
         _validatedAddress = null;
         _placeId = null;
@@ -212,6 +233,7 @@ class _CreateSightingPageState extends State<CreateSightingPage> {
     setState(() {
       _selectedLocation = position;
       _locationMethod = 'MAPA';
+      _locationConfirmed = false;
       _accuracy = null;
       _validatedAddress = null;
       _placeId = null;
@@ -235,6 +257,7 @@ class _CreateSightingPageState extends State<CreateSightingPage> {
     setState(() {
       _selectedLocation = LatLng(selection.lat, selection.lng);
       _locationMethod = 'DIRECCION';
+      _locationConfirmed = false;
       _accuracy = null;
       _validatedAddress = selection.formattedAddress;
       _placeId = selection.placeId;
@@ -275,6 +298,7 @@ class _CreateSightingPageState extends State<CreateSightingPage> {
   void _changeLocation() {
     setState(() {
       _selectedLocation = null;
+      _locationConfirmed = false;
       _locationMethod = null;
       _accuracy = null;
       _validatedAddress = null;
@@ -288,7 +312,11 @@ class _CreateSightingPageState extends State<CreateSightingPage> {
     final selected = await (widget.photoPicker ?? _imagePicker.pickImage)(
       source: source,
     );
-    if (selected == null) return;
+    if (!mounted || selected == null) return;
+    await _setPhoto(selected);
+  }
+
+  Future<void> _setPhoto(XFile selected) async {
     final validation = await validatePetImageSelection(
       selected: [selected],
       alreadyAdded: const [],
@@ -333,6 +361,12 @@ class _CreateSightingPageState extends State<CreateSightingPage> {
   }
 
   Future<void> _save() async {
+    if (_saving) return;
+    if (_formGeneration !=
+        SessionManager.instance.authenticatedSessionGeneration) {
+      _showMessage('La sesión cambió. Abre un nuevo formulario para publicar.');
+      return;
+    }
     if (!_formKey.currentState!.validate()) return;
     if (_linked && _selectedReportId == null) {
       _showMessage('Selecciona la mascota perdida que viste.');
@@ -343,13 +377,49 @@ class _CreateSightingPageState extends State<CreateSightingPage> {
       _showMessage('Usa tu ubicación o selecciona un punto en el mapa.');
       return;
     }
+    if (_photo != null && !_locationConfirmed) {
+      _showMessage(
+        'Confirma explícitamente la ubicación donde viste la mascota.',
+      );
+      return;
+    }
     if (!geofenceStateAllowsSubmit(_geofenceState)) {
       final allowed = await _validateSelectedLocation();
-      if (!allowed) return;
+      if (!allowed || !mounted) return;
+    }
+    if (_formGeneration !=
+        SessionManager.instance.authenticatedSessionGeneration) {
+      _showMessage('La sesión cambió. Abre un nuevo formulario para publicar.');
+      return;
     }
     setState(() => _saving = true);
     try {
-      final create = widget.sightingCreator ?? SightingsService.createSighting;
+      final SightingCreator create =
+          widget.sightingCreator ??
+          ({
+            required descripcion,
+            reportId,
+            required metodo,
+            required lat,
+            required lng,
+            precisionM,
+            direccion,
+            placeId,
+            foto,
+          }) => SightingsService.createSighting(
+            descripcion: descripcion,
+            reportId: reportId,
+            metodo: metodo,
+            lat: lat,
+            lng: lng,
+            precisionM: precisionM,
+            direccion: direccion,
+            placeId: placeId,
+            foto: foto,
+            solicitudId: foto == null ? null : _requestId,
+            ubicacionConfirmada: _locationConfirmed,
+            compartirContacto: _shareContact,
+          );
       await create(
         descripcion: _descriptionController.text,
         reportId: _linked ? _selectedReportId : null,
@@ -361,10 +431,20 @@ class _CreateSightingPageState extends State<CreateSightingPage> {
         placeId: _locationMethod == 'DIRECCION' ? _placeId : null,
         foto: _photo,
       );
-      if (!mounted) return;
+      if (!mounted ||
+          _formGeneration !=
+              SessionManager.instance.authenticatedSessionGeneration) {
+        return;
+      }
       _submitted = true;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Avistamiento registrado correctamente.')),
+        SnackBar(
+          content: Text(
+            _photo == null
+                ? 'Avistamiento registrado correctamente.'
+                : 'Avistamiento registrado. El análisis fotográfico se realizará en segundo plano cuando está disponible.',
+          ),
+        ),
       );
       Navigator.pushNamedAndRemoveUntil(context, '/home', (_) => false);
     } catch (error) {
@@ -586,6 +666,37 @@ class _CreateSightingPageState extends State<CreateSightingPage> {
                     _photo == null ? 'Agregar foto' : 'Reemplazar foto',
                   ),
                 ),
+                if (_photo != null) ...[
+                  CheckboxListTile(
+                    key: const ValueKey('sighting-confirm-location'),
+                    contentPadding: EdgeInsets.zero,
+                    value: _locationConfirmed,
+                    onChanged: _saving || _selectedLocation == null
+                        ? null
+                        : (value) => setState(
+                            () => _locationConfirmed = value ?? false,
+                          ),
+                    title: const Text(
+                      'Confirmo que esta es la ubicación donde vi la mascota',
+                    ),
+                    subtitle: const Text(
+                      'Revisa las coordenadas seleccionadas antes de publicar.',
+                    ),
+                  ),
+                  CheckboxListTile(
+                    key: const ValueKey('sighting-share-contact'),
+                    contentPadding: EdgeInsets.zero,
+                    value: _shareContact,
+                    onChanged: _saving
+                        ? null
+                        : (value) =>
+                              setState(() => _shareContact = value ?? false),
+                    title: const Text(
+                      'Compartir mi teléfono con el propietario si hay coincidencia',
+                    ),
+                    subtitle: const Text('Opcional. Tu correo no se comparte.'),
+                  ),
+                ],
                 const SizedBox(height: 22),
                 FilledButton.icon(
                   key: const ValueKey('publish-sighting'),

@@ -36,6 +36,26 @@ test('threshold configurable, empty results and no silently relaxed threshold', 
   assert.deepEqual((await fixture({ threshold: 0.99 }).service.search(Buffer.from('x'))).matches, []);
   await assert.rejects(fixture({ threshold: NaN }).service.search(Buffer.from('x')), { code: 'RECOGNITION_UNAVAILABLE' });
 });
+
+test('published analysis retains eligible owners beyond exploratory top five', async () => {
+  const photos = Array.from({ length: 8 }, (_, index) => ({ reportId: index + 1,
+    petId: index + 1, photoId: `photo-${index + 1}`, ownerId: index < 5 ? 7 : 100 + index }));
+  const repo = { activePhotos: async () => photos, photoBytes: async photo => Buffer.from(photo.photoId) };
+  const worker = { async request(action, payload) {
+    if (action === 'query') return { queryId: 'query-published' };
+    if (action === 'release') return {};
+    const reportId = Number(Buffer.from(payload.image, 'base64').toString().split('-')[1]);
+    return { similarity: 0.99 - reportId / 100 };
+  }, close() {} };
+  const service = createRecognitionService({ repo, worker });
+  const exploratory = await service.search(Buffer.from('query'));
+  assert.deepEqual(exploratory.matches.map(match => match.reportId), [1, 2, 3, 4, 5]);
+  const published = await service.search(Buffer.from('query'), { allMatches: true });
+  assert.deepEqual(published.matches.map(match => match.reportId), [1, 2, 3, 4, 5, 6, 7, 8]);
+  const eligible = published.matches.filter(match => photos.find(photo => photo.reportId === match.reportId).ownerId !== 7);
+  assert.deepEqual(eligible.map(match => match.reportId), [6, 7, 8]);
+  assert.doesNotMatch(JSON.stringify(published), /ownerId|query-published|base64/);
+});
 test('closed report/removed photo after inference cannot remain in response', async () => {
   const h = fixture({ current: [] });
   assert.deepEqual((await h.service.search(Buffer.from('x'))).matches, []);

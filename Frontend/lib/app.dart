@@ -1,3 +1,4 @@
+import 'features/report/presentation/pages/photo_matches_page.dart';
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
@@ -46,41 +47,32 @@ class _AniMapAppState extends State<AniMapApp> with WidgetsBindingObserver {
   final GlobalKey<ScaffoldMessengerState> _messengerKey = animapMessengerKey;
   PushNotificationCoordinator? _push;
   StreamSubscription<RemoteMessage>? _foregroundMessages, _openedMessages;
-  static const MethodChannel _emergencyChannel =
-  MethodChannel('animap/emergency_shortcut');
+  static const MethodChannel _emergencyChannel = MethodChannel(
+    'animap/emergency_shortcut',
+  );
 
   bool _mostrandoConfirmacion = false;
   bool _procesandoReporteRapido = false;
 
-
-
-  Future<void> _probarUbicacionEmergencia(
-      Map<String, dynamic> mascota,
-      ) async {
+  Future<void> _probarUbicacionEmergencia(Map<String, dynamic> mascota) async {
     final messenger = _messengerKey.currentState;
 
     messenger?.hideCurrentSnackBar();
     messenger?.showSnackBar(
       const SnackBar(
-        content: Text(
-          'AniMap está preparando tu reporte de emergencia...',
-        ),
+        content: Text('AniMap está preparando tu reporte de emergencia...'),
         duration: Duration(seconds: 20),
       ),
     );
 
     try {
-      final generacionSesion =
-          _sessionManager.authenticatedSessionGeneration;
+      final generacionSesion = _sessionManager.authenticatedSessionGeneration;
 
-      if (generacionSesion == null ||
-          _sessionManager.role != 'USUARIO') {
+      if (generacionSesion == null || _sessionManager.role != 'USUARIO') {
         throw Exception('Debes iniciar sesión como usuario.');
       }
 
-      final mascotaId = int.tryParse(
-        mascota['id']?.toString() ?? '',
-      );
+      final mascotaId = int.tryParse(mascota['id']?.toString() ?? '');
 
       if (mascotaId == null || mascotaId <= 0) {
         throw Exception('La mascota seleccionada no es válida.');
@@ -92,8 +84,7 @@ class _AniMapAppState extends State<AniMapApp> with WidgetsBindingObserver {
 
       final disponible = mascotas.any((item) {
         final id = int.tryParse(item['id']?.toString() ?? '');
-        final estado =
-            item['estado']?.toString().toUpperCase() ?? '';
+        final estado = item['estado']?.toString().toUpperCase() ?? '';
 
         return id == mascotaId &&
             estado == 'ACTIVA' &&
@@ -103,13 +94,12 @@ class _AniMapAppState extends State<AniMapApp> with WidgetsBindingObserver {
       if (!disponible) {
         throw Exception(
           'Esta mascota ya no está disponible para '
-              'crear un reporte de pérdida.',
+          'crear un reporte de pérdida.',
         );
       }
 
       // 2. Solicitar la ubicación actual del celular.
-      final ubicacion =
-      await DeviceLocationService.getCurrentLocation();
+      final ubicacion = await DeviceLocationService.getCurrentLocation();
 
       if (!mounted) return;
 
@@ -122,15 +112,14 @@ class _AniMapAppState extends State<AniMapApp> with WidgetsBindingObserver {
       if (!validacion.allowed) {
         throw Exception(
           'La ubicación está fuera de la zona '
-              'permitida para registrar reportes.',
+          'permitida para registrar reportes.',
         );
       }
 
       // Evitar el envío si la sesión cambió durante
       // las operaciones anteriores.
       if (!mounted ||
-          generacionSesion !=
-              _sessionManager.authenticatedSessionGeneration) {
+          generacionSesion != _sessionManager.authenticatedSessionGeneration) {
         return;
       }
 
@@ -147,8 +136,7 @@ class _AniMapAppState extends State<AniMapApp> with WidgetsBindingObserver {
       // 5. Crear el reporte en PostgreSQL
       // mediante el backend existente de AniMap.
 
-      final nombreMascota =
-          mascota['nombre']?.toString().trim() ?? '';
+      final nombreMascota = mascota['nombre']?.toString().trim() ?? '';
 
       final nombreParaReporte = nombreMascota.isNotEmpty
           ? nombreMascota
@@ -157,7 +145,7 @@ class _AniMapAppState extends State<AniMapApp> with WidgetsBindingObserver {
       await ReportsService.createReport(
         mascotaId: mascotaId,
         descripcion:
-        '¡Ayúdanos a encontrar a $nombreParaReporte! '
+            '¡Ayúdanos a encontrar a $nombreParaReporte! '
             'Se perdió cerca de la ubicación señalada en el mapa. '
             'Si la has visto o tienes información sobre su paradero, '
             'por favor registra un avistamiento en AniMap. '
@@ -167,12 +155,10 @@ class _AniMapAppState extends State<AniMapApp> with WidgetsBindingObserver {
         ubicacion: datosUbicacion,
       );
 
-
       if (!mounted) return;
 
       // 6. Confirmar la creación.
-      final nombre =
-          mascota['nombre']?.toString() ?? 'Tu mascota';
+      final nombre = mascota['nombre']?.toString() ?? 'Tu mascota';
 
       _messengerKey.currentState
         ?..hideCurrentSnackBar()
@@ -182,14 +168,14 @@ class _AniMapAppState extends State<AniMapApp> with WidgetsBindingObserver {
             backgroundColor: const Color(0xFF21865B),
             content: Text(
               'Reporte de pérdida de $nombre '
-                  'creado correctamente.',
+              'creado correctamente.',
             ),
           ),
         );
 
       debugPrint(
         'AniMap: reporte rápido creado '
-            'para mascota $mascotaId',
+        'para mascota $mascotaId',
       );
     } catch (error) {
       if (!mounted) return;
@@ -200,26 +186,19 @@ class _AniMapAppState extends State<AniMapApp> with WidgetsBindingObserver {
           SnackBar(
             duration: const Duration(seconds: 6),
             backgroundColor: Colors.red.shade700,
-            content: Text(
-              'No se pudo crear el reporte rápido: $error',
-            ),
+            content: Text('No se pudo crear el reporte rápido: $error'),
           ),
         );
     }
   }
 
-
-
   Future<void> _iniciarReporteRapido() async {
     if (!mounted) return;
 
-    if (!_sessionManager.isAuthenticated ||
-        _sessionManager.role != 'USUARIO') {
+    if (!_sessionManager.isAuthenticated || _sessionManager.role != 'USUARIO') {
       _messengerKey.currentState?.showSnackBar(
         const SnackBar(
-          content: Text(
-            'Debes iniciar sesión para reportar una mascota.',
-          ),
+          content: Text('Debes iniciar sesión para reportar una mascota.'),
         ),
       );
       return;
@@ -233,8 +212,7 @@ class _AniMapAppState extends State<AniMapApp> with WidgetsBindingObserver {
 
       // Solamente mascotas que pueden reportarse.
       final disponibles = mascotas.where((mascota) {
-        final estado =
-            mascota['estado']?.toString().toUpperCase() ?? '';
+        final estado = mascota['estado']?.toString().toUpperCase() ?? '';
 
         return estado == 'ACTIVA';
       }).toList();
@@ -242,9 +220,7 @@ class _AniMapAppState extends State<AniMapApp> with WidgetsBindingObserver {
       if (disponibles.isEmpty) {
         _messengerKey.currentState?.showSnackBar(
           const SnackBar(
-            content: Text(
-              'No tienes mascotas disponibles para reportar.',
-            ),
+            content: Text('No tienes mascotas disponibles para reportar.'),
           ),
         );
         return;
@@ -271,16 +247,9 @@ class _AniMapAppState extends State<AniMapApp> with WidgetsBindingObserver {
                 shrinkWrap: true,
                 children: disponibles.map((mascota) {
                   return ListTile(
-                    leading: const Icon(
-                      Icons.pets,
-                      color: Color(0xFF21986A),
-                    ),
-                    title: Text(
-                      mascota['nombre']?.toString() ?? 'Sin nombre',
-                    ),
-                    subtitle: Text(
-                      mascota['especie']?.toString() ?? '',
-                    ),
+                    leading: const Icon(Icons.pets, color: Color(0xFF21986A)),
+                    title: Text(mascota['nombre']?.toString() ?? 'Sin nombre'),
+                    subtitle: Text(mascota['especie']?.toString() ?? ''),
                     onTap: () {
                       Navigator.pop(dialogContext, mascota);
                     },
@@ -305,15 +274,10 @@ class _AniMapAppState extends State<AniMapApp> with WidgetsBindingObserver {
       if (!mounted) return;
 
       _messengerKey.currentState?.showSnackBar(
-        const SnackBar(
-          content: Text(
-            'No se pudieron consultar tus mascotas.',
-          ),
-        ),
+        const SnackBar(content: Text('No se pudieron consultar tus mascotas.')),
       );
     }
   }
-
 
   Map<String, dynamic>? _comunitariaPendiente;
   int? _administrativaPendienteId;
@@ -354,10 +318,25 @@ class _AniMapAppState extends State<AniMapApp> with WidgetsBindingObserver {
             ),
           );
         },
-        onForeground: (_, open) {
+        onOpenMatch: (id) {
+          _messengerKey.currentState?.hideCurrentMaterialBanner();
+          _navigatorKey.currentState?.push(
+            MaterialPageRoute<void>(
+              builder: (_) => PhotoMatchDetailPage(
+                matchId: id,
+                sessionManager: _sessionManager,
+              ),
+            ),
+          );
+        },
+        onForeground: (notice, open) {
           _mostrarAvisoFirebase(
-            title: 'Nuevo avistamiento de tu mascota',
-            body: 'Registraron un nuevo avistamiento de tu mascota.',
+            title: notice.matchId != null
+                ? 'Posible coincidencia con tu mascota perdida'
+                : 'Nuevo avistamiento de tu mascota',
+            body: notice.matchId != null
+                ? 'Encontramos una posible coincidencia fotografica de tu mascota.'
+                : 'Registraron un nuevo avistamiento de tu mascota.',
             onOpen: open,
           );
         },
@@ -373,17 +352,21 @@ class _AniMapAppState extends State<AniMapApp> with WidgetsBindingObserver {
       _foregroundMessages = firebase.foregroundMessages.listen((message) async {
         final generation = _sessionManager.authenticatedSessionGeneration;
         final allowed = await firebase.notificationsAllowed();
-        if (!mounted || !allowed || !_sessionManager.isAuthenticated ||
+        if (!mounted ||
+            !allowed ||
+            !_sessionManager.isAuthenticated ||
             generation != _sessionManager.authenticatedSessionGeneration) {
           return;
         }
 
         final type = message.data['type']?.toString();
-        if (type == 'AVISTAMIENTO_VINCULADO') {
+        if (type == 'AVISTAMIENTO_VINCULADO' ||
+            type == 'COINCIDENCIA_FOTOGRAFICA') {
           _push?.foreground(message.data, allowed: allowed);
           return;
         }
-        if (type == 'PERDIDA_CERCANA' && !_destinatarioComunitarioValido(message.data)) {
+        if (type == 'PERDIDA_CERCANA' &&
+            !_destinatarioComunitarioValido(message.data)) {
           return;
         }
         _mostrarAvisoFirebase(
@@ -392,35 +375,31 @@ class _AniMapAppState extends State<AniMapApp> with WidgetsBindingObserver {
           onOpen: type == 'PERDIDA_CERCANA'
               ? () => _recibirAlertaComunitaria(message.data)
               : type == 'ADMINISTRATIVA'
-                  ? () => _recibirNotificacionAdministrativa(
-                      message.data,
-                    )
-                  : null,
-
+              ? () => _recibirNotificacionAdministrativa(message.data)
+              : null,
         );
       });
 
-        _openedMessages = firebase.openedMessages.listen((message) {
-          final data = message.data;
-          final tipo = data['type']?.toString();
+      _openedMessages = firebase.openedMessages.listen((message) {
+        final data = message.data;
+        final tipo = data['type']?.toString();
 
-          // HU-064: Mascota perdida cerca del usuario.
-          if (tipo == 'PERDIDA_CERCANA') {
-            _recibirAlertaComunitaria(data);
-            return;
-          }
+        // HU-064: Mascota perdida cerca del usuario.
+        if (tipo == 'PERDIDA_CERCANA') {
+          _recibirAlertaComunitaria(data);
+          return;
+        }
 
-          // HU-072: Abrir notificación enviada por administrador.
+        // HU-072: Abrir notificación enviada por administrador.
 
         if (tipo == 'ADMINISTRATIVA') {
           _recibirNotificacionAdministrativa(data);
           return;
         }
 
-
-          // HU-016: Avistamientos vinculados.
-          _push?.tap(data);
-        });
+        // HU-016: Avistamientos vinculados.
+        _push?.tap(data);
+      });
 
       _sessionManager.addListener(_hidePushWhenSignedOut);
     }
@@ -455,7 +434,6 @@ class _AniMapAppState extends State<AniMapApp> with WidgetsBindingObserver {
     }
   }
 
-
   Future<void> _mostrarConfirmacionReporteRapido() async {
     // Evitar abrir varias ventanas simultáneamente.
     if (!mounted || _mostrandoConfirmacion) return;
@@ -475,7 +453,7 @@ class _AniMapAppState extends State<AniMapApp> with WidgetsBindingObserver {
           const SnackBar(
             content: Text(
               'Debes iniciar sesión como usuario '
-                  'para utilizar el reporte rápido.',
+              'para utilizar el reporte rápido.',
             ),
           ),
         );
@@ -489,23 +467,18 @@ class _AniMapAppState extends State<AniMapApp> with WidgetsBindingObserver {
           return AlertDialog(
             title: const Row(
               children: [
-                Icon(
-                  Icons.pets,
-                  color: Color(0xFF21986A),
-                ),
+                Icon(Icons.pets, color: Color(0xFF21986A)),
                 SizedBox(width: 10),
-                Expanded(
-                  child: Text('Reporte rápido AniMap'),
-                ),
+                Expanded(child: Text('Reporte rápido AniMap')),
               ],
             ),
             content: const Text(
               'Detectamos la combinación de botones '
-                  'de volumen.\n\n'
-                  '¿Quieres continuar con el reporte '
-                  'rápido de una mascota perdida?\n\n'
-                  'Por ahora no se creará ningún reporte '
-                  'automáticamente.',
+              'de volumen.\n\n'
+              '¿Quieres continuar con el reporte '
+              'rápido de una mascota perdida?\n\n'
+              'Por ahora no se creará ningún reporte '
+              'automáticamente.',
             ),
             actions: [
               TextButton(
@@ -532,9 +505,7 @@ class _AniMapAppState extends State<AniMapApp> with WidgetsBindingObserver {
 
       // Prueba del flujo: abrir el formulario existente.
       // Todavía no enviamos información al backend.
-      _navigatorKey.currentState?.pushNamed(
-        '/create-lost-report',
-      );
+      _navigatorKey.currentState?.pushNamed('/create-lost-report');
     } finally {
       _mostrandoConfirmacion = false;
     }
@@ -557,7 +528,6 @@ class _AniMapAppState extends State<AniMapApp> with WidgetsBindingObserver {
     _emergencyChannel.setMethodCallHandler(null);
     super.dispose();
   }
-
 
   // El coordinador de dev atiende AVISTAMIENTO_VINCULADO.
   // Solo PERDIDA_CERCANA se tramita aquí, sin suscribirse dos veces al SDK.
@@ -583,15 +553,10 @@ class _AniMapAppState extends State<AniMapApp> with WidgetsBindingObserver {
     return id != null && id > 0 && id == _idUsuarioActual();
   }
 
-
-  void _recibirNotificacionAdministrativa(
-    Map<String, dynamic> data,
-  ) {
+  void _recibirNotificacionAdministrativa(Map<String, dynamic> data) {
     if (data['type'] != 'ADMINISTRATIVA') return;
 
-    final id = int.tryParse(
-      data['notificationId']?.toString() ?? '',
-    );
+    final id = int.tryParse(data['notificationId']?.toString() ?? '');
 
     if (id == null || id <= 0) return;
 
@@ -619,9 +584,7 @@ class _AniMapAppState extends State<AniMapApp> with WidgetsBindingObserver {
 
       navigator.push(
         MaterialPageRoute<void>(
-          builder: (_) => NotificationsPage(
-            initialNotificationId: id,
-          ),
+          builder: (_) => NotificationsPage(initialNotificationId: id),
         ),
       );
     });
@@ -631,8 +594,11 @@ class _AniMapAppState extends State<AniMapApp> with WidgetsBindingObserver {
     if (data['type'] != 'PERDIDA_CERCANA') return;
     final id = int.tryParse(data['reportId']?.toString() ?? '');
     if (id == null || id <= 0) return;
-    final notificationId = int.tryParse(data['notificationId']?.toString() ?? '');
-    if (notificationId != null && _comunitariasAbiertas.contains(notificationId)) {
+    final notificationId = int.tryParse(
+      data['notificationId']?.toString() ?? '',
+    );
+    if (notificationId != null &&
+        _comunitariasAbiertas.contains(notificationId)) {
       return;
     }
     _comunitariaPendiente = Map<String, dynamic>.of(data);
@@ -645,7 +611,8 @@ class _AniMapAppState extends State<AniMapApp> with WidgetsBindingObserver {
       final data = _comunitariaPendiente;
       if (data == null) return;
       final recipient = data['recipientId']?.toString();
-      if (recipient != null && recipient.isNotEmpty &&
+      if (recipient != null &&
+          recipient.isNotEmpty &&
           !_destinatarioComunitarioValido(data)) {
         _comunitariaPendiente = null;
         return;
@@ -653,7 +620,9 @@ class _AniMapAppState extends State<AniMapApp> with WidgetsBindingObserver {
       final id = int.tryParse(data['reportId']?.toString() ?? '');
       final navigator = _navigatorKey.currentState;
       if (id == null || id <= 0 || navigator == null) return;
-      final notificationId = int.tryParse(data['notificationId']?.toString() ?? '');
+      final notificationId = int.tryParse(
+        data['notificationId']?.toString() ?? '',
+      );
       _comunitariaPendiente = null;
       if (notificationId != null) {
         _comunitariasAbiertas.add(notificationId);
@@ -662,9 +631,11 @@ class _AniMapAppState extends State<AniMapApp> with WidgetsBindingObserver {
         }
       }
       _messengerKey.currentState?.hideCurrentMaterialBanner();
-      navigator.push(MaterialPageRoute<void>(
-        builder: (_) => ReportarBuscarPage(initialReportId: id),
-      ));
+      navigator.push(
+        MaterialPageRoute<void>(
+          builder: (_) => ReportarBuscarPage(initialReportId: id),
+        ),
+      );
     });
   }
 
@@ -677,38 +648,48 @@ class _AniMapAppState extends State<AniMapApp> with WidgetsBindingObserver {
     if (messenger == null || !mounted) return;
     _avisoFirebaseTimer?.cancel();
     messenger.clearMaterialBanners();
-    messenger.showMaterialBanner(MaterialBanner(
-      backgroundColor: const Color(0xFF3F9568),
-      leading: const Icon(Icons.notifications_active_rounded, color: Colors.white),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(title, style: const TextStyle(
-            color: Colors.white, fontWeight: FontWeight.bold,
-          )),
-          if (body.isNotEmpty) Text(body,
-            style: const TextStyle(color: Colors.white)),
+    messenger.showMaterialBanner(
+      MaterialBanner(
+        backgroundColor: const Color(0xFF3F9568),
+        leading: const Icon(
+          Icons.notifications_active_rounded,
+          color: Colors.white,
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              title,
+              style: const TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            if (body.isNotEmpty)
+              Text(body, style: const TextStyle(color: Colors.white)),
+          ],
+        ),
+        actions: [
+          if (onOpen != null)
+            TextButton(
+              onPressed: () {
+                _avisoFirebaseTimer?.cancel();
+                messenger.hideCurrentMaterialBanner();
+                onOpen();
+              },
+              child: const Text('Ver', style: TextStyle(color: Colors.white)),
+            ),
+          TextButton(
+            onPressed: () {
+              _avisoFirebaseTimer?.cancel();
+              messenger.hideCurrentMaterialBanner();
+            },
+            child: const Text('Cerrar', style: TextStyle(color: Colors.white)),
+          ),
         ],
       ),
-      actions: [
-        if (onOpen != null) TextButton(
-          onPressed: () {
-            _avisoFirebaseTimer?.cancel();
-            messenger.hideCurrentMaterialBanner();
-            onOpen();
-          },
-          child: const Text('Ver', style: TextStyle(color: Colors.white)),
-        ),
-        TextButton(
-          onPressed: () {
-            _avisoFirebaseTimer?.cancel();
-            messenger.hideCurrentMaterialBanner();
-          },
-          child: const Text('Cerrar', style: TextStyle(color: Colors.white)),
-        ),
-      ],
-    ));
+    );
     _avisoFirebaseTimer = Timer(const Duration(seconds: 7), () {
       if (messenger.mounted) messenger.hideCurrentMaterialBanner();
     });

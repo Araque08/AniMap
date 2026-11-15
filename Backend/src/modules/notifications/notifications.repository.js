@@ -1,5 +1,10 @@
 const postgres = require('../../config/postgres_db');
 
+function matchMessage(similarity) {
+  return { title: 'Posible coincidencia con tu mascota perdida',
+    body: `Se publicó una fotografía que podría coincidir con tu mascota. Similitud visual: ${Math.round(similarity * 100)} %.` };
+}
+
 function createNotificationsRepository(pool = postgres.pool) {
   async function loadEvent(queryable, sightingId) {
     const result = await queryable.query(
@@ -44,6 +49,40 @@ function createNotificationsRepository(pool = postgres.pool) {
     return result.rows[0]?.id ?? null;
   }
 
+  async function insertMatchIntent(client, event, reason, { similarity }) {
+    const message = matchMessage(similarity);
+    const result = await client.query(
+      `INSERT INTO notificacion (
+         fk_usuario, fk_reporte, fk_avistamiento, titulo, mensaje,
+         tipo, estado_envio, audiencia, fecha
+       ) VALUES ($1, $2, $3, $4, $5, 'COINCIDENCIA_FOTOGRAFICA', $6,
+         'PROPIETARIO', CURRENT_TIMESTAMP AT TIME ZONE 'UTC')
+       ON CONFLICT (fk_avistamiento, fk_usuario)
+         WHERE fk_avistamiento IS NOT NULL DO NOTHING
+       RETURNING id`,
+      [event.ownerId, event.reportId, event.sightingId, message.title, message.body,
+        reason ? `OMITIDA_${reason}` : 'PENDIENTE']
+    );
+    if (result.rows[0]) return result.rows[0].id;
+    // A separate statement sees a concurrently committed conflicting row. Do
+    // not update it: an accepted legacy or photo alert must never be revived.
+    const existing = await client.query(
+      'SELECT id FROM notificacion WHERE fk_avistamiento = $1 AND fk_usuario = $2',
+      [event.sightingId, event.ownerId]
+    );
+    return existing.rows[0]?.id ?? null;
+  }
+
+  async function loadNotification(queryable, notification) {
+    if (notification.type === 'COINCIDENCIA_FOTOGRAFICA') {
+      // Lazy import keeps the existing notification singleton independent of
+      // recognition initialization while sharing this transaction/pool.
+      const { createMatchesRepository } = require('../recognition/recognition.matches.repository');
+      return createMatchesRepository(pool).loadNotification(queryable, notification);
+    }
+    return loadEvent(queryable, notification.sightingId);
+  }
+
   async function recoverAbandoned(scope = null) {
     const result = await pool.query(
       `WITH abandoned AS (
@@ -53,13 +92,14 @@ function createNotificationsRepository(pool = postgres.pool) {
          WHERE estado = 'EN_PROCESO'
            AND iniciado_en < (CURRENT_TIMESTAMP AT TIME ZONE 'UTC') - INTERVAL '15 minutes'
            AND EXISTS (SELECT 1 FROM notificacion n WHERE n.id = d.fk_notificacion
+             AND n.tipo IN ('AVISTAMIENTO_VINCULADO', 'COINCIDENCIA_FOTOGRAFICA')
              AND (($1::integer IS NULL AND $2::integer IS NULL)
                OR (n.fk_usuario = $1 AND n.fk_reporte = $2)))
          RETURNING fk_notificacion
        ) SELECT fk_notificacion FROM abandoned
        UNION
        SELECT n.id AS fk_notificacion FROM notificacion n
-       WHERE n.tipo = 'AVISTAMIENTO_VINCULADO' AND n.estado_envio IN ('PENDIENTE', 'PARCIAL')
+       WHERE n.tipo IN ('AVISTAMIENTO_VINCULADO', 'COINCIDENCIA_FOTOGRAFICA') AND n.estado_envio IN ('PENDIENTE', 'PARCIAL')
          AND (($1::integer IS NULL AND $2::integer IS NULL)
            OR (n.fk_usuario = $1 AND n.fk_reporte = $2))
          AND EXISTS (SELECT 1 FROM notificacion_entrega d WHERE d.fk_notificacion = n.id)
@@ -72,9 +112,9 @@ function createNotificationsRepository(pool = postgres.pool) {
 
   async function pendingNotifications(limit = 25, scope = null) {
     const result = await pool.query(
-      `SELECT n.id, n.fk_avistamiento AS "sightingId", n.fk_usuario AS "ownerId", n.fk_reporte AS "reportId"
+      `SELECT n.id, n.tipo AS type, n.fk_avistamiento AS "sightingId", n.fk_usuario AS "ownerId", n.fk_reporte AS "reportId"
        FROM notificacion n
-       WHERE n.tipo = 'AVISTAMIENTO_VINCULADO'
+       WHERE n.tipo IN ('AVISTAMIENTO_VINCULADO', 'COINCIDENCIA_FOTOGRAFICA')
          AND (($2::integer IS NULL AND $3::integer IS NULL)
            OR (n.fk_usuario = $2 AND n.fk_reporte = $3))
          AND ($4::integer IS NULL OR n.fk_avistamiento = $4)
@@ -375,6 +415,8 @@ function createNotificationsRepository(pool = postgres.pool) {
   return {
     pool,
     loadEvent,
+    loadNotification,
+    insertMatchIntent,
     insertIntent,
     recoverAbandoned,
     recoverCommunityAbandoned,
@@ -391,4 +433,4 @@ function createNotificationsRepository(pool = postgres.pool) {
   };
 }
 
-module.exports = { createNotificationsRepository };
+module.exports = { createNotificationsRepository, matchMessage };

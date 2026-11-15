@@ -4,6 +4,7 @@ import 'package:animap/widgets/bottom_menu_animap.dart';
 import 'package:animap/features/report/data/mascotas_perdidas_service.dart';
 import '../../data/image_recognition_service.dart';
 import '../widgets/image_search_sheet.dart';
+import 'photo_matches_page.dart';
 
 class ReportarBuscarPage extends StatefulWidget {
   const ReportarBuscarPage({
@@ -78,7 +79,6 @@ class _ReportarBuscarPageState extends State<ReportarBuscarPage> {
   // CONSULTAR REPORTES REALES DESDE EL BACKEND
   // =====================================================
 
-
   Future<void> _cargarReportes() async {
     if (!mounted) return;
 
@@ -89,9 +89,7 @@ class _ReportarBuscarPageState extends State<ReportarBuscarPage> {
 
     try {
       // Consultar reportes reales del backend.
-      final datos = await (
-        widget.reportsLoader ?? _servicio.obtenerReportes
-      )();
+      final datos = await (widget.reportsLoader ?? _servicio.obtenerReportes)();
 
       if (!mounted) return;
 
@@ -106,16 +104,13 @@ class _ReportarBuscarPageState extends State<ReportarBuscarPage> {
 
       final reporteId = widget.initialReportId;
 
-      if (reporteId != null &&
-          !_detalleInicialProcesado) {
-
+      if (reporteId != null && !_detalleInicialProcesado) {
         _detalleInicialProcesado = true;
 
         MascotaReporte? reporteEncontrado;
 
         for (final mascota in datos) {
-          if (mascota.id == 'lost_$reporteId' &&
-              mascota.estaPerdida) {
+          if (mascota.id == 'lost_$reporteId' && mascota.estaPerdida) {
             reporteEncontrado = mascota;
             break;
           }
@@ -131,9 +126,7 @@ class _ReportarBuscarPageState extends State<ReportarBuscarPage> {
           } else {
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(
-                content: Text(
-                  'El reporte ya no está disponible.',
-                ),
+                content: Text('El reporte ya no está disponible.'),
               ),
             );
           }
@@ -148,7 +141,6 @@ class _ReportarBuscarPageState extends State<ReportarBuscarPage> {
       });
     }
   }
-
 
   // =====================================================
   // BUSQUEDA Y FILTROS
@@ -208,18 +200,13 @@ class _ReportarBuscarPageState extends State<ReportarBuscarPage> {
 
         if (fecha == null) return false;
 
-        final inicio = DateUtils.dateOnly(
-          _rangoFechasFiltro!.start,
-        );
+        final inicio = DateUtils.dateOnly(_rangoFechasFiltro!.start);
 
-        final fin = DateUtils.dateOnly(
-          _rangoFechasFiltro!.end,
-        );
+        final fin = DateUtils.dateOnly(_rangoFechasFiltro!.end);
 
         final fechaReporte = DateUtils.dateOnly(fecha);
 
-        if (fechaReporte.isBefore(inicio) ||
-            fechaReporte.isAfter(fin)) {
+        if (fechaReporte.isBefore(inicio) || fechaReporte.isAfter(fin)) {
           return false;
         }
       }
@@ -257,13 +244,14 @@ class _ReportarBuscarPageState extends State<ReportarBuscarPage> {
           : mascota.estaPerdida;
     }).toList();
 
-
     List<String> opcionesCampo(int posicion) {
       final opciones = reportesDisponibles
           .map((mascota) => _obtenerCampo(mascota, posicion).trim())
-          .where((valor) =>
-      valor.isNotEmpty &&
-          valor.toLowerCase() != 'avistamiento independiente')
+          .where(
+            (valor) =>
+                valor.isNotEmpty &&
+                valor.toLowerCase() != 'avistamiento independiente',
+          )
           .toSet()
           .toList();
 
@@ -271,7 +259,6 @@ class _ReportarBuscarPageState extends State<ReportarBuscarPage> {
 
       return opciones;
     }
-
 
     final especies = opcionesCampo(0);
     final razas = opcionesCampo(1);
@@ -422,7 +409,6 @@ class _ReportarBuscarPageState extends State<ReportarBuscarPage> {
 
                       const SizedBox(height: 8),
 
-
                       OutlinedButton.icon(
                         onPressed: () async {
                           final ahora = DateTime.now();
@@ -445,7 +431,6 @@ class _ReportarBuscarPageState extends State<ReportarBuscarPage> {
                         icon: const Icon(Icons.date_range_outlined),
                         label: Text(fechaTexto()),
                       ),
-
 
                       if (rangoTemporal != null)
                         TextButton(
@@ -1228,6 +1213,20 @@ class _ReportarBuscarPageState extends State<ReportarBuscarPage> {
                         ),
                         const SizedBox(height: 20),
 
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: TextButton.icon(
+                            key: const ValueKey('photo-match-history'),
+                            icon: const Icon(Icons.notifications_outlined),
+                            label: const Text('Mis coincidencias fotográficas'),
+                            onPressed: () => Navigator.push(
+                              context,
+                              MaterialPageRoute<void>(
+                                builder: (_) => const PhotoMatchesPage(),
+                              ),
+                            ),
+                          ),
+                        ),
                         // Acciones principales
                         IntrinsicHeight(
                           child: Row(

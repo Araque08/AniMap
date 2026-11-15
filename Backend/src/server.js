@@ -21,6 +21,7 @@ async function startServer({
   application = app,
   database = pool,
   worker = notificationsService,
+  analyzer,
   qaScheduler = adminQAScheduler,
   generalScheduler = adminGeneralScheduler,
   closeImages = closeMongoDb,
@@ -35,6 +36,9 @@ async function startServer({
     server.once('error', reject);
   });
 
+  const photoAnalyzer = analyzer === undefined && worker === notificationsService
+    ? require('./modules/recognition/recognition.matches.service').matchService : analyzer;
+  photoAnalyzer?.start();
   worker.start();
   // HU-049: iniciar los programadores administrativos.
   qaScheduler.start();
@@ -44,6 +48,7 @@ async function startServer({
   function shutdown() {
     if (closing) return closing;
 
+    photoAnalyzer?.stop();
     worker.stop();
     // Detener también los temporizadores administrativos, si sus
     // implementaciones exponen stop().

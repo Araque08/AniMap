@@ -24,6 +24,11 @@ const createSightingSchema = z.object({
   precisionM: optionalAccuracy,
   direccion: optionalText(255),
   placeId: optionalText(150),
+  solicitudId: z.string().uuid().optional(),
+  ubicacionConfirmada: z.preprocess(value => value === 'true' ? true : value === 'false' ? false : value,
+    z.boolean().optional()),
+  compartirContacto: z.preprocess(value => value === 'true' ? true : value === 'false' ? false : value,
+    z.boolean().optional()),
 }).strict().superRefine((sighting, context) => {
   if (sighting.metodo !== 'DIRECCION') return;
   if (!sighting.direccion) {

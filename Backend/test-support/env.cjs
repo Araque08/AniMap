@@ -19,3 +19,10 @@ process.env.JWT_REFRESH_SECRET = 'animap-test-refresh-secret';
 
 process.env.ADMIN_FCM_ENABLED = 'false';
 process.env.ADMIN_FCM_GENERAL_ENABLED = 'false';
+
+process.env.PHOTO_MATCH_ENABLED = 'false';
+process.env.COMMUNITY_ALERTS_ENABLED = 'false';
+
+// El aislamiento QA se activa explicitamente por fixture, nunca por el entorno del desarrollador.
+process.env.RECOGNITION_QA_MODE = 'false';
+process.env.RECOGNITION_QA_REPORTER_ID = '';
