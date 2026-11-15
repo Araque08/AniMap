@@ -2,6 +2,7 @@ const express = require('express');
 const multer = require('multer');
 const postgres = require('../../config/postgres_db');
 const authMiddleware = require('../../middleware/auth.middleware');
+const { validarColoresMascota } = require('./pet_colors_validator');
 const {
   eliminarImagenesMascotaMongoPorIds,
   guardarImagenesMascota,
@@ -58,7 +59,17 @@ router.post('/', authMiddleware, uploadImages, async (req, res) => {
     : Number(req.body.edad_aprox);
   const fotoPrincipalIndex = Number(req.body.foto_principal_index);
   const nombre = req.body.nombre?.trim();
-  const color = req.body.color?.trim();
+  const validacionColores = validarColoresMascota(req.body.color);
+
+  if (!validacionColores.ok) {
+    return res.status(400).json({
+      ok: false,
+      message: validacionColores.message,
+    });
+  }
+
+  const color = validacionColores.color;
+
   const unidadEdad = ['MESES', 'ANIOS'].includes(req.body.unidad_edad)
     ? req.body.unidad_edad
     : null;

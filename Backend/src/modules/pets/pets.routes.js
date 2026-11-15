@@ -5,6 +5,7 @@ const { ObjectId } = require('mongodb');
 const postgres = require('../../config/postgres_db');
 const { getMongoDb } = require('../../config/mongo_db');
 const authMiddleware = require('../../middleware/auth.middleware');
+const { validarColoresMascota } = require('./pet_colors_validator');
 const { petDeletionRecovery } = require('./pets.deletion-recovery.service');
 const {
   eliminarImagenMascotaMongo,
@@ -808,8 +809,20 @@ router.put('/:id', async (req, res) => {
   const edadAprox = req.body.edad_aprox === null || req.body.edad_aprox === ''
     ? null
     : Number(req.body.edad_aprox);
+
   const nombre = req.body.nombre?.trim();
-  const color = req.body.color?.trim();
+
+  const validacionColores = validarColoresMascota(req.body.color);
+
+  if (!validacionColores.ok) {
+    return res.status(400).json({
+      ok: false,
+      message: validacionColores.message,
+    });
+  }
+
+  const color = validacionColores.color;
+
   if (!validPositiveInteger(mascotaId) || !validPositiveInteger(especieId) || !nombre || !color) {
     return res.status(400).json({ ok: false, message: 'Datos de mascota inválidos' });
   }

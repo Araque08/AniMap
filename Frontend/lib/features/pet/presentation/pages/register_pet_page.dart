@@ -7,6 +7,7 @@ import 'package:image_picker/image_picker.dart';
 import '../../data/mascotas_service.dart';
 import '../../data/pet_image_selection.dart';
 import 'pet_photos_management_page.dart';
+import '../widgets/pet_colors_selector.dart';
 
 class RegisterPetPage extends StatefulWidget {
   final Map<String, dynamic>? mascotaEditar;
@@ -22,10 +23,10 @@ class _RegisterPetPageState extends State<RegisterPetPage> {
 
   final _formKey = GlobalKey<FormState>();
   final _nombreController = TextEditingController();
-  final _colorController = TextEditingController();
   final _observacionesController = TextEditingController();
   final _edadController = TextEditingController();
 
+  List<String> _coloresSeleccionados = [];
   bool get isEditMode => widget.mascotaEditar != null;
   bool _isLoading = false;
   bool _hasError = false;
@@ -128,7 +129,16 @@ class _RegisterPetPageState extends State<RegisterPetPage> {
 
     try {
       _nombreController.text = pet['nombre']?.toString() ?? '';
-      _colorController.text = pet['color']?.toString() ?? '';
+      
+      final coloresGuardados = pet['color']?.toString() ?? '';
+
+      _coloresSeleccionados = coloresGuardados
+          .split(',')
+          .map((color) => color.trim())
+          .where((color) => color.isNotEmpty)
+          .toSet()
+          .take(5)
+          .toList();
       _observacionesController.text = pet['observaciones']?.toString() ?? '';
       _edadController.text = pet['edad_aprox']?.toString() ?? '';
 
@@ -478,6 +488,25 @@ class _RegisterPetPageState extends State<RegisterPetPage> {
       return;
     }
 
+    if (_coloresSeleccionados.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Debes seleccionar al menos un color'),
+        ),
+      );
+      return;
+    }
+
+    if (_coloresSeleccionados.length > 5) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Solo puedes seleccionar máximo 5 colores'),
+        ),
+      );
+      return;
+    }
+
+
     if (_especieSeleccionadaId == null || _especieSeleccionadaId!.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Debes seleccionar una especie')),
@@ -528,7 +557,7 @@ class _RegisterPetPageState extends State<RegisterPetPage> {
           fkEspecie: int.parse(_especieSeleccionadaId!),
           fkRaza: fkRaza,
           nombre: _nombreController.text.trim(),
-          color: _colorController.text.trim(),
+          color: _coloresSeleccionados.join(', '),
           edadAprox: edadAprox,
           unidadEdad: _unidadEdadSeleccionada,
           sexo: _sexoSeleccionadoId ?? 'NO_DEFINIDO',
@@ -562,7 +591,7 @@ class _RegisterPetPageState extends State<RegisterPetPage> {
         fkEspecie: int.parse(_especieSeleccionadaId!),
         fkRaza: fkRaza,
         nombre: _nombreController.text.trim(),
-        color: _colorController.text.trim(),
+        color: _coloresSeleccionados.join(', '),
         edadAprox: edadAprox,
         unidadEdad: _unidadEdadSeleccionada,
         sexo: _sexoSeleccionadoId ?? 'NO_DEFINIDO',
@@ -819,23 +848,17 @@ class _RegisterPetPageState extends State<RegisterPetPage> {
 
                       const SizedBox(height: 16),
 
-                      TextFormField(
-                        controller: _colorController,
-                        enabled: !_isLoading,
-                        decoration: _inputDecoration(
-                          hint: 'Color principal',
-                          prefixIcon: Icons.color_lens,
-                          hintTextColor: hintText,
-                          iconColor: accentGreen,
-                          hasError: _hasError,
+                      
+                        PetColorsSelector(
+                          selectedColors: _coloresSeleccionados,
+                          enabled: !_isLoading,
+                          onChanged: (colores) {
+                            setState(() {
+                              _coloresSeleccionados = colores;
+                            });
+                          },
                         ),
-                        validator: (value) {
-                          if (value == null || value.trim().isEmpty) {
-                            return 'El color es obligatorio';
-                          }
-                          return null;
-                        },
-                      ),
+
 
                       const SizedBox(height: 16),
 
