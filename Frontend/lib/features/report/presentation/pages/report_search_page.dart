@@ -1193,19 +1193,17 @@ class _ReportarBuscarPageState extends State<ReportarBuscarPage> {
                               ),
                             ),
                             IconButton(
+                              tooltip: 'Ver mapa de AniMap',
                               icon: const Icon(
                                 Icons.map_outlined,
                                 color: verde,
                                 size: 28,
                               ),
                               onPressed: () {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                    content: Text(
-                                      'Conecta aquí el mapa '
-                                      'existente de AniMap.',
-                                    ),
-                                  ),
+                                Navigator.pushNamedAndRemoveUntil(
+                                  context,
+                                  '/home',
+                                      (route) => false,
                                 );
                               },
                             ),

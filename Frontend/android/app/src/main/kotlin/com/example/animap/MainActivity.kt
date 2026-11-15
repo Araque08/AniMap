@@ -74,59 +74,116 @@ class MainActivity : FlutterActivity() {
         readLocation()
     }
 
-    private fun readLocation() {
-        val manager = getSystemService(Context.LOCATION_SERVICE) as LocationManager
-        val providers = listOf(
-            LocationManager.GPS_PROVIDER,
-            LocationManager.NETWORK_PROVIDER,
-        ).filter { provider ->
-            runCatching { manager.isProviderEnabled(provider) }.getOrDefault(false)
-        }
 
-        if (providers.isEmpty()) {
-            finishWithError("LOCATION_DISABLED", "Activa la ubicación del dispositivo")
+    private fun readLocation() {
+        val manager =
+            getSystemService(Context.LOCATION_SERVICE) as LocationManager
+
+        val fineGranted =
+            checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) ==
+                    PackageManager.PERMISSION_GRANTED
+
+        val coarseGranted =
+            checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION) ==
+                    PackageManager.PERMISSION_GRANTED
+
+        if (!fineGranted && !coarseGranted) {
+            finishWithError(
+                "LOCATION_PERMISSION",
+                "AniMap necesita permiso para obtener tu ubicación"
+            )
             return
         }
 
-        val provider = if (providers.contains(LocationManager.GPS_PROVIDER)) {
+        // Consultar los proveedores disponibles.
+        // La red puede responder más rápido que el GPS.
+        val providers = listOf(
+            LocationManager.NETWORK_PROVIDER,
             LocationManager.GPS_PROVIDER
-        } else {
-            providers.first()
+        ).filter { provider ->
+            val permitted =
+                provider != LocationManager.GPS_PROVIDER || fineGranted
+
+            permitted && runCatching {
+                manager.isProviderEnabled(provider)
+            }.getOrDefault(false)
         }
+
+        if (providers.isEmpty()) {
+            finishWithError(
+                "LOCATION_DISABLED",
+                "Activa la ubicación del celular para continuar"
+            )
+            return
+        }
+
+        // La primera lectura nueva que llegue será utilizada.
         val listener = object : LocationListener {
+
             override fun onLocationChanged(location: Location) {
+                if (pendingResult == null) return
+
                 manager.removeUpdates(this)
                 finishWithLocation(location)
             }
 
-            override fun onProviderDisabled(disabledProvider: String) {
-                if (disabledProvider == provider) {
-                    manager.removeUpdates(this)
-                    finishWithError(
-                        "LOCATION_DISABLED",
-                        "El proveedor de ubicación fue desactivado",
-                    )
-                }
-            }
+            override fun onProviderDisabled(provider: String) = Unit
 
-            override fun onProviderEnabled(enabledProvider: String) = Unit
+            override fun onProviderEnabled(provider: String) = Unit
 
             @Deprecated("Deprecated in Android")
-            override fun onStatusChanged(provider: String?, status: Int, extras: Bundle?) = Unit
+            override fun onStatusChanged(
+                provider: String?,
+                status: Int,
+                extras: Bundle?
+            ) = Unit
         }
+
         activeListener = listener
-        try {
-            manager.requestSingleUpdate(provider, listener, Looper.getMainLooper())
-        } catch (_: SecurityException) {
-            finishWithError("LOCATION_PERMISSION", "No hay permiso para usar la ubicación")
+
+        var solicitudesIniciadas = 0
+
+        for (provider in providers) {
+            try {
+                manager.requestSingleUpdate(
+                    provider,
+                    listener,
+                    Looper.getMainLooper()
+                )
+
+                solicitudesIniciadas++
+            } catch (_: SecurityException) {
+                // Intentar con el siguiente proveedor.
+            } catch (_: IllegalArgumentException) {
+                // Proveedor no disponible en este dispositivo.
+            }
+        }
+
+        if (solicitudesIniciadas == 0) {
+            activeListener = null
+            finishWithError(
+                "LOCATION_UNAVAILABLE",
+                "No fue posible iniciar la búsqueda de ubicación"
+            )
             return
         }
 
+        // Tiempo máximo para obtener una ubicación nueva.
         timeout = Runnable {
-            activeListener?.let { manager.removeUpdates(it) }
-            finishWithError("LOCATION_TIMEOUT", "No se obtuvo una ubicación a tiempo")
-        }.also { handler.postDelayed(it, 15000) }
+            manager.removeUpdates(listener)
+
+            if (pendingResult != null) {
+                finishWithError(
+                    "LOCATION_TIMEOUT",
+                    "No pudimos obtener tu ubicación actual. " +
+                            "Puedes seleccionar el lugar manualmente."
+                )
+            }
+        }.also {
+            handler.postDelayed(it, 20000L)
+        }
     }
+
 
     private fun finishWithLocation(location: Location) {
         clearLocationRequest()
