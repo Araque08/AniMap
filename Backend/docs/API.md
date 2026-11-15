@@ -1,6 +1,8 @@
-# AniMap — API REST
+﻿# AniMap — API REST
 
-**69 operaciones**, agrupadas por módulo. Las rutas incluyen `/api`, sin `/v1`. Configuración y arquitectura: [README](../README.md).
+Las operaciones de HU-034 (publicación idempotente con fotografía, historial, detalle y foto autenticados) se describen en [Posibles coincidencias por fotografía](HU034_COINCIDENCIAS.md#contrato-http-añadido). La migración ya se aplicó en la base compartida; otras bases requieren revisión previa. El análisis y las consultas requieren habilitar `PHOTO_MATCH_ENABLED`; los envíos FCM siguen deshabilitados por defecto.
+
+Las tablas agrupan las operaciones por módulo; las consultas nuevas de coincidencias están en el documento enlazado arriba. Las rutas incluyen `/api`, sin `/v1`. Configuración y arquitectura: [README](../README.md).
 
 ## Uso general
 
