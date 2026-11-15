@@ -85,10 +85,9 @@ class TopMenuAnimap extends StatelessWidget {
             onPressed:
                 onNotificationTap ??
                 () {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Aquí irán las notificaciones.'),
-                    ),
+                  Navigator.pushNamed(
+                    context,
+                    '/notifications',
                   );
                 },
             icon: const Icon(

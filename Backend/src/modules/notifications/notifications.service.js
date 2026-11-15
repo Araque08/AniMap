@@ -2,6 +2,9 @@ const { createHash } = require('node:crypto');
 const env = require('../../config/env');
 const { createNotificationsRepository } = require('./notifications.repository');
 const { createFirebaseSender, classifyFirebaseError } = require('./firebase.sender');
+const {
+  createCommunityAlertsRepository,
+} = require('./community-alerts.repository');
 
 function coordinate(value, max) {
   return value !== null && value !== undefined && value !== ''
@@ -33,14 +36,47 @@ function skipReason(event) {
   return null;
 }
 
-function createNotificationsService({
-  repo = createNotificationsRepository(), enabled = env.FCM_PUSH_ENABLED,
-  testMode = env.FCM_TEST_MODE, testOwnerId = env.FCM_TEST_OWNER_ID,
-  testReportId = env.FCM_TEST_REPORT_ID,
-  processingMode = env.FCM_PROCESSING_MODE, budgetMs = 45000,
-  sender = createFirebaseSender({ enabled }), now = Date.now, random = Math.random,
-  logger = console,
-} = {}) {
+
+function createNotificationsService(options = {}) {
+  const {
+    repo = createNotificationsRepository(),
+    enabled = env.FCM_PUSH_ENABLED,
+    communityRepo = createCommunityAlertsRepository(repo.pool),
+
+    communityEnabled =
+      process.env.COMMUNITY_ALERTS_ENABLED === 'true',
+
+    communityTestRecipientId =
+      process.env.COMMUNITY_FCM_TEST_RECIPIENT_ID,
+
+    communityTestReportId =
+      process.env.COMMUNITY_FCM_TEST_REPORT_ID,
+
+    testMode = env.FCM_TEST_MODE,
+
+    testOwnerId: suppliedTestOwnerId,
+    testReportId: suppliedTestReportId,
+
+    processingMode = env.FCM_PROCESSING_MODE,
+    budgetMs = 45000,
+    sender = createFirebaseSender({ enabled }),
+    now = Date.now,
+    random = Math.random,
+    logger = console,
+  } = options;
+
+  // Usar el .env solamente si la propiedad fue omitida.
+  // Un undefined explícito debe invalidar el modo QA.
+  const testOwnerId =
+    Object.prototype.hasOwnProperty.call(options, 'testOwnerId')
+      ? suppliedTestOwnerId
+      : env.FCM_TEST_OWNER_ID;
+
+  const testReportId =
+    Object.prototype.hasOwnProperty.call(options, 'testReportId')
+      ? suppliedTestReportId
+      : env.FCM_TEST_REPORT_ID;
+
   // Snapshot configuration for this process. Invalid test settings must never
   // silently fall back to unrestricted production delivery.
   const testing = testMode !== false && testMode !== 'false';
@@ -50,6 +86,22 @@ function createNotificationsService({
     && validId(testOwnerId) && validId(testReportId));
   const active = enabled === true && configured
     && ['inline', 'scheduled'].includes(processingMode);
+    // HU-064: Configuración independiente para pruebas.
+  const communityScope =
+    testing &&
+    validId(communityTestRecipientId) &&
+    validId(communityTestReportId)
+      ? {
+          recipientId: Number(communityTestRecipientId),
+          reportId: Number(communityTestReportId),
+        }
+      : null;
+
+  // En modo de prueba se exige un destinatario y reporte.
+  const communityActive =
+    active &&
+    communityEnabled &&
+    (!testing || communityScope !== null);
   const scope = testing && configured
     ? Object.freeze({ ownerId: Number(testOwnerId), reportId: Number(testReportId) }) : null;
   const inScope = event => !scope || (event?.ownerId === scope.ownerId && event?.reportId === scope.reportId);
@@ -106,6 +158,260 @@ function createNotificationsService({
     await repo.finishDelivery(delivery, result);
   }
 
+
+  // =====================================================
+  // HU-064: ENVIAR UNA ALERTA COMUNITARIA
+  // =====================================================
+
+  async function deliverCommunity(notification, delivery) {
+    // Comprobar que el usuario sigue siendo elegible.
+    const recipients =
+      await communityRepo.listEligibleRecipients(
+        notification.reportId
+      );
+
+    const eligible = recipients.some(
+      (user) =>
+        Number(user.userId) ===
+        Number(notification.recipientId)
+    );
+
+    if (!eligible) {
+      await repo.finishDelivery(delivery, {
+        state: 'OMITIDA',
+        error: 'DESTINATARIO_NO_ELEGIBLE',
+      });
+      return;
+    }
+
+    const target = await repo.currentTarget(
+      delivery,
+      notification.recipientId
+    );
+
+    if (!target) {
+      await repo.finishDelivery(delivery, {
+        state: 'OMITIDA',
+        error: 'SESION_NO_DISPONIBLE',
+      });
+      return;
+    }
+
+    let result;
+
+    try {
+      const messageId = await sender.send({
+        fid: target.registrationId,
+
+        notification: {
+          title: notification.title,
+          body: notification.message,
+        },
+
+        data: {
+          type: 'PERDIDA_CERCANA',
+          notificationId: String(notification.id),
+          reportId: String(notification.reportId),
+        },
+
+        tag: `animap-community-${notification.id}`,
+      });
+
+      result = {
+        state: 'ACEPTADA_FCM',
+        messageId,
+        acceptedAt: new Date(now()).toISOString(),
+      };
+
+    } catch (error) {
+      const failure = classifyFirebaseError(error, now());
+
+      result = {
+        state: failure.indeterminate
+          ? 'INDETERMINADA'
+          : 'FALLIDA_PERMANENTE',
+        error: failure.code,
+      };
+
+      if (failure.transient && delivery.attempts < 3) {
+        const delay = Math.max(
+          failure.retryAfterMs,
+          60000 * 2 ** (delivery.attempts - 1) +
+            Math.floor(random() * 10000)
+        );
+
+        result = {
+          state: 'REINTENTO',
+          error: failure.code,
+          nextAt: new Date(now() + delay).toISOString(),
+        };
+      }
+
+      if (failure.invalidRegistration) {
+        await repo.invalidateTarget(
+          delivery,
+          notification.recipientId,
+          target
+        );
+      }
+    }
+
+    await repo.finishDelivery(delivery, result);
+  }
+
+  // =====================================================
+  // HU-064: PROCESAR ALERTAS COMUNITARIAS PENDIENTES
+  // =====================================================
+
+
+async function processCommunityAlerts(deadline) {
+  if (!communityActive || stopped) return true;
+  let completed = true;
+
+  // HU-064: Recuperar entregas que quedaron
+  // interrumpidas durante el procesamiento.
+  const recoveredIds =
+    await repo.recoverCommunityAbandoned(
+      communityScope
+    );
+
+  // Actualizar el estado de las notificaciones
+  // recuperadas sin volver a enviarlas.
+  for (const recovered of recoveredIds) {
+    const id = Number(
+      typeof recovered === 'object' && recovered !== null
+        ? recovered.notificationId ??
+          recovered.notification_id ??
+          recovered.fk_notificacion ??
+          recovered.id
+        : recovered
+    );
+
+    if (!Number.isSafeInteger(id) || id <= 0) {
+      throw new Error(
+        'ID de notificación recuperada inválido'
+      );
+    }
+
+    await repo.summarize(id);
+  }
+
+  // Continuar con las notificaciones pendientes.
+  const notifications =
+    await repo.pendingCommunityAlerts(
+      25,
+      communityScope
+    );
+
+
+    for (const notification of notifications) {
+      if (stopped || now() >= deadline) break;
+
+      // Nunca salir del alcance de prueba configurado.
+      if (
+        testing &&
+        (
+          !communityScope ||
+          Number(notification.recipientId) !==
+            communityScope.recipientId ||
+          Number(notification.reportId) !==
+            communityScope.reportId
+        )
+      ) {
+        continue;
+      }
+
+      try {
+        const recipients =
+          await communityRepo.listEligibleRecipients(
+            notification.reportId
+          );
+
+        const eligible = recipients.some(
+          (user) =>
+            Number(user.userId) ===
+            Number(notification.recipientId)
+        );
+
+        if (!eligible) {
+          await repo.skipNotification(
+            notification.id,
+            'OMITIDA_FILTROS_ACTUALES'
+          );
+          continue;
+        }
+
+        const unique = new Map();
+
+        for (
+          const target of
+          await repo.listTargets(notification.recipientId)
+        ) {
+          if (
+            typeof target.registrationId !== 'string' ||
+            !target.registrationId.trim()
+          ) {
+            continue;
+          }
+
+          const fingerprint = createHash('sha256')
+            .update(target.registrationId)
+            .digest('hex');
+
+          if (!unique.has(fingerprint)) {
+            unique.set(fingerprint, {
+              sessionId: target.id,
+              pushRegistrationId: target.pushRegistrationId,
+              fingerprint,
+            });
+          }
+        }
+
+        if (unique.size === 0) {
+          await repo.skipNotification(
+            notification.id,
+            'SIN_DISPOSITIVOS'
+          );
+          continue;
+        }
+
+        await repo.planDeliveries(
+          notification.id,
+          [...unique.values()]
+        );
+
+        for (
+          let count = 0;
+          count < 100 && !stopped && now() < deadline;
+          count++
+        ) {
+          // El alcance comunitario ya se verificó arriba.
+          const delivery = await repo.claimDelivery(
+            notification.id,
+            null
+          );
+
+          if (!delivery) break;
+
+          await deliverCommunity(
+            notification,
+            delivery
+          );
+        }
+
+        await repo.summarize(notification.id);
+
+      } catch (_) {
+        completed = false;
+        warn(
+          'COMMUNITY_PUSH_PROCESSING_FAILED',
+          notification.id
+        );
+      }
+    }
+    return completed;
+  }
+
   async function processPending(sightingId = null) {
     const deadline = now() + budgetMs;
     let completed = true;
@@ -140,6 +446,12 @@ function createNotificationsService({
         }
         await repo.summarize(notification.id);
       } catch (_) { completed = false; warn('PUSH_PROCESSING_FAILED', notification.id); }
+    }
+    // El procesamiento dirigido a un avistamiento no debe retrasarse
+    // por alertas comunitarias ajenas a ese evento.
+    if (sightingId === null && communityActive && !stopped && now() < deadline) {
+      const communityCompleted = await processCommunityAlerts(deadline);
+      if (!communityCompleted) completed = false;
     }
     return { enabled: true, completed };
   }

@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../data/account_settings_service.dart';
 import '../../data/profile_service.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
+import '../../../../widgets/location_picker_page.dart';
 
 typedef PersonalProfileUpdater =
     Future<Map<String, dynamic>> Function({
@@ -623,6 +625,32 @@ class _NotificationPreferencesPageState
   String selectedSpecies = 'Todas';
   String selectedEvent = 'Todos';
   int selectedRadius = 2;
+  // HU-064: Ubicación de referencia para alertas comunitarias.
+  double? latReferencia;
+  double? lngReferencia;
+
+  // Indica si el usuario cambió o eliminó su ubicación.
+  bool actualizarUbicacionReferencia = false;
+
+  // HU-049: Catálogo de barrios permitidos.
+  static const barriosDisponibles = <String>[
+    'Ciudad Salitre Occidental',
+    'Ciudad Salitre Nor-Occidental',
+    'El Salitre',
+    'Marsella',
+    'Modelia',
+    'Modelia Occidental',
+    'Normandía Occidental',
+    'La Esperanza Norte',
+    'La Esperanza Sur',
+    'Montevideo',
+    'Granjas de Techo',
+    'Villa Alsacia',
+  ];
+
+  // Barrio seleccionado por el usuario.
+  String? selectedBarrio;
+
 
   @override
   void initState() {
@@ -664,6 +692,14 @@ class _NotificationPreferencesPageState
       _ => 'Todos',
     };
     selectedRadius = preferences.radiusKm;
+    // HU-064: Cargar ubicación guardada en PostgreSQL.
+  latReferencia = preferences.latReferencia;
+  lngReferencia = preferences.lngReferencia;
+
+  // Al cargar o guardar correctamente, reiniciar
+  // el indicador de cambios pendientes.
+  actualizarUbicacionReferencia = false;
+    selectedBarrio = preferences.barrioNotificaciones;
   }
 
   NotificationPreferencesData _current() {
@@ -678,12 +714,83 @@ class _NotificationPreferencesPageState
         _ => null,
       },
       radiusKm: selectedRadius,
+      barrioNotificaciones: selectedBarrio,
+      // HU-064: Ubicación de referencia.
+      latReferencia: latReferencia,
+      lngReferencia: lngReferencia,
+      actualizarUbicacionReferencia:
+      actualizarUbicacionReferencia,
     );
   }
+
+
+  // ===================================================
+  // HU-064: SELECCIONAR UBICACIÓN DE REFERENCIA
+  // ===================================================
+
+  Future<void> _chooseReferenceLocation() async {
+    final currentPosition =
+        latReferencia != null && lngReferencia != null
+            ? LatLng(latReferencia!, lngReferencia!)
+            : null;
+
+    // Reutilizamos el mapa existente de AniMap.
+    final position = await Navigator.push<LatLng>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => LocationPickerPage(
+          initialPosition:
+              currentPosition ?? const LatLng(4.6569, -74.1095),
+          selectedPosition: currentPosition,
+          title: 'Mi zona de referencia',
+        ),
+      ),
+    );
+
+    // Si el usuario cancela, no cambiamos nada.
+    if (!mounted || position == null) return;
+
+    setState(() {
+      latReferencia = position.latitude;
+      lngReferencia = position.longitude;
+      actualizarUbicacionReferencia = true;
+    });
+  }
+
+  // ===================================================
+  // HU-064: ELIMINAR UBICACIÓN DE REFERENCIA
+  // ===================================================
+
+  void _removeReferenceLocation() {
+    if (latReferencia == null && lngReferencia == null) {
+      return;
+    }
+
+    setState(() {
+      latReferencia = null;
+      lngReferencia = null;
+      actualizarUbicacionReferencia = true;
+    });
+  }
+
 
   Future<void> _save() async {
     final original = _original;
     if (original == null || _saving) return;
+
+    // Evita guardar nombres que no estén en el catálogo.
+    if (selectedBarrio != null &&
+        !barriosDisponibles.contains(selectedBarrio)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Selecciona un barrio válido de la lista.',
+          ),
+        ),
+      );
+      return;
+    }
+
     final current = _current();
     if (current.hasSameValues(original)) {
       ScaffoldMessenger.of(
@@ -717,6 +824,7 @@ class _NotificationPreferencesPageState
     }
   }
 
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -725,9 +833,17 @@ class _NotificationPreferencesPageState
         backgroundColor: primaryGreen,
         foregroundColor: Colors.white,
       ),
-      body: _buildBody(),
+
+      // Evita que el botón quede debajo de la barra
+      // de navegación de Android.
+      body: SafeArea(
+        top: false,
+        minimum: const EdgeInsets.only(bottom: 24),
+        child: _buildBody(),
+      ),
     );
   }
+
 
   Widget _buildBody() {
     if (_loading && _original == null) {
@@ -759,7 +875,9 @@ class _NotificationPreferencesPageState
           value: onlyMyZone,
           activeThumbColor: darkGreen,
           title: const Text('Solo mi zona'),
-          subtitle: const Text('Limita las alertas al radio configurado'),
+          subtitle: const Text(
+            'Limita los avisos de avistamientos vinculados al radio configurado.',
+          ),
           onChanged: notificationsEnabled
               ? (value) => setState(() {
                   onlyMyZone = value;
@@ -822,10 +940,158 @@ class _NotificationPreferencesPageState
         const SizedBox(height: 6),
         Text(
           onlyMyZone
-              ? 'Se usarán $selectedRadius km para definir tu zona.'
-              : 'El radio se conserva y se aplicará al activar Solo mi zona.',
+              ? 'Se usarán $selectedRadius km para las alertas de pérdidas cercanas y los avistamientos vinculados.'
+              : 'Se usarán $selectedRadius km para las alertas de pérdidas cercanas. Los avistamientos vinculados no tendrán este límite.',
           style: const TextStyle(fontSize: 12, color: Colors.black54),
         ),
+
+
+        // ==================================================
+        // HU-049: SELECCIÓN DE BARRIO
+        // ==================================================
+
+        const SizedBox(height: 14),
+
+        _sectionTitle('Barrio para notificaciones'),
+
+        const SizedBox(height: 8),
+
+        DropdownButtonFormField<String>(
+          key: ValueKey(
+            'notification-neighborhood-${selectedBarrio ?? 'none'}',
+          ),
+
+          initialValue: selectedBarrio ?? '',
+
+          isExpanded: true,
+
+          decoration: _inputDecoration().copyWith(
+            prefixIcon: const Icon(
+              Icons.location_on_outlined,
+            ),
+          ),
+
+          items: [
+            // Permite que el usuario no elija barrio.
+            const DropdownMenuItem<String>(
+              value: '',
+              child: Text('Sin barrio'),
+            ),
+
+            // Opciones oficiales definidas para AniMap.
+            ...barriosDisponibles.map(
+              (barrio) => DropdownMenuItem<String>(
+                value: barrio,
+                child: Text(
+                  barrio,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ),
+
+            // Permite visualizar un valor antiguo
+            // sin modificarlo automáticamente.
+            if (selectedBarrio != null &&
+                !barriosDisponibles.contains(selectedBarrio))
+              DropdownMenuItem<String>(
+                value: selectedBarrio,
+                child: Text(
+                  '$selectedBarrio (valor anterior)',
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+          ],
+
+          onChanged: _saving
+              ? null
+              : (value) {
+                  setState(() {
+                    selectedBarrio =
+                        value == null || value.isEmpty
+                            ? null
+                            : value;
+                  });
+                },
+        ),
+
+
+        // ==================================================
+        // HU-064: ZONA PARA ALERTAS COMUNITARIAS
+        // ==================================================
+
+        const SizedBox(height: 20),
+
+        _sectionTitle('Zona para alertas comunitarias'),
+
+        const SizedBox(height: 8),
+
+        const Text(
+          'Selecciona en el mapa una ubicación de referencia '
+          'para recibir alertas de mascotas perdidas cercanas. '
+          'No necesitas indicar tu dirección exacta.',
+          style: TextStyle(
+            fontSize: 13,
+            color: Colors.black54,
+          ),
+        ),
+
+        const SizedBox(height: 12),
+
+        if (latReferencia != null && lngReferencia != null)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: Text(
+              'Ubicación seleccionada: '
+              '${latReferencia!.toStringAsFixed(6)}, '
+              '${lngReferencia!.toStringAsFixed(6)}',
+              style: const TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          )
+        else
+          const Padding(
+            padding: EdgeInsets.only(bottom: 12),
+            child: Text(
+              'Todavía no has seleccionado una ubicación.',
+              style: TextStyle(
+                fontSize: 13,
+                color: Colors.black54,
+              ),
+            ),
+          ),
+
+        OutlinedButton.icon(
+          key: const ValueKey('choose-reference-location'),
+          onPressed: _saving ? null : _chooseReferenceLocation,
+          icon: const Icon(Icons.location_on_outlined),
+          label: Text(
+            latReferencia == null
+                ? 'Seleccionar ubicación en el mapa'
+                : 'Cambiar ubicación',
+          ),
+        ),
+        if (latReferencia != null && lngReferencia != null)
+          TextButton.icon(
+            key: const ValueKey('remove-reference-location'),
+            onPressed: _saving ? null : _removeReferenceLocation,
+            icon: const Icon(Icons.delete_outline),
+            label: const Text('Eliminar ubicación'),
+          ),
+        const SizedBox(height: 10),
+        const Text(
+          'Selecciona tu barrio para recibir comunicados '
+          'administrativos dirigidos a esa zona. '
+          'Puedes dejarlo sin seleccionar.',
+          style: TextStyle(
+            fontSize: 12,
+            color: Colors.black54,
+            height: 1.4,
+          ),
+        ),
+
+
         const SizedBox(height: 24),
         SizedBox(
           height: 48,

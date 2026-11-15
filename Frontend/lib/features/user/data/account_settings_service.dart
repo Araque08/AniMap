@@ -14,6 +14,8 @@ class AccountSettingsException implements Exception {
   String toString() => message;
 }
 
+
+
 class NotificationPreferencesData {
   const NotificationPreferencesData({
     required this.notificationsEnabled,
@@ -21,7 +23,17 @@ class NotificationPreferencesData {
     required this.species,
     required this.eventType,
     required this.radiusKm,
+    this.barrioNotificaciones,
+
+    // HU-064: Ubicación de referencia.
+    this.latReferencia,
+    this.lngReferencia,
+    this.actualizarUbicacionReferencia = false,
   });
+
+  // ===================================================
+  // PREFERENCIAS EXISTENTES
+  // ===================================================
 
   final bool notificationsEnabled;
   final bool onlyMyZone;
@@ -29,15 +41,80 @@ class NotificationPreferencesData {
   final String? eventType;
   final int radiusKm;
 
-  factory NotificationPreferencesData.fromJson(Map<String, dynamic> json) {
+  // ===================================================
+  // HU-049: BARRIO DE NOTIFICACIONES
+  // ===================================================
+
+  final String? barrioNotificaciones;
+
+  // ===================================================
+  // HU-064: UBICACIÓN DE REFERENCIA
+  // ===================================================
+
+  final double? latReferencia;
+  final double? lngReferencia;
+
+  // Indica si Flutter debe enviar las coordenadas
+  // al backend cuando se guarden las preferencias.
+  //
+  // false: conservar las coordenadas actuales.
+  // true: guardar o eliminar las coordenadas enviadas.
+  final bool actualizarUbicacionReferencia;
+
+  // ===================================================
+  // NORMALIZAR BARRIO
+  // ===================================================
+
+  static String? _normalizarBarrio(String? valor) {
+    final barrio = valor?.trim();
+
+    if (barrio == null || barrio.isEmpty) {
+      return null;
+    }
+
+    return barrio;
+  }
+
+  // ===================================================
+  // CONVERTIR RESPUESTA DEL BACKEND
+  // ===================================================
+
+  factory NotificationPreferencesData.fromJson(
+    Map<String, dynamic> json,
+  ) {
     return NotificationPreferencesData(
-      notificationsEnabled: json['notificacionesActivas'] == true,
-      onlyMyZone: json['soloMiZona'] == true,
-      species: json['especieFiltro']?.toString(),
-      eventType: json['tipoEvento']?.toString(),
-      radiusKm: (json['radioKm'] as num?)?.round() ?? 2,
+      notificationsEnabled:
+          json['notificacionesActivas'] == true,
+
+      onlyMyZone:
+          json['soloMiZona'] == true,
+
+      species:
+          json['especieFiltro']?.toString(),
+
+      eventType:
+          json['tipoEvento']?.toString(),
+
+      radiusKm:
+          (json['radioKm'] as num?)?.round() ?? 2,
+
+      // HU-049
+      barrioNotificaciones: _normalizarBarrio(
+        json['barrioNotificaciones']?.toString(),
+      ),
+
+      // HU-064: Leer coordenadas desde PostgreSQL.
+      latReferencia:
+          (json['latReferencia'] as num?)?.toDouble(),
+
+      lngReferencia:
+          (json['lngReferencia'] as num?)?.toDouble(),
     );
   }
+
+  // ===================================================
+  // PREPARAR DATOS PARA GUARDAR
+  // ===================================================
 
   Map<String, dynamic> toJson() => {
     'notificacionesActivas': notificationsEnabled,
@@ -45,16 +122,47 @@ class NotificationPreferencesData {
     'especieFiltro': species,
     'tipoEvento': eventType,
     'radioKm': radiusKm,
+
+    // HU-049: Barrio seleccionado.
+    'barrioNotificaciones':
+        _normalizarBarrio(barrioNotificaciones),
+
+    // HU-064:
+    // Solo enviamos las coordenadas si el usuario
+    // solicitó actualizarlas o eliminarlas.
+    if (actualizarUbicacionReferencia)
+      'latReferencia': latReferencia,
+
+    if (actualizarUbicacionReferencia)
+      'lngReferencia': lngReferencia,
   };
+
+  // ===================================================
+  // COMPROBAR SI EXISTEN CAMBIOS
+  // ===================================================
 
   bool hasSameValues(NotificationPreferencesData other) {
     return notificationsEnabled == other.notificationsEnabled &&
         onlyMyZone == other.onlyMyZone &&
         species == other.species &&
         eventType == other.eventType &&
-        radiusKm == other.radiusKm;
+        radiusKm == other.radiusKm &&
+
+        _normalizarBarrio(barrioNotificaciones) ==
+            _normalizarBarrio(other.barrioNotificaciones) &&
+
+        // La ubicación solo participa en la comparación
+        // cuando el usuario está intentando modificarla.
+        (
+          !actualizarUbicacionReferencia ||
+          (
+            latReferencia == other.latReferencia &&
+            lngReferencia == other.lngReferencia
+          )
+        );
   }
 }
+
 
 class ActiveSessionData {
   const ActiveSessionData({

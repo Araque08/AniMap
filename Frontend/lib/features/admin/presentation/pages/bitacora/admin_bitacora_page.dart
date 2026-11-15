@@ -241,10 +241,7 @@ class _AdminBitacoraPageState extends State<AdminBitacoraPage> {
                 'Motivo',
                 r.motivo?.isNotEmpty == true ? r.motivo! : 'No registrado',
               ),
-              _dato(
-                'Detalle',
-                r.detalle?.isNotEmpty == true ? r.detalle! : 'No registrado',
-              ),
+              _detalleLegible(r),
               _dato('Fecha', _fecha(r.fechaHora)),
               _dato('Hora', _hora(r.fechaHora)),
             ],
@@ -258,6 +255,117 @@ class _AdminBitacoraPageState extends State<AdminBitacoraPage> {
         ],
       ),
     );
+  }
+
+
+  // =====================================================
+  // HU-049: FORMATEAR AUDITORÍA DE NOTIFICACIONES
+  // =====================================================
+
+  Widget _detalleLegible(RegistroBitacora registro) {
+    final texto = registro.detalle?.trim();
+
+    if (texto == null || texto.isEmpty) {
+      return _dato('Detalle', 'No registrado');
+    }
+
+    // Conservar el comportamiento anterior para
+    // los demás módulos administrativos.
+    if (registro.modulo != 'NOTIFICACIONES' ||
+        registro.accion != 'ENVIO_ADMINISTRATIVO') {
+      return _dato('Detalle', texto);
+    }
+
+    try {
+      final datos = jsonDecode(texto);
+
+      if (datos is! Map<String, dynamic>) {
+        return _dato('Detalle', texto);
+      }
+
+      String obtener(String campo, String defecto) {
+        return datos[campo]?.toString() ?? defecto;
+      }
+
+      final barrio = obtener(
+        'barrio',
+        'Todos los barrios',
+      );
+
+      final estado = datos['estado'] == 'REGISTRADO_EN_APP'
+          ? 'Registrado en la aplicación'
+          : obtener('estado', 'No registrado');
+
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Divider(),
+          const SizedBox(height: 8),
+
+          const Text(
+            'Información del comunicado',
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+
+          const SizedBox(height: 14),
+
+          _dato(
+            'Título',
+            obtener('titulo', 'No registrado'),
+          ),
+
+          _dato(
+            'Audiencia',
+            obtener('audiencia', 'No registrada'),
+          ),
+
+          _dato(
+            'Barrio',
+            barrio,
+          ),
+
+          _dato(
+            'Destinatarios',
+            obtener('destinatarios', '0'),
+          ),
+
+          _dato(
+            'Notificaciones registradas',
+            obtener('guardadasEnHistorial', '0'),
+          ),
+
+          _dato(
+            'Fallos de registro interno',
+            obtener('fallidas', '0'),
+          ),
+
+          _dato(
+            'Canal',
+            obtener('canal', 'No registrado'),
+          ),
+
+          _dato(
+            'Estado',
+            estado,
+          ),
+
+          _dato(
+            'Notificación push enviada',
+            datos['pushEnviado'] == true ? 'Sí' : 'No',
+          ),
+
+          const Divider(),
+        ],
+      );
+
+    } on FormatException {
+      // Si el detalle no es JSON válido,
+      // conservar su contenido original.
+      return _dato('Detalle', texto);
+    }
   }
 
   Widget _dato(String titulo, String valor) => Padding(
@@ -588,8 +696,12 @@ class RegistroBitacora {
       idEntidadAfectada: enteroOpcional(json['id_entidad_afectada']),
       motivo: json['motivo']?.toString(),
       detalle: json['detalle']?.toString(),
+      // Interpretar la fecha UTC enviada por el backend
+      // y mostrarla en la zona horaria del dispositivo.
       fechaHora:
-          DateTime.tryParse('${json['fecha_hora'] ?? ''}') ?? DateTime(1970),
+          DateTime.tryParse(
+            '${json['fecha_hora'] ?? ''}',
+          )?.toLocal() ?? DateTime(1970),
     );
   }
 }

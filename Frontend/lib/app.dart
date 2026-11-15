@@ -19,10 +19,16 @@ import 'features/report/presentation/pages/report_type_selector_page.dart';
 import 'features/report/presentation/pages/report_search_page.dart';
 import 'features/sighting/presentation/pages/create_sighting_page.dart';
 import 'features/admin/presentation/pages/home/admin_home_page.dart';
+import 'dart:convert';
 import 'package:flutter/services.dart';
+import 'features/notifications/presentation/pages/notifications_page.dart';
 import 'features/pet/data/pets_service.dart';
 import 'features/report/data/device_location_service.dart';
 import 'features/report/data/geofence_service.dart';
+
+// Se conserva para compatibilidad hasta integrar main.dart.
+final GlobalKey<ScaffoldMessengerState> animapMessengerKey =
+    GlobalKey<ScaffoldMessengerState>();
 
 class AniMapApp extends StatefulWidget {
   final SessionManager? sessionManager;
@@ -37,7 +43,7 @@ class AniMapApp extends StatefulWidget {
 class _AniMapAppState extends State<AniMapApp> with WidgetsBindingObserver {
   final GlobalKey<NavigatorState> _navigatorKey = GlobalKey<NavigatorState>();
   late final SessionManager _sessionManager;
-  final _messengerKey = GlobalKey<ScaffoldMessengerState>();
+  final GlobalKey<ScaffoldMessengerState> _messengerKey = animapMessengerKey;
   PushNotificationCoordinator? _push;
   StreamSubscription<RemoteMessage>? _foregroundMessages, _openedMessages;
   static const MethodChannel _emergencyChannel =
@@ -252,7 +258,7 @@ class _AniMapAppState extends State<AniMapApp> with WidgetsBindingObserver {
       // Si tiene varias mascotas, permitir elegir una.
       final contexto = _navigatorKey.currentContext;
 
-      if (contexto == null) return;
+      if (contexto == null || !contexto.mounted) return;
 
       final seleccionada = await showDialog<Map<String, dynamic>>(
         context: contexto,
@@ -295,17 +301,6 @@ class _AniMapAppState extends State<AniMapApp> with WidgetsBindingObserver {
       if (!mounted || seleccionada == null) return;
 
       await _probarUbicacionEmergencia(seleccionada);
-      return;
-
-      _messengerKey.currentState?.showSnackBar(
-        SnackBar(
-          content: Text(
-            'Mascota seleccionada: ${seleccionada['nombre']}',
-          ),
-        ),
-      );
-
-      // Después conectaremos la ubicación y el backend.
     } catch (error) {
       if (!mounted) return;
 
@@ -319,6 +314,10 @@ class _AniMapAppState extends State<AniMapApp> with WidgetsBindingObserver {
     }
   }
 
+
+  Map<String, dynamic>? _comunitariaPendiente;
+  final Set<int> _comunitariasAbiertas = <int>{};
+  Timer? _avisoFirebaseTimer;
 
   @override
   void initState() {
@@ -349,27 +348,16 @@ class _AniMapAppState extends State<AniMapApp> with WidgetsBindingObserver {
               builder: (_) => SightingsHistoryPage(
                 reportId: id,
                 initialSightingId: sightingId,
+                autoOpenInitialDetail: true,
               ),
             ),
           );
         },
         onForeground: (_, open) {
-          final messenger = _messengerKey.currentState;
-          messenger?.hideCurrentMaterialBanner();
-          messenger?.showMaterialBanner(
-            MaterialBanner(
-              leading: const Icon(Icons.visibility, color: Color(0xFF2F9669)),
-              content: const Text(
-                'Registraron un nuevo avistamiento de tu mascota.',
-              ),
-              actions: [
-                TextButton(onPressed: open, child: const Text('Ver')),
-                TextButton(
-                  onPressed: () => messenger.hideCurrentMaterialBanner(),
-                  child: const Text('Cerrar'),
-                ),
-              ],
-            ),
+          _mostrarAvisoFirebase(
+            title: 'Nuevo avistamiento de tu mascota',
+            body: 'Registraron un nuevo avistamiento de tu mascota.',
+            onOpen: open,
           );
         },
         onUnavailable: () => _messengerKey.currentState?.showSnackBar(
@@ -380,17 +368,38 @@ class _AniMapAppState extends State<AniMapApp> with WidgetsBindingObserver {
           ),
         ),
       );
+      // Una única suscripción: FirebaseSetup centraliza los eventos del SDK.
       _foregroundMessages = firebase.foregroundMessages.listen((message) async {
         final generation = _sessionManager.authenticatedSessionGeneration;
         final allowed = await firebase.notificationsAllowed();
-        if (mounted &&
-            generation == _sessionManager.authenticatedSessionGeneration) {
+        if (!mounted || !allowed || !_sessionManager.isAuthenticated ||
+            generation != _sessionManager.authenticatedSessionGeneration) {
+          return;
+        }
+
+        final type = message.data['type']?.toString();
+        if (type == 'AVISTAMIENTO_VINCULADO') {
           _push?.foreground(message.data, allowed: allowed);
+          return;
+        }
+        if (type == 'PERDIDA_CERCANA' && !_destinatarioComunitarioValido(message.data)) {
+          return;
+        }
+        _mostrarAvisoFirebase(
+          title: message.notification?.title ?? 'AniMap',
+          body: message.notification?.body ?? '',
+          onOpen: type == 'PERDIDA_CERCANA'
+              ? () => _recibirAlertaComunitaria(message.data)
+              : null,
+        );
+      });
+      _openedMessages = firebase.openedMessages.listen((message) {
+        if (message.data['type'] == 'PERDIDA_CERCANA') {
+          _recibirAlertaComunitaria(message.data);
+        } else {
+          _push?.tap(message.data);
         }
       });
-      _openedMessages = firebase.openedMessages.listen(
-        (message) => _push?.tap(message.data),
-      );
       _sessionManager.addListener(_hidePushWhenSignedOut);
     }
     _sessionManager.onSessionInvalid = () {
@@ -405,6 +414,8 @@ class _AniMapAppState extends State<AniMapApp> with WidgetsBindingObserver {
         (_) => false,
       );
     };
+    // La navegación comunitaria se reintenta al recuperar la sesión.
+    _sessionManager.addListener(_revisarComunitariaPendiente);
   }
 
   void _hidePushWhenSignedOut() {
@@ -517,8 +528,122 @@ class _AniMapAppState extends State<AniMapApp> with WidgetsBindingObserver {
       _sessionManager.onSessionInvalid = null;
     }
     _sessionManager.onRoleChanged = null;
+    _sessionManager.removeListener(_revisarComunitariaPendiente);
+    _avisoFirebaseTimer?.cancel();
     _emergencyChannel.setMethodCallHandler(null);
     super.dispose();
+  }
+
+
+  // El coordinador de dev atiende AVISTAMIENTO_VINCULADO.
+  // Solo PERDIDA_CERCANA se tramita aquí, sin suscribirse dos veces al SDK.
+  int? _idUsuarioActual() {
+    final token = _sessionManager.accessToken;
+    if (token == null || token.isEmpty) return null;
+    try {
+      final partes = token.split('.');
+      if (partes.length != 3) return null;
+      final payload = jsonDecode(
+        utf8.decode(base64Url.decode(base64Url.normalize(partes[1]))),
+      );
+      return int.tryParse(payload['sub'].toString());
+    } catch (_) {
+      return null;
+    }
+  }
+
+  bool _destinatarioComunitarioValido(Map<String, dynamic> data) {
+    final raw = data['recipientId']?.toString();
+    if (raw == null || raw.isEmpty) return true;
+    final id = int.tryParse(raw);
+    return id != null && id > 0 && id == _idUsuarioActual();
+  }
+
+  void _recibirAlertaComunitaria(Map<String, dynamic> data) {
+    if (data['type'] != 'PERDIDA_CERCANA') return;
+    final id = int.tryParse(data['reportId']?.toString() ?? '');
+    if (id == null || id <= 0) return;
+    final notificationId = int.tryParse(data['notificationId']?.toString() ?? '');
+    if (notificationId != null && _comunitariasAbiertas.contains(notificationId)) {
+      return;
+    }
+    _comunitariaPendiente = Map<String, dynamic>.of(data);
+    _revisarComunitariaPendiente();
+  }
+
+  void _revisarComunitariaPendiente() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_sessionManager.isAuthenticated) return;
+      final data = _comunitariaPendiente;
+      if (data == null) return;
+      final recipient = data['recipientId']?.toString();
+      if (recipient != null && recipient.isNotEmpty &&
+          !_destinatarioComunitarioValido(data)) {
+        _comunitariaPendiente = null;
+        return;
+      }
+      final id = int.tryParse(data['reportId']?.toString() ?? '');
+      final navigator = _navigatorKey.currentState;
+      if (id == null || id <= 0 || navigator == null) return;
+      final notificationId = int.tryParse(data['notificationId']?.toString() ?? '');
+      _comunitariaPendiente = null;
+      if (notificationId != null) {
+        _comunitariasAbiertas.add(notificationId);
+        if (_comunitariasAbiertas.length > 100) {
+          _comunitariasAbiertas.remove(_comunitariasAbiertas.first);
+        }
+      }
+      _messengerKey.currentState?.hideCurrentMaterialBanner();
+      navigator.push(MaterialPageRoute<void>(
+        builder: (_) => ReportarBuscarPage(initialReportId: id),
+      ));
+    });
+  }
+
+  void _mostrarAvisoFirebase({
+    required String title,
+    required String body,
+    VoidCallback? onOpen,
+  }) {
+    final messenger = _messengerKey.currentState;
+    if (messenger == null || !mounted) return;
+    _avisoFirebaseTimer?.cancel();
+    messenger.clearMaterialBanners();
+    messenger.showMaterialBanner(MaterialBanner(
+      backgroundColor: const Color(0xFF3F9568),
+      leading: const Icon(Icons.notifications_active_rounded, color: Colors.white),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(title, style: const TextStyle(
+            color: Colors.white, fontWeight: FontWeight.bold,
+          )),
+          if (body.isNotEmpty) Text(body,
+            style: const TextStyle(color: Colors.white)),
+        ],
+      ),
+      actions: [
+        if (onOpen != null) TextButton(
+          onPressed: () {
+            _avisoFirebaseTimer?.cancel();
+            messenger.hideCurrentMaterialBanner();
+            onOpen();
+          },
+          child: const Text('Ver', style: TextStyle(color: Colors.white)),
+        ),
+        TextButton(
+          onPressed: () {
+            _avisoFirebaseTimer?.cancel();
+            messenger.hideCurrentMaterialBanner();
+          },
+          child: const Text('Cerrar', style: TextStyle(color: Colors.white)),
+        ),
+      ],
+    ));
+    _avisoFirebaseTimer = Timer(const Duration(seconds: 7), () {
+      if (messenger.mounted) messenger.hideCurrentMaterialBanner();
+    });
   }
 
   @override
@@ -561,6 +686,7 @@ class _AniMapAppState extends State<AniMapApp> with WidgetsBindingObserver {
 
         '/profile': (context) => const ProfilePage(),
         '/faqs': (context) => const FaqScreen(),
+        '/notifications': (context) => const NotificationsPage(),
         '/pet-list': (context) => const MyPetsPage(),
       },
     );

@@ -8,6 +8,7 @@ import '../widgets/image_search_sheet.dart';
 class ReportarBuscarPage extends StatefulWidget {
   const ReportarBuscarPage({
     super.key,
+    this.initialReportId,
     this.reportsLoader,
     this.onReportarPerdida,
     this.onReportarAvistamiento,
@@ -20,6 +21,8 @@ class ReportarBuscarPage extends StatefulWidget {
     this.onImageMatch,
   });
 
+  // HU-064: Reporte que se abrirá desde una notificación.
+  final int? initialReportId;
   final Future<List<MascotaReporte>> Function()? reportsLoader;
   final VoidCallback? onReportarPerdida;
   final VoidCallback? onReportarAvistamiento;
@@ -50,6 +53,7 @@ class _ReportarBuscarPageState extends State<ReportarBuscarPage> {
   List<MascotaReporte> _reportes = [];
 
   bool _cargando = true;
+  bool _detalleInicialProcesado = false;
   bool _mostrarAvistamientos = false;
   String _especieFiltro = '';
   String _razaFiltro = '';
@@ -74,6 +78,7 @@ class _ReportarBuscarPageState extends State<ReportarBuscarPage> {
   // CONSULTAR REPORTES REALES DESDE EL BACKEND
   // =====================================================
 
+
   Future<void> _cargarReportes() async {
     if (!mounted) return;
 
@@ -83,7 +88,10 @@ class _ReportarBuscarPageState extends State<ReportarBuscarPage> {
     });
 
     try {
-      final datos = await (widget.reportsLoader ?? _servicio.obtenerReportes)();
+      // Consultar reportes reales del backend.
+      final datos = await (
+        widget.reportsLoader ?? _servicio.obtenerReportes
+      )();
 
       if (!mounted) return;
 
@@ -91,6 +99,46 @@ class _ReportarBuscarPageState extends State<ReportarBuscarPage> {
         _reportes = datos;
         _cargando = false;
       });
+
+      // ============================================
+      // HU-064: ABRIR REPORTE DESDE NOTIFICACIÓN
+      // ============================================
+
+      final reporteId = widget.initialReportId;
+
+      if (reporteId != null &&
+          !_detalleInicialProcesado) {
+
+        _detalleInicialProcesado = true;
+
+        MascotaReporte? reporteEncontrado;
+
+        for (final mascota in datos) {
+          if (mascota.id == 'lost_$reporteId' &&
+              mascota.estaPerdida) {
+            reporteEncontrado = mascota;
+            break;
+          }
+        }
+
+        final reporteParaAbrir = reporteEncontrado;
+
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+
+          if (reporteParaAbrir != null) {
+            _abrirDetalle(reporteParaAbrir);
+          } else {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text(
+                  'El reporte ya no está disponible.',
+                ),
+              ),
+            );
+          }
+        });
+      }
     } catch (e) {
       if (!mounted) return;
 
@@ -100,6 +148,7 @@ class _ReportarBuscarPageState extends State<ReportarBuscarPage> {
       });
     }
   }
+
 
   // =====================================================
   // BUSQUEDA Y FILTROS

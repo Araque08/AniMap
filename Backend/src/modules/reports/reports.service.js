@@ -1,6 +1,10 @@
 const postgres = require('../../config/postgres_db');
 const geofence = require('../geofence/geofence.service');
 
+const {
+  createCommunityAlertsRepository,
+} = require('../notifications/community-alerts.repository');
+
 function createHttpError(message, statusCode) {
   const error = new Error(message);
   error.statusCode = statusCode;
@@ -93,7 +97,18 @@ const REPORT_SELECT = `
     LIMIT 1
   ) fp ON TRUE`;
 
-function createReportsService(pool = postgres.pool, allowedArea = geofence) {
+
+  function createReportsService(
+    pool = postgres.pool,
+    allowedArea = geofence,
+    {
+      communityAlertsEnabled =
+        process.env.COMMUNITY_ALERTS_ENABLED === 'true',
+      communityAlertsRepository =
+        createCommunityAlertsRepository(pool),
+    } = {}
+  ) {
+
   async function listReportablePets(userId) {
     const result = await pool.query(
       `SELECT
@@ -201,15 +216,50 @@ function createReportsService(pool = postgres.pool, allowedArea = geofence) {
         ]
       );
 
+
       await client.query(
         `UPDATE mascota
-         SET estado = 'PERDIDA', actualizado_en = CURRENT_TIMESTAMP AT TIME ZONE 'UTC'
+         SET estado = 'PERDIDA',
+             actualizado_en = CURRENT_TIMESTAMP AT TIME ZONE 'UTC'
          WHERE id = $1 AND fk_usuario = $2`,
         [data.mascotaId, userId]
       );
 
+      // =================================================
+      // HU-064: REGISTRAR ALERTAS COMUNITARIAS
+      // =================================================
+
+
+      // =================================================
+      // HU-064: CONFIRMAR PRIMERO EL REPORTE DE PÉRDIDA
+      // =================================================
+
       await client.query('COMMIT');
+
+      // =================================================
+      // HU-064: REGISTRAR ALERTAS COMUNITARIAS
+      // =================================================
+
+      // Si fallan las alertas, el reporte ya quedó
+      // registrado correctamente en PostgreSQL.
+
+      if (communityAlertsEnabled) {
+        try {
+          await communityAlertsRepository.recordPendingAlerts(
+            report.id,
+            pool
+          );
+        } catch (error) {
+          console.error('HU-064: Error al registrar alertas', {
+            reportId: report.id,
+            code: error.code || 'ALERT_RECORD_FAILED',
+          });
+        }
+      }
+
       return report;
+
+
     } catch (error) {
       await client.query('ROLLBACK').catch(() => undefined);
       if (error.code === '23505') {

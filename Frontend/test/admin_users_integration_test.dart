@@ -66,6 +66,8 @@ Future<void> _openUserForm(WidgetTester tester, _SavingUsers service) async {
   await tester.enterText(find.widgetWithText(TextFormField, 'Nombre'), 'Prueba temporal');
   await tester.enterText(find.widgetWithText(TextFormField, 'Correo electrónico'), 'test@example.invalid');
   await tester.enterText(find.widgetWithText(TextFormField, 'Contraseña'), 'test-only-password');
+  await tester.enterText(find.widgetWithText(TextFormField, 'Teléfono'), '3001234567',);
+
 }
 
 void main() {

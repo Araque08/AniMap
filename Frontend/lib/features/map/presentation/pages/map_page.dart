@@ -23,12 +23,14 @@ class MapPage extends StatefulWidget {
   final String userName;
   final DeviceLocationLoader? locationLoader;
   final MapReportsClient? reportsClient;
+  final int? initialReportId;
 
   const MapPage({
     super.key,
     this.userName = '',
     this.locationLoader,
     this.reportsClient,
+    this.initialReportId,
   });
 
   @override
@@ -525,7 +527,27 @@ class _MapPageState extends State<MapPage> {
 
       if (!mounted || generation != _loadGeneration) return;
 
-      final selected = selectNearestReport(visibleReports, _userLocation);
+
+      // HU-064: Priorizar el reporte abierto
+      // desde una alerta comunitaria.
+
+      MapReport? requestedReport;
+
+      if (widget.initialReportId != null) {
+        for (final report in visibleReports) {
+          if (
+            report.id == 'lost_${widget.initialReportId}' &&
+            report.type == ReportType.lost
+          ) {
+            requestedReport = report;
+            break;
+          }
+        }
+      }
+
+      final selected = requestedReport ??
+          selectNearestReport(visibleReports, _userLocation);
+
       setState(() {
         _activeReports = activeReports;
         _foundReports = foundReports;

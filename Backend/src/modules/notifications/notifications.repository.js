@@ -201,9 +201,194 @@ function createNotificationsRepository(pool = postgres.pool) {
     );
   }
 
-  return { pool, loadEvent, insertIntent, recoverAbandoned, pendingNotifications,
-    listTargets, planDeliveries, claimDelivery, currentTarget, invalidateTarget,
-    finishDelivery, skipNotification, summarize };
+
+  // =====================================================
+  // HU-064: RECUPERAR ENTREGAS COMUNITARIAS INTERRUMPIDAS
+  // =====================================================
+
+  async function recoverCommunityAbandoned(scope = null) {
+    const result = await pool.query(
+      `
+      WITH abandoned AS (
+        UPDATE notificacion_entrega d
+
+        SET
+          estado = 'INDETERMINADA',
+          ultimo_error = 'PROCESS_INTERRUPTED',
+          proximo_intento_en = NULL
+
+        WHERE d.estado = 'EN_PROCESO'
+
+          AND d.iniciado_en <
+            (CURRENT_TIMESTAMP AT TIME ZONE 'UTC')
+            - INTERVAL '15 minutes'
+
+          AND EXISTS (
+            SELECT 1
+            FROM notificacion n
+
+            WHERE n.id = d.fk_notificacion
+              AND n.tipo = 'PERDIDA_CERCANA'
+
+              AND (
+                $1::integer IS NULL
+                OR n.fk_usuario = $1
+              )
+
+              AND (
+                $2::integer IS NULL
+                OR n.fk_reporte = $2
+              )
+          )
+
+        RETURNING d.fk_notificacion
+      )
+
+      SELECT fk_notificacion
+      FROM abandoned
+
+      UNION
+
+      SELECT n.id AS fk_notificacion
+      FROM notificacion n
+
+      WHERE n.tipo = 'PERDIDA_CERCANA'
+
+        AND n.estado_envio IN (
+          'PENDIENTE',
+          'PARCIAL'
+        )
+
+        AND (
+          $1::integer IS NULL
+          OR n.fk_usuario = $1
+        )
+
+        AND (
+          $2::integer IS NULL
+          OR n.fk_reporte = $2
+        )
+
+        AND EXISTS (
+          SELECT 1
+          FROM notificacion_entrega d
+          WHERE d.fk_notificacion = n.id
+        )
+
+        AND NOT EXISTS (
+          SELECT 1
+          FROM notificacion_entrega d
+
+          WHERE d.fk_notificacion = n.id
+
+            AND d.estado IN (
+              'PENDIENTE',
+              'REINTENTO',
+              'EN_PROCESO'
+            )
+        )
+      `,
+      [
+        scope?.recipientId ?? null,
+        scope?.reportId ?? null,
+      ]
+    );
+
+    return [
+      ...new Set(
+        result.rows.map(
+          (row) => row.fk_notificacion
+        )
+      ),
+    ];
+  }
+
+  // =====================================================
+  // HU-064: CONSULTAR ALERTAS COMUNITARIAS PENDIENTES
+  // =====================================================
+
+  async function pendingCommunityAlerts(
+    limit = 25,
+    scope = null
+  ) {
+    const result = await pool.query(
+      `
+      SELECT
+        n.id,
+        n.fk_usuario AS "recipientId",
+        n.fk_reporte AS "reportId",
+        n.titulo AS title,
+        n.mensaje AS message
+
+      FROM notificacion n
+
+      WHERE n.tipo = 'PERDIDA_CERCANA'
+
+        -- Permite limitar las pruebas a un usuario.
+        AND (
+          $2::integer IS NULL
+          OR n.fk_usuario = $2
+        )
+
+        -- Permite limitar las pruebas a un reporte.
+        AND (
+          $3::integer IS NULL
+          OR n.fk_reporte = $3
+        )
+
+        AND (
+          (
+            n.estado_envio IN ('PENDIENTE', 'PARCIAL')
+
+            AND NOT EXISTS (
+              SELECT 1
+              FROM notificacion_entrega d
+              WHERE d.fk_notificacion = n.id
+            )
+          )
+
+          OR EXISTS (
+            SELECT 1
+            FROM notificacion_entrega d
+
+            WHERE d.fk_notificacion = n.id
+              AND d.estado IN ('PENDIENTE', 'REINTENTO')
+              AND d.intentos < 3
+              AND d.proximo_intento_en <=
+                CURRENT_TIMESTAMP AT TIME ZONE 'UTC'
+          )
+        )
+
+      ORDER BY n.id
+      LIMIT $1
+      `,
+      [
+        limit,
+        scope?.recipientId ?? null,
+        scope?.reportId ?? null,
+      ]
+    );
+
+    return result.rows;
+  }
+
+  return {
+    pool,
+    loadEvent,
+    insertIntent,
+    recoverAbandoned,
+    recoverCommunityAbandoned,
+    pendingNotifications,
+    pendingCommunityAlerts,
+    listTargets,
+    planDeliveries,
+    claimDelivery,
+    currentTarget,
+    invalidateTarget,
+    finishDelivery,
+    skipNotification,
+    summarize,
+  };
 }
 
 module.exports = { createNotificationsRepository };

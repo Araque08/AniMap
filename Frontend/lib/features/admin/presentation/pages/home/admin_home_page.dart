@@ -1,12 +1,13 @@
 import 'package:flutter/material.dart';
-
+import '../notifications/admin_notifications_page.dart';
 import '../../../../auth/data/session_manager.dart';
 import '../../../../auth/presentation/session_navigation.dart';
 import '../faq/admin_faq_page.dart';
 import '../users/admin_users_page.dart';
 import '../bitacora/admin_bitacora_page.dart';
 import '../../../../auth/data/auth_service.dart';
-
+import '../../../../user/presentation/pages/profile_options_pages.dart';
+import '../notifications/admin_received_notifications_page.dart';
 import '../reports/admin_reports_page.dart';
 
 class AdminHomePage extends StatelessWidget {
@@ -241,6 +242,79 @@ class AdminHomePage extends StatelessWidget {
             ),
 
             const SizedBox(height: 14),
+
+
+            // =================================================
+            // HU-049: NOTIFICACIONES ADMINISTRATIVAS
+            // =================================================
+            _AdminLink(
+              title: 'Notificaciones',
+              subtitle:
+                  'Redacta y envía comunicados a los usuarios de AniMap.',
+              icon: Icons.notifications_active_outlined,
+              iconBackground: const Color(0xFFEAF5EF),
+              iconColor: green,
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => const AdminNotificationsPage(),
+                  ),
+                );
+              },
+            ),
+
+            const SizedBox(height: 14),
+
+
+            // =================================================
+            // HU-049: MIS NOTIFICACIONES
+            // =================================================
+
+            _AdminLink(
+              title: 'Mis notificaciones',
+              subtitle:
+                  'Consulta los avisos y comunicados que has recibido.',
+              icon: Icons.notifications_none_rounded,
+              iconBackground: const Color(0xFFEAF5EF),
+              iconColor: green,
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) =>
+                        const AdminReceivedNotificationsPage(),
+                  ),
+                );
+              },
+            ),
+
+            const SizedBox(height: 14),
+
+            // =================================================
+            // HU-049: MIS PREFERENCIAS
+            // =================================================
+
+            _AdminLink(
+              title: 'Mis preferencias de notificación',
+              subtitle:
+                  'Configura tu barrio y las notificaciones que deseas recibir.',
+              icon: Icons.tune_rounded,
+              iconBackground: const Color(0xFFEAF1F8),
+              iconColor: const Color(0xFF4779A8),
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) =>
+                        const NotificationPreferencesPage(),
+                  ),
+                );
+              },
+            ),
+
+            const SizedBox(height: 14),
+
 
             // =================================================
             // BITÁCORA ADMINISTRATIVA

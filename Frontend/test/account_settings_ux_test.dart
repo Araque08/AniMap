@@ -78,6 +78,14 @@ void main() {
       ).removeCurrentSnackBar(reason: SnackBarClosedReason.remove);
       await tester.pumpAndSettle();
 
+      await tester.scrollUntilVisible(
+        find.byKey(const ValueKey('notification-species')),
+        -250,
+        scrollable: find.byType(Scrollable).first,
+      );
+
+      await tester.pumpAndSettle();
+
       await selectOption(
         tester,
         const ValueKey('notification-species'),
@@ -208,14 +216,30 @@ void main() {
       await tester.tap(find.byKey(const ValueKey('only-my-zone')));
       await tapSave(tester);
       await tester.pumpAndSettle();
-      expect(attempts, 1);
+
+        expect(attempts, 1);
       expect(find.text('Red no disponible'), findsOneWidget);
+
+      // Volver a mostrar el interruptor, porque después de
+      // guardar el formulario quedó desplazado hacia abajo.
+      await tester.scrollUntilVisible(
+        find.byKey(const ValueKey('only-my-zone')),
+        -250,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.pumpAndSettle();
+
+      // Verificar que el cambio se conserva
+      // aunque haya fallado el guardado.
       expect(
         tester
-            .widget<SwitchListTile>(find.byKey(const ValueKey('only-my-zone')))
+            .widget<SwitchListTile>(
+              find.byKey(const ValueKey('only-my-zone')),
+            )
             .value,
         true,
       );
+
 
       await tester.tap(find.text('Reintentar'));
       await tester.pumpAndSettle();

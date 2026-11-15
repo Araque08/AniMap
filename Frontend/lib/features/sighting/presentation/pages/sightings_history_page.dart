@@ -105,19 +105,24 @@ class ReportSightingsSummary extends StatelessWidget {
   }
 }
 
+
 class SightingsHistoryPage extends StatefulWidget {
   const SightingsHistoryPage({
     super.key,
     required this.reportId,
     this.initialSightingId,
+    this.autoOpenInitialDetail = false,
     this.loader,
     this.mapBuilder,
   });
 
   final int reportId;
   final int? initialSightingId;
+  // Mantiene la selección normal de dev; las notificaciones abren directamente el detalle.
+  final bool autoOpenInitialDetail;
   final SightingsHistoryLoader? loader;
   final SightingsHistoryMapBuilder? mapBuilder;
+
 
   @override
   State<SightingsHistoryPage> createState() => _SightingsHistoryPageState();
@@ -138,6 +143,8 @@ class _SightingsHistoryPageState extends State<SightingsHistoryPage> {
   String? _error;
   Map<String, dynamic>? _history;
   Map<String, dynamic>? _selectedSighting;
+  // HU-016: Evitar abrir dos veces el detalle inicial.
+  bool _detalleInicialAbierto = false;
 
   @override
   void initState() {
@@ -170,6 +177,28 @@ class _SightingsHistoryPageState extends State<SightingsHistoryPage> {
         _selectedSighting = candidates.isEmpty ? null : candidates.first;
         _loading = false;
       });
+
+
+      // HU-016: Abrir automáticamente los detalles
+      // cuando llegamos desde una notificación Firebase.
+      if (widget.autoOpenInitialDetail &&
+          widget.initialSightingId != null &&
+          _selectedSighting != null &&
+          !_detalleInicialAbierto) {
+
+        _detalleInicialAbierto = true;
+
+        final avistamiento = Map<String, dynamic>.from(
+          _selectedSighting!,
+        );
+
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+
+          _openDetail(avistamiento);
+        });
+      }
+
     } catch (error) {
       if (!mounted) return;
       setState(() {

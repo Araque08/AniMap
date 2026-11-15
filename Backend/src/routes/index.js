@@ -23,6 +23,9 @@ const sightingsRoutes = require('../modules/sightings/sightings.routes');
 const geofenceRoutes = require('../modules/geofence/geofence.routes');
 const geocodingRoutes = require('../modules/geocoding/geocoding.routes');
 const notificationPreferencesRoutes = require('../modules/notification-preferences/notification-preferences.routes');
+// HU-049: Notificaciones administrativas.
+const adminNotificationsRoutes = require('../modules/admin-notifications/admin-notifications.routes');
+const notificationsHistoryRoutes = require('../modules/notifications/notifications.history.routes');
 const faqRoutes = require('../modules/faq/faq.routes');
 const usersRoutes = require('../modules/users/users.routes');
 const bitacoraRoutes = require('../modules/admin-bitacora/bitacora.routes');
@@ -96,6 +99,9 @@ router.use('/sightings', sightingsRoutes);
 router.use('/geofence', geofenceRoutes);
 router.use('/geocoding', geocodingRoutes);
 router.use('/notification-preferences', notificationPreferencesRoutes);
+// HU-049: Rutas exclusivas para administradores.
+router.use('/admin/notifications', adminNotificationsRoutes);
+router.use('/notifications', notificationsHistoryRoutes);
 router.use('/faqs', faqRoutes);
 router.use('/users', usersRoutes);
 router.use('/recognition', require('../modules/recognition/recognition.routes').createRecognitionRouter());
