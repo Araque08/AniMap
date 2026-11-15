@@ -15,6 +15,8 @@ import io.flutter.plugin.common.MethodChannel
 import android.os.SystemClock
 import android.view.KeyEvent
 import android.widget.Toast
+import android.content.Intent
+import android.provider.Settings
 
 class MainActivity : FlutterActivity() {
     private val channelName = "animap/location"
@@ -42,11 +44,34 @@ class MainActivity : FlutterActivity() {
             flutterEngine.dartExecutor.binaryMessenger,
             channelName,
         ).setMethodCallHandler { call, result ->
-            if (call.method == "getCurrentLocation") {
-                requestCurrentLocation(result)
-            } else {
-                result.notImplemented()
+
+            when (call.method) {
+                "getCurrentLocation" -> {
+                    requestCurrentLocation(result)
+                }
+
+                "openLocationSettings" -> {
+                    try {
+                        val intent = Intent(
+                            Settings.ACTION_LOCATION_SOURCE_SETTINGS
+                        )
+
+                        startActivity(intent)
+                        result.success(true)
+                    } catch (error: Exception) {
+                        result.error(
+                            "SETTINGS_UNAVAILABLE",
+                            "No fue posible abrir los ajustes de ubicación",
+                            null
+                        )
+                    }
+                }
+
+                else -> {
+                    result.notImplemented()
+                }
             }
+
         }
     }
 

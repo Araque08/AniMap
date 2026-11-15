@@ -177,20 +177,100 @@ class _AniMapAppState extends State<AniMapApp> with WidgetsBindingObserver {
         'AniMap: reporte rápido creado '
         'para mascota $mascotaId',
       );
-    } catch (error) {
-      if (!mounted) return;
-
-      _messengerKey.currentState
-        ?..hideCurrentSnackBar()
-        ..showSnackBar(
-          SnackBar(
-            duration: const Duration(seconds: 6),
-            backgroundColor: Colors.red.shade700,
-            content: Text('No se pudo crear el reporte rápido: $error'),
-          ),
-        );
     }
+  catch (error) {
+  if (!mounted) return;
+
+  _messengerKey.currentState?.hideCurrentSnackBar();
+
+  // Detectar si Android informa que la ubicación está apagada.
+  final ubicacionApagada =
+  error is DeviceLocationException &&
+  error.message.toLowerCase().contains('ubicación') &&
+  error.message.toLowerCase().contains('activa');
+
+  if (ubicacionApagada) {
+  final contexto = _navigatorKey.currentContext;
+
+  if (contexto == null) return;
+
+  final abrirAjustes = await showDialog<bool>(
+  context: contexto,
+  barrierDismissible: false,
+  builder: (dialogContext) {
+  return AlertDialog(
+  title: const Row(
+  children: [
+  Icon(
+  Icons.location_off,
+  color: Color(0xFF21986A),
+  ),
+  SizedBox(width: 10),
+  Expanded(
+  child: Text('Ubicación desactivada'),
+  ),
+  ],
+  ),
+  content: const Text(
+  'Para reportar rápidamente a tu mascota '
+  'perdida, AniMap necesita conocer tu '
+  'ubicación actual.\n\n'
+  'Activa la ubicación del celular para '
+  'continuar con el reporte de emergencia.',
+  ),
+  actions: [
+  TextButton(
+  onPressed: () {
+  Navigator.pop(dialogContext, false);
+  },
+  child: const Text('Cancelar'),
+  ),
+  FilledButton(
+  style: FilledButton.styleFrom(
+  backgroundColor: const Color(0xFF21986A),
+  ),
+  onPressed: () {
+  Navigator.pop(dialogContext, true);
+  },
+  child: const Text('Activar ubicación'),
+  ),
+  ],
+  );
+  },
+  );
+
+  if (abrirAjustes == true) {
+  try {
+  const canal = MethodChannel('animap/location');
+
+  await canal.invokeMethod('openLocationSettings');
+  } catch (_) {
+  _messengerKey.currentState?.showSnackBar(
+  const SnackBar(
+  content: Text(
+  'No se pudieron abrir los ajustes de ubicación.',
+  ),
+  ),
+  );
   }
+  }
+
+  return;
+  }
+
+  // Mostrar normalmente cualquier otro error.
+  _messengerKey.currentState?.showSnackBar(
+  SnackBar(
+  duration: const Duration(seconds: 6),
+  backgroundColor: Colors.red,
+  content: Text(
+  'No se pudo crear el reporte rápido: $error',
+  ),
+  ),
+  );
+  }
+
+}
 
   Future<void> _iniciarReporteRapido() async {
     if (!mounted) return;
