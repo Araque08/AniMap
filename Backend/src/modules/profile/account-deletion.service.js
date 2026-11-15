@@ -111,6 +111,14 @@ async function deleteOwnAccount(userId, password) {
       backups.set(name, documents);
     }
 
+    // Eliminar los dispositivos registrados para notificaciones push
+    // antes de eliminar la cuenta del usuario.
+    await client.query(
+      'DELETE FROM device_push_registration WHERE fk_usuario = $1',
+      [userId]
+    );
+
+    // Eliminar definitivamente la cuenta del usuario.
     const deletion = await client.query(
       'DELETE FROM usuario WHERE id = $1 RETURNING id',
       [userId]

@@ -30,7 +30,7 @@ async function obtenerHistorialNotificaciones(usuarioId, pagina = 1) {
       mensaje,
       COALESCE(tipo, 'SISTEMA') AS tipo,
       leida,
-      fecha,
+      (fecha AT TIME ZONE 'UTC') AS fecha,
       fk_reporte AS "reporteId",
       fk_avistamiento AS "avistamientoId"
     FROM notificacion
