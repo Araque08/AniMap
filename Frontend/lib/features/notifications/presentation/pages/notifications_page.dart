@@ -117,7 +117,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
 
       if (idInicial != null && !_notificacionInicialAbierta) {
         final indice = _notifications.indexWhere(
-          (notificacion) => notificacion.id == idInicial,
+              (notificacion) => notificacion.id == idInicial,
         );
 
         if (indice >= 0) {
@@ -178,7 +178,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
       if (!mounted) return;
 
       final index = _notifications.indexWhere(
-        (item) => item.id == notification.id,
+            (item) => item.id == notification.id,
       );
 
       if (index >= 0) {
@@ -228,9 +228,9 @@ class _NotificationsPageState extends State<NotificationsPage> {
   // =====================================================
 
   Future<void> _openRelatedContent(
-    AnimapNotification notification,
-    BuildContext sheetContext,
-  ) async {
+      AnimapNotification notification,
+      BuildContext sheetContext,
+      ) async {
     try {
       // Consultar el reporte o avistamiento en el backend.
       final contenido = await NotificationTargetService.buscarContenido(
@@ -273,8 +273,8 @@ class _NotificationsPageState extends State<NotificationsPage> {
               ),
               content: const Text(
                 'El reporte o avistamiento relacionado '
-                'con esta notificación ya no está disponible '
-                'para su consulta en AniMap.',
+                    'con esta notificación ya no está disponible '
+                    'para su consulta en AniMap.',
                 style: TextStyle(
                   fontSize: 14,
                   height: 1.5,
@@ -493,37 +493,37 @@ class _NotificationsPageState extends State<NotificationsPage> {
                                     onPressed: abriendoContenido
                                         ? null
                                         : () async {
-                                            setSheetState(() {
-                                              abriendoContenido = true;
-                                            });
+                                      setSheetState(() {
+                                        abriendoContenido = true;
+                                      });
 
-                                            try {
-                                              await _openRelatedContent(
-                                                notification,
-                                                sheetContext,
-                                              );
-                                            } finally {
-                                              if (sheetContext.mounted) {
-                                                setSheetState(() {
-                                                  abriendoContenido = false;
-                                                });
-                                              }
-                                            }
-                                          },
+                                      try {
+                                        await _openRelatedContent(
+                                          notification,
+                                          sheetContext,
+                                        );
+                                      } finally {
+                                        if (sheetContext.mounted) {
+                                          setSheetState(() {
+                                            abriendoContenido = false;
+                                          });
+                                        }
+                                      }
+                                    },
                                     icon: abriendoContenido
                                         ? const SizedBox(
-                                            width: 18,
-                                            height: 18,
-                                            child: CircularProgressIndicator(
-                                              strokeWidth: 2,
-                                              color: Colors.white,
-                                            ),
-                                          )
+                                      width: 18,
+                                      height: 18,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        color: Colors.white,
+                                      ),
+                                    )
                                         : Icon(
-                                            esAvistamiento
-                                                ? Icons.visibility_outlined
-                                                : Icons.pets_outlined,
-                                          ),
+                                      esAvistamiento
+                                          ? Icons.visibility_outlined
+                                          : Icons.pets_outlined,
+                                    ),
                                     label: Text(
                                       abriendoContenido
                                           ? 'Consultando...'
@@ -644,146 +644,109 @@ class _NotificationsPageState extends State<NotificationsPage> {
   // TARJETA DE NOTIFICACIÓN
   // =====================================================
 
+  // Lista compacta: el contenido completo se consulta al abrir la fila.
   Widget _notificationCard(AnimapNotification notification) {
     final unread = !notification.leida;
     final marking = _markingAsRead.contains(notification.id);
 
     return Material(
-      color: unread ? const Color(0xFFE9F7ED) : Colors.white,
-      elevation: 1,
+      color: unread ? const Color(0xFFF0F8F2) : Colors.white,
+      elevation: 1.2,
+      shadowColor: const Color(0x1F344955),
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(13),
         side: BorderSide(
-          color: unread ? const Color(0xFF87CDA0) : const Color(0xFFE1E8E3),
+          color: unread
+              ? const Color(0xFF9CCFB0)
+              : const Color(0xFFD9E3DC),
+          width: 1.1,
         ),
       ),
+      clipBehavior: Clip.antiAlias,
       child: InkWell(
         key: ValueKey('notification-${notification.id}'),
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(13),
         onTap: () => _openNotification(notification),
         child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Container(
-                    width: 46,
-                    height: 46,
-                    decoration: BoxDecoration(
-                      color: unread
-                          ? const Color(0xFFC7EBD2)
-                          : const Color(0xFFF0F3F1),
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                    child: Icon(
-                      _getIcon(notification.tipo),
-                      color: primaryGreen,
-                      size: 25,
-                    ),
-                  ),
-
-                  const SizedBox(width: 12),
-
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          notification.titulo,
-                          style: TextStyle(
-                            fontSize: 15,
-                            fontWeight: unread
-                                ? FontWeight.w800
-                                : FontWeight.w600,
-                            color: darkText,
-                          ),
-                        ),
-
-                        const SizedBox(height: 5),
-
-                        Text(
-                          _getTypeName(notification.tipo),
-                          style: const TextStyle(
-                            color: primaryGreen,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-
-                  if (marking)
-                    const SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  else if (unread)
-                    const Padding(
-                      padding: EdgeInsets.only(top: 6),
-                      child: CircleAvatar(
-                        radius: 5,
-                        backgroundColor: primaryGreen,
-                      ),
-                    ),
-                ],
-              ),
-
-              const SizedBox(height: 12),
-
-              Text(
-                notification.mensaje,
-                style: const TextStyle(
-                  color: Color(0xFF53645B),
-                  fontSize: 14,
-                  height: 1.45,
+              Container(
+                width: 42,
+                height: 42,
+                decoration: BoxDecoration(
+                  color: unread
+                      ? const Color(0xFFD7EDE0)
+                      : const Color(0xFFF1F4F2),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(
+                  _getIcon(notification.tipo),
+                  size: 21,
+                  color: primaryGreen,
                 ),
               ),
-
-              const SizedBox(height: 14),
-
-              const Divider(height: 1, color: Color(0xFFE0E8E2)),
-
-              const SizedBox(height: 12),
-
-              Row(
-                children: [
-                  const Icon(
-                    Icons.access_time,
-                    size: 15,
-                    color: Colors.black45,
-                  ),
-
-                  const SizedBox(width: 5),
-
-                  Expanded(
-                    child: Text(
-                      _formatDate(notification.fecha),
+              const SizedBox(width: 11),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      notification.titulo,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: darkText,
+                        fontSize: 14,
+                        fontWeight:
+                        unread ? FontWeight.w800 : FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      notification.mensaje,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
-                        color: Colors.black54,
+                        color: Color(0xFF6A7B71),
                         fontSize: 12,
                       ),
                     ),
-                  ),
-
-                  Text(
-                    marking
-                        ? 'Actualizando...'
-                        : unread
-                        ? 'Sin leer'
-                        : 'Leída',
-                    style: TextStyle(
-                      color: unread ? primaryGreen : Colors.black45,
-                      fontWeight: unread ? FontWeight.bold : FontWeight.normal,
-                      fontSize: 12,
+                    const SizedBox(height: 5),
+                    Text(
+                      _formatDate(notification.fecha),
+                      style: const TextStyle(
+                        color: Color(0xFF88958D),
+                        fontSize: 11,
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
+              const SizedBox(width: 8),
+              if (marking)
+                const SizedBox(
+                  width: 12,
+                  height: 12,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              else if (unread)
+                Container(
+                  width: 8,
+                  height: 8,
+                  decoration: const BoxDecoration(
+                    color: primaryGreen,
+                    shape: BoxShape.circle,
+                  ),
+                )
+              else
+                const Icon(
+                  Icons.chevron_right_rounded,
+                  size: 18,
+                  color: Color(0xFFB1BDB5),
+                ),
             ],
           ),
         ),
@@ -875,8 +838,8 @@ class _NotificationsPageState extends State<NotificationsPage> {
                   padding: EdgeInsets.symmetric(horizontal: 35),
                   child: Text(
                     'Cuando recibas alertas sobre mascotas '
-                    'perdidas, avistamientos o avisos del '
-                    'sistema, aparecerán aquí.',
+                        'perdidas, avistamientos o avisos del '
+                        'sistema, aparecerán aquí.',
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       color: Colors.black54,
@@ -954,9 +917,9 @@ class _NotificationsPageState extends State<NotificationsPage> {
       onRefresh: () => _loadNotifications(),
       child: ListView.separated(
         physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+        padding: const EdgeInsets.fromLTRB(14, 10, 14, 24),
         itemCount: _notifications.length + (_hasMore ? 1 : 0),
-        separatorBuilder: (_, _) => const SizedBox(height: 12),
+        separatorBuilder: (_, _) => const SizedBox(height: 10),
         itemBuilder: (context, index) {
           if (index == _notifications.length) {
             return Center(
@@ -966,10 +929,10 @@ class _NotificationsPageState extends State<NotificationsPage> {
                     : () => _loadNotifications(loadMore: true),
                 icon: _loadingMore
                     ? const SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
                     : const Icon(Icons.expand_more),
                 label: Text(_loadingMore ? 'Cargando...' : 'Cargar más'),
               ),
@@ -1012,43 +975,39 @@ class _NotificationsPageState extends State<NotificationsPage> {
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            width: double.infinity,
-            color: const Color(0xFFDFF3E8),
-            padding: const EdgeInsets.fromLTRB(20, 10, 20, 20),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+          Padding(
+            padding: const EdgeInsets.fromLTRB(18, 14, 18, 4),
+            child: Row(
               children: [
-                const Text(
-                  'Mantente informado',
-                  style: TextStyle(
-                    color: darkText,
-                    fontSize: 20,
-                    fontWeight: FontWeight.w800,
+                Expanded(
+                  child: Text(
+                    _loading
+                        ? 'Cargando notificaciones...'
+                        : unreadCount == 0
+                        ? 'Estás al día'
+                        : '$unreadCount sin leer',
+                    style: const TextStyle(
+                      color: Color(0xFF607369),
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ),
-
-                const SizedBox(height: 6),
-
-                Text(
-                  _loading
-                      ? 'Consultando tus alertas...'
-                      : '${_notifications.length} cargadas'
-                            '  ·  $unreadCount sin leer',
-                  style: const TextStyle(
-                    color: Color(0xFF597266),
-                    fontSize: 13,
+                if (!_loading)
+                  Text(
+                    '${_notifications.length} notificaciones',
+                    style: const TextStyle(
+                      color: Color(0xFF829389),
+                      fontSize: 12,
+                    ),
                   ),
-                ),
               ],
             ),
           ),
-
-          const SizedBox(height: 10),
-
           Expanded(child: _buildContent()),
         ],
       ),
     );
   }
 }
+

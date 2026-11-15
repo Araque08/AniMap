@@ -15,31 +15,31 @@ import '../../../sighting/presentation/pages/sightings_history_page.dart';
 
 typedef ReportsListLoader = Future<List<Map<String, dynamic>>> Function();
 typedef ReportGeofenceChecker =
-    Future<GeofenceCheckResult> Function(double lat, double lng);
+Future<GeofenceCheckResult> Function(double lat, double lng);
 typedef ReportCreator =
-    Future<void> Function({
-      required int mascotaId,
-      required String descripcion,
-      required bool mostrarContacto,
-      required Map<String, dynamic> ubicacion,
-    });
+Future<void> Function({
+required int mascotaId,
+required String descripcion,
+required bool mostrarContacto,
+required Map<String, dynamic> ubicacion,
+});
 typedef ReportUpdater =
-    Future<void> Function({
-      required int reportId,
-      required String descripcion,
-      required bool mostrarContacto,
-      Map<String, dynamic>? ubicacion,
-    });
+Future<void> Function({
+required int reportId,
+required String descripcion,
+required bool mostrarContacto,
+Map<String, dynamic>? ubicacion,
+});
 typedef ReportLocationPicker =
-    Future<LatLng?> Function(
-      BuildContext context,
-      LatLng initialPosition,
-      LatLng? selectedPosition,
+Future<LatLng?> Function(
+    BuildContext context,
+    LatLng initialPosition,
+    LatLng? selectedPosition,
     );
 typedef ReportAddressPicker =
-    Future<AddressLocationSelection?> Function(
-      BuildContext context,
-      String? initialAddress,
+Future<AddressLocationSelection?> Function(
+    BuildContext context,
+    String? initialAddress,
     );
 
 class CreateLostReportPage extends StatefulWidget {
@@ -76,6 +76,9 @@ class CreateLostReportPage extends StatefulWidget {
 
 class _CreateLostReportPageState extends State<CreateLostReportPage> {
   static const _green = Color(0xFF3F9568);
+  static const _softGreen = Color(0xFFE9F6EE);
+  static const _border = Color(0xFFDCE7E0);
+  static const _muted = Color(0xFF66776E);
   static const _darkText = Color(0xFF344955);
   static const _initialPosition = LatLng(4.6569, -74.1095);
 
@@ -202,8 +205,8 @@ class _CreateLostReportPageState extends State<CreateLostReportPage> {
       'direccion': _locationMethod == 'DIRECCION'
           ? _validatedAddress
           : (_referenceController.text.trim().isEmpty
-                ? null
-                : _referenceController.text.trim()),
+          ? null
+          : _referenceController.text.trim()),
       'placeId': _locationMethod == 'DIRECCION' ? _placeId : null,
     };
   }
@@ -212,8 +215,8 @@ class _CreateLostReportPageState extends State<CreateLostReportPage> {
     setState(() => _gettingGps = true);
     try {
       final location =
-          await (widget.locationLoader ??
-              DeviceLocationService.getCurrentLocation)();
+      await (widget.locationLoader ??
+          DeviceLocationService.getCurrentLocation)();
       final position = LatLng(location.latitude, location.longitude);
       if (!mounted) return;
       setState(() {
@@ -236,15 +239,15 @@ class _CreateLostReportPageState extends State<CreateLostReportPage> {
     final initial = _selectedLocation ?? _initialPosition;
     final position = widget.locationPicker == null
         ? await Navigator.push<LatLng>(
-            context,
-            MaterialPageRoute(
-              builder: (_) => LocationPickerPage(
-                initialPosition: initial,
-                selectedPosition: _selectedLocation,
-                title: 'Ubicación de la pérdida',
-              ),
-            ),
-          )
+      context,
+      MaterialPageRoute(
+        builder: (_) => LocationPickerPage(
+          initialPosition: initial,
+          selectedPosition: _selectedLocation,
+          title: 'Ubicación de la pérdida',
+        ),
+      ),
+    )
         : await widget.locationPicker!(context, initial, _selectedLocation);
     if (!mounted || position == null) return;
     setState(() {
@@ -261,14 +264,14 @@ class _CreateLostReportPageState extends State<CreateLostReportPage> {
   Future<void> _chooseAddressLocation() async {
     final selection = widget.addressPicker == null
         ? await Navigator.push<AddressLocationSelection>(
-            context,
-            MaterialPageRoute(
-              builder: (_) => AddressLocationPage(
-                initialAddress: _validatedAddress,
-                initialSelection: _currentAddressSelection,
-              ),
-            ),
-          )
+      context,
+      MaterialPageRoute(
+        builder: (_) => AddressLocationPage(
+          initialAddress: _validatedAddress,
+          initialSelection: _currentAddressSelection,
+        ),
+      ),
+    )
         : await widget.addressPicker!(context, _validatedAddress);
     if (!mounted || selection == null) return;
     setState(() {
@@ -328,6 +331,7 @@ class _CreateLostReportPageState extends State<CreateLostReportPage> {
   }
 
   Future<void> _save() async {
+    if (_saving) return;
     if (!_formKey.currentState!.validate()) return;
     if (_editingReportId == null && _selectedPetId == null) {
       _showMessage('Selecciona una mascota disponible.');
@@ -362,8 +366,11 @@ class _CreateLostReportPageState extends State<CreateLostReportPage> {
         );
         _showMessage('Reporte actualizado correctamente.');
       }
-      _resetForm();
-      if (mounted) setState(() => _showMyReports = true);
+      if (!mounted) return;
+      setState(() {
+        _resetForm();
+        _showMyReports = true;
+      });
       await _loadData();
     } catch (error) {
       if (mounted) _showError(error);
@@ -431,7 +438,7 @@ class _CreateLostReportPageState extends State<CreateLostReportPage> {
         title: const Text('Finalizar reporte'),
         content: Text(
           '¿Confirmas que ${pet['nombre']} fue encontrada? '
-          'El reporte ya no podrá editarse.',
+              'El reporte ya no podrá editarse.',
         ),
         actions: [
           TextButton(
@@ -482,8 +489,8 @@ class _CreateLostReportPageState extends State<CreateLostReportPage> {
 
   bool get _hasUnsavedChanges =>
       !_submitted &&
-      _baselineReady &&
-      _currentFormSignature() != _baselineSignature;
+          _baselineReady &&
+          _currentFormSignature() != _baselineSignature;
 
   void _captureBaseline() {
     _baselineSignature = _currentFormSignature();
@@ -493,22 +500,22 @@ class _CreateLostReportPageState extends State<CreateLostReportPage> {
   Future<bool> _confirmDiscard([int? _]) async {
     if (!_hasUnsavedChanges) return true;
     return await showDialog<bool>(
-          context: context,
-          builder: (context) => AlertDialog(
-            title: const Text('¿Salir sin guardar?'),
-            content: const Text('Los cambios realizados se perderán.'),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context, false),
-                child: const Text('Cancelar'),
-              ),
-              FilledButton(
-                onPressed: () => Navigator.pop(context, true),
-                child: const Text('Salir'),
-              ),
-            ],
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('¿Salir sin guardar?'),
+        content: const Text('Los cambios realizados se perderán.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancelar'),
           ),
-        ) ??
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Salir'),
+          ),
+        ],
+      ),
+    ) ??
         false;
   }
 
@@ -527,7 +534,7 @@ class _CreateLostReportPageState extends State<CreateLostReportPage> {
         }
       },
       child: Scaffold(
-        backgroundColor: const Color(0xFFF6F8F4),
+        backgroundColor: const Color(0xFFF7FAF8),
         drawer: const AniMapSideMenu(),
         body: Column(
           children: [
@@ -537,9 +544,9 @@ class _CreateLostReportPageState extends State<CreateLostReportPage> {
               child: _loading
                   ? const Center(child: CircularProgressIndicator())
                   : RefreshIndicator(
-                      onRefresh: _loadData,
-                      child: _showMyReports ? _reportsList() : _reportForm(),
-                    ),
+                onRefresh: _loadData,
+                child: _showMyReports ? _reportsList() : _reportForm(),
+              ),
             ),
           ],
         ),
@@ -553,299 +560,408 @@ class _CreateLostReportPageState extends State<CreateLostReportPage> {
   }
 
   Widget _sectionSelector() {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 10, 16, 4),
-      child: SegmentedButton<bool>(
-        showSelectedIcon: false,
-        segments: const [
-          ButtonSegment(
-            value: false,
-            icon: Icon(Icons.add),
-            label: Text('Reportar'),
-          ),
-          ButtonSegment(
-            value: true,
-            icon: Icon(Icons.list),
-            label: Text('Mis reportes'),
-          ),
-        ],
-        selected: {_showMyReports},
-        onSelectionChanged: (value) {
-          setState(() => _showMyReports = value.first);
-        },
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(20, 14, 20, 12),
+      decoration: const BoxDecoration(
+        color: Color(0xFFE1F4E9),
+        border: Border(bottom: BorderSide(color: _border)),
+      ),
+      child: Container(
+        padding: const EdgeInsets.all(4),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.75),
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: _border),
+        ),
+        child: Row(children: [
+          Expanded(child: _tabButton(
+            label: 'Reportar', icon: Icons.add_circle_outline,
+            selected: !_showMyReports,
+            onTap: () => _switchSection(false),
+          )),
+          Expanded(child: _tabButton(
+            label: 'Mis reportes', icon: Icons.list_alt_rounded,
+            selected: _showMyReports,
+            onTap: () => _switchSection(true),
+          )),
+        ]),
       ),
     );
   }
 
+  Widget _tabButton({
+    required String label,
+    required IconData icon,
+    required bool selected,
+    required VoidCallback onTap,
+  }) {
+    return Material(
+      color: selected ? _green : Colors.transparent,
+      borderRadius: BorderRadius.circular(14),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(14),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 11),
+          child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+            Icon(icon, size: 19, color: selected ? Colors.white : _darkText),
+            const SizedBox(width: 7),
+            Flexible(child: Text(label,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(fontWeight: FontWeight.w700,
+                  color: selected ? Colors.white : _darkText),
+            )),
+          ]),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _switchSection(bool showReports) async {
+    if (showReports == _showMyReports) return;
+    if (showReports && _hasUnsavedChanges) {
+      final discard = await _confirmDiscard();
+      if (!discard || !mounted) return;
+      setState(() {
+        _resetForm();
+        _showMyReports = true;
+      });
+      return;
+    }
+    if (mounted) setState(() => _showMyReports = showReports);
+  }
+
+  Widget _panel({required Widget child, EdgeInsets? padding}) {
+    return Container(
+      width: double.infinity,
+      padding: padding ?? const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: _border),
+        boxShadow: const [BoxShadow(
+          color: Color(0x090E4026), blurRadius: 16, offset: Offset(0, 5),
+        )],
+      ),
+      child: child,
+    );
+  }
+
+  Widget _sectionHeading(IconData icon, String title, String detail) {
+    return Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Container(
+        width: 39, height: 39,
+        decoration: BoxDecoration(color: _softGreen,
+            borderRadius: BorderRadius.circular(12)),
+        child: Icon(icon, color: _green, size: 21),
+      ),
+      const SizedBox(width: 12),
+      Expanded(child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(title, style: const TextStyle(
+              fontSize: 17, fontWeight: FontWeight.w800, color: _darkText)),
+          const SizedBox(height: 3),
+          Text(detail, style: const TextStyle(
+              fontSize: 12.5, height: 1.35, color: _muted)),
+        ],
+      )),
+    ]);
+  }
+
+  InputDecoration _inputStyle({required String label, String? hint}) {
+    return InputDecoration(
+      labelText: label,
+      hintText: hint,
+      alignLabelWithHint: true,
+      filled: true,
+      fillColor: const Color(0xFFFBFCFA),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 15),
+      border: OutlineInputBorder(borderRadius: BorderRadius.circular(13),
+          borderSide: const BorderSide(color: _border)),
+      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(13),
+          borderSide: const BorderSide(color: _border)),
+      focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(13),
+          borderSide: const BorderSide(color: _green, width: 1.8)),
+    );
+  }
+
+  // Abre el registro existente de mascotas y actualiza esta pantalla
+  // al regresar, sin perder la información que ya se haya diligenciado.
+  Future<void> _registerPetFromReport() async {
+    final previousIds = _pets.map((pet) => pet['id']).toSet();
+    try {
+      await Navigator.pushNamed(context, '/register-pet');
+      if (!mounted) return;
+
+      await _loadData(keepSelection: true);
+      if (!mounted) return;
+
+      // Si se creó una mascota nueva, dejar su tarjeta seleccionada.
+      final newPets = _availablePets
+          .where((pet) => !previousIds.contains(pet['id']))
+          .toList();
+      if (newPets.isNotEmpty) {
+        setState(() => _selectedPetId = newPets.last['id'] as int);
+      }
+    } catch (error) {
+      if (mounted) _showError(error);
+    }
+  }
+
+  Widget _registerPetButton() {
+    return OutlinedButton.icon(
+      key: const ValueKey('register-pet-from-report'),
+      onPressed: _registerPetFromReport,
+      style: OutlinedButton.styleFrom(
+        foregroundColor: _green,
+        side: const BorderSide(color: _green),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(13),
+        ),
+      ),
+      icon: const Icon(Icons.add_circle_outline_rounded, size: 21),
+      label: const Text('Registrar otra mascota'),
+    );
+  }
+
   Widget _reportForm() {
-    final pet = _selectedPet;
     if (_editingReportId == null && _availablePets.isEmpty) {
       return _noAvailablePets();
     }
     final selectablePets = _editingReportId == null
         ? _availablePets
         : _pets.where((item) => item['id'] == _selectedPetId).toList();
-    return ListView(
-      physics: const AlwaysScrollableScrollPhysics(),
-      padding: const EdgeInsets.fromLTRB(18, 12, 18, 30),
-      children: [
-        Text(
-          _editingReportId == null
-              ? 'Reportar mascota perdida'
-              : 'Editar reporte activo',
-          style: const TextStyle(
-            fontSize: 24,
-            fontWeight: FontWeight.w800,
-            color: _darkText,
+
+    return Form(
+      key: _formKey,
+      child: ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+        padding: const EdgeInsets.fromLTRB(18, 20, 18, 34),
+        children: [
+          Text(
+            _editingReportId == null
+                ? 'Reportar mascota perdida' : 'Editar reporte activo',
+            style: const TextStyle(fontSize: 25, height: 1.13,
+                fontWeight: FontWeight.w800, color: _darkText),
           ),
-        ),
-        const SizedBox(height: 6),
-        Text(
-          _editingReportId == null
-              ? 'Selecciona una de tus mascotas registradas y marca dónde fue vista por última vez.'
-              : 'Actualiza la descripción o la ubicación del reporte.',
-          style: const TextStyle(color: Color(0xFF64756B)),
-        ),
-        const SizedBox(height: 18),
-        Form(
-          key: _formKey,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
+          const SizedBox(height: 9),
+          Text(
+            _editingReportId == null
+                ? 'Completa la información para ayudar a encontrar a tu mascota.'
+                : 'Actualiza los datos de tu reporte activo.',
+            style: const TextStyle(color: _muted, fontSize: 14, height: 1.4),
+          ),
+          const SizedBox(height: 20),
+          _panel(child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              DropdownButtonFormField<int>(
-                isExpanded: true,
-                key: ValueKey(
-                  'pet-${_selectedPetId ?? 'none'}-$_editingReportId',
+              _sectionHeading(Icons.pets_rounded, 'Tu mascota',
+                  'Selecciona la mascota que deseas reportar.'),
+              const SizedBox(height: 16),
+              ...selectablePets.map((item) => Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: _selectablePetCard(item),
+              )),
+              if (_editingReportId == null) ...[
+                const SizedBox(height: 4),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: _registerPetButton(),
                 ),
-                initialValue: _selectedPetId,
-                decoration: const InputDecoration(
-                  labelText: 'Mascota',
-                  border: OutlineInputBorder(),
-                ),
-                items: selectablePets.map((item) {
-                  final race = item['raza'] == null ? '' : ' · ${item['raza']}';
-                  return DropdownMenuItem<int>(
-                    value: item['id'] as int,
-                    child: Text(
-                      '${item['nombre']} — ${item['especie']}$race',
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  );
-                }).toList(),
-                onChanged: _editingReportId != null
-                    ? null
-                    : (value) => setState(() => _selectedPetId = value),
-                validator: (value) =>
-                    value == null ? 'No hay una mascota disponible' : null,
-              ),
-              if (pet != null) ...[
-                const SizedBox(height: 12),
-                _petSummary(pet),
               ],
+              if (_selectedPetId == null)
+                const Padding(
+                  padding: EdgeInsets.only(top: 4),
+                  child: Text(
+                    'Selecciona una mascota para continuar.',
+                    style: TextStyle(color: Color(0xFFB3261E), fontSize: 13),
+                  ),
+                ),
+            ],
+          )),
+          const SizedBox(height: 14),
+          _panel(child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _sectionHeading(Icons.edit_note_rounded, 'Descripción',
+                  'Incluye rasgos, accesorios o detalles que ayuden a identificarla.'),
               const SizedBox(height: 16),
               TextFormField(
                 key: const ValueKey('lost-report-description'),
                 controller: _descriptionController,
                 maxLength: 1000,
-                maxLines: 4,
-                decoration: const InputDecoration(
-                  labelText: 'Descripción y señas útiles',
-                  hintText: 'Describe cómo reconocerla y dónde se perdió.',
-                  border: OutlineInputBorder(),
-                ),
+                minLines: 3,
+                maxLines: 5,
+                textCapitalization: TextCapitalization.sentences,
+                decoration: _inputStyle(
+                    label: 'Descripción y señas útiles',
+                    hint: 'Ej.: lleva collar rojo y tiene una mancha blanca...'),
               ),
-              SwitchListTile(
+            ],
+          )),
+          const SizedBox(height: 14),
+          _panel(child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _sectionHeading(Icons.shield_outlined, 'Privacidad del contacto',
+                  'Decide si autorizas mostrar tu teléfono en el reporte público.'),
+              const SizedBox(height: 9),
+              SwitchListTile.adaptive(
                 contentPadding: EdgeInsets.zero,
                 value: _showContact,
-                activeThumbColor: _green,
-                title: const Text('Autorizar contacto en este reporte'),
-                subtitle: const Text(
-                  'Si lo autorizas, el mapa público mostrará únicamente tu teléfono.',
-                ),
+                activeColor: _green,
+                title: const Text('Permitir contacto',
+                    style: TextStyle(fontWeight: FontWeight.w700, color: _darkText)),
+                subtitle: Text(_showContact
+                    ? 'Tu teléfono será visible para quienes consulten el reporte.'
+                    : 'Tu teléfono no se mostrará en el reporte público.',
+                    style: const TextStyle(fontSize: 12.5, color: _muted)),
                 onChanged: (value) => setState(() => _showContact = value),
               ),
-              const SizedBox(height: 8),
-              const Text(
-                'Ubicación real',
-                style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
-              ),
-              const SizedBox(height: 8),
-              LayoutBuilder(
-                builder: (context, constraints) {
-                  final gpsButton = OutlinedButton.icon(
-                    key: const ValueKey('lost-report-use-gps'),
-                    onPressed: _gettingGps ? null : _useCurrentLocation,
-                    style: OutlinedButton.styleFrom(
-                      backgroundColor: _locationMethod == 'GPS'
-                          ? _green
-                          : Colors.white,
-                      foregroundColor: _locationMethod == 'GPS'
-                          ? Colors.white
-                          : _green,
-                      side: const BorderSide(color: _green, width: 1.5),
-                      padding: const EdgeInsets.symmetric(vertical: 13),
-                    ),
-                    icon: _gettingGps
-                        ? const SizedBox.square(
-                            dimension: 18,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Icon(Icons.my_location),
-                    label: const Text('Usar GPS'),
-                  );
-                  final mapButton = OutlinedButton.icon(
-                    key: const ValueKey('lost-report-use-map'),
-                    onPressed: _chooseMapLocation,
-                    style: OutlinedButton.styleFrom(
-                      backgroundColor: _locationMethod == 'MAPA'
-                          ? _green
-                          : Colors.white,
-                      foregroundColor: _locationMethod == 'MAPA'
-                          ? Colors.white
-                          : _green,
-                      side: const BorderSide(color: _green, width: 1.5),
-                      padding: const EdgeInsets.symmetric(vertical: 13),
-                    ),
-                    icon: const Icon(Icons.location_on_outlined),
-                    label: const Text('Elegir en mapa'),
-                  );
-                  final addressButton = OutlinedButton.icon(
-                    key: const ValueKey('lost-report-use-address'),
-                    onPressed: _chooseAddressLocation,
-                    style: OutlinedButton.styleFrom(
-                      backgroundColor: _locationMethod == 'DIRECCION'
-                          ? _green
-                          : Colors.white,
-                      foregroundColor: _locationMethod == 'DIRECCION'
-                          ? Colors.white
-                          : _green,
-                      side: const BorderSide(color: _green, width: 1.5),
-                      padding: const EdgeInsets.symmetric(vertical: 13),
-                    ),
-                    icon: const Icon(Icons.edit_location_alt_outlined),
-                    label: const Text('Ingresar dirección'),
-                  );
-                  if (constraints.maxWidth < 600) {
-                    return Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        gpsButton,
-                        const SizedBox(height: 8),
-                        mapButton,
-                        const SizedBox(height: 8),
-                        addressButton,
-                      ],
-                    );
-                  }
-                  return Row(
-                    children: [
-                      Expanded(child: gpsButton),
-                      const SizedBox(width: 10),
-                      Expanded(child: mapButton),
-                      const SizedBox(width: 10),
-                      Expanded(child: addressButton),
-                    ],
-                  );
-                },
-              ),
-              const SizedBox(height: 10),
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFF2F7F3),
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: const Color(0xFFB7CDBD)),
-                ),
-                child: Row(
-                  children: [
-                    Icon(
-                      _selectedLocation == null
-                          ? Icons.location_off_outlined
-                          : Icons.location_on,
-                      color: _green,
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Text(
-                        _selectedLocation == null
-                            ? 'Aún no has seleccionado una ubicación.'
-                            : _locationMethod == 'DIRECCION'
-                            ? _validatedAddress ?? 'Dirección validada'
-                            : '$_locationMethod · '
-                                  '${_selectedLocation!.latitude.toStringAsFixed(6)}, '
-                                  '${_selectedLocation!.longitude.toStringAsFixed(6)}',
-                        style: const TextStyle(color: Color(0xFF64756B)),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                _selectedLocation == null
-                    ? 'Usa GPS, mapa o una dirección validada para indicar el punto exacto.'
-                    : _locationMethod == 'DIRECCION'
-                    ? 'Dirección validada: ${_validatedAddress ?? ''}'
-                    : 'Ubicación seleccionada por $_locationMethod: '
-                          '${_selectedLocation!.latitude.toStringAsFixed(6)}, '
-                          '${_selectedLocation!.longitude.toStringAsFixed(6)}',
-                style: const TextStyle(color: Color(0xFF64756B)),
-              ),
+            ],
+          )),
+          const SizedBox(height: 14),
+          _panel(child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _sectionHeading(Icons.location_on_outlined,
+                  'Última ubicación conocida',
+                  'Indica el lugar donde fue vista por última vez.'),
+              const SizedBox(height: 16),
+              _locationOption(Icons.my_location_rounded, 'Usar GPS',
+                  _locationMethod == 'GPS', _gettingGps ? null : _useCurrentLocation,
+                  loading: _gettingGps),
+              const SizedBox(height: 9),
+              _locationOption(Icons.map_outlined, 'Elegir en mapa',
+                  _locationMethod == 'MAPA', _chooseMapLocation),
+              const SizedBox(height: 14),
+              _locationSummary(),
               if (_selectedLocation != null) ...[
-                const SizedBox(height: 10),
+                const SizedBox(height: 12),
                 GeofenceValidationPanel(
                   state: _geofenceState,
                   onChangeLocation: _changeLocation,
                   onRetry: _validateSelectedLocation,
                 ),
               ],
-              const SizedBox(height: 10),
+              const SizedBox(height: 16),
               TextFormField(
                 key: const ValueKey('lost-report-reference'),
                 controller: _referenceController,
                 maxLength: 255,
-                decoration: const InputDecoration(
-                  labelText: 'Señas (opcional)',
-                  hintText: 'Ej: frente al parque, portería del conjunto...',
-                  border: OutlineInputBorder(),
-                ),
+                textCapitalization: TextCapitalization.sentences,
+                decoration: _inputStyle(
+                    label: 'Punto de referencia (opcional)',
+                    hint: 'Ej.: frente al parque o cerca de la portería'),
               ),
-              const SizedBox(height: 10),
-              FilledButton.icon(
-                key: const ValueKey('save-lost-report'),
-                onPressed: _saving ? null : _save,
-                style: FilledButton.styleFrom(
-                  backgroundColor: _green,
-                  padding: const EdgeInsets.symmetric(vertical: 15),
-                ),
-                icon: _saving
-                    ? const SizedBox.square(
-                        dimension: 20,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: Colors.white,
-                        ),
-                      )
-                    : Icon(
-                        _editingReportId == null ? Icons.campaign : Icons.save,
-                      ),
-                label: Text(
-                  _editingReportId == null
-                      ? 'Crear reporte'
-                      : 'Guardar cambios',
-                ),
-              ),
-              if (_editingReportId != null)
-                TextButton(
-                  onPressed: () => setState(_resetForm),
-                  child: const Text('Cancelar edición'),
-                ),
             ],
+          )),
+          const SizedBox(height: 20),
+          SizedBox(height: 54, child: FilledButton.icon(
+            key: const ValueKey('save-lost-report'),
+            onPressed: _saving ? null : _save,
+            style: FilledButton.styleFrom(
+              backgroundColor: _green,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16)),
+            ),
+            icon: _saving
+                ? const SizedBox.square(dimension: 19,
+                child: CircularProgressIndicator(strokeWidth: 2,
+                    color: Colors.white))
+                : Icon(_editingReportId == null
+                ? Icons.campaign_outlined : Icons.save_outlined),
+            label: Text(_saving ? 'Guardando...'
+                : _editingReportId == null ? 'Crear reporte' : 'Guardar cambios',
+                style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+          )),
+          if (_editingReportId != null) ...[
+            const SizedBox(height: 8),
+            TextButton(
+              onPressed: () => setState(_resetForm),
+              child: const Text('Cancelar edición'),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _locationOption(IconData icon, String title, bool selected,
+      VoidCallback? onTap, {bool loading = false}) {
+    return Material(
+      color: selected ? _softGreen : Colors.white,
+      borderRadius: BorderRadius.circular(14),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(14),
+        onTap: onTap,
+        child: Container(
+          height: 49,
+          padding: const EdgeInsets.symmetric(horizontal: 14),
+          decoration: BoxDecoration(
+            border: Border.all(color: selected ? _green : _border,
+                width: selected ? 1.5 : 1),
+            borderRadius: BorderRadius.circular(14),
           ),
+          child: Row(children: [
+            loading
+                ? const SizedBox.square(dimension: 19,
+                child: CircularProgressIndicator(strokeWidth: 2))
+                : Icon(icon, color: _green, size: 21),
+            const SizedBox(width: 12),
+            Expanded(child: Text(title, style: const TextStyle(
+                fontWeight: FontWeight.w700, color: _darkText))),
+            Icon(selected ? Icons.check_circle_rounded : Icons.chevron_right_rounded,
+                color: selected ? _green : _muted, size: 21),
+          ]),
         ),
-      ],
+      ),
+    );
+  }
+
+  Widget _locationSummary() {
+    final hasLocation = _selectedLocation != null;
+    final title = !hasLocation
+        ? 'Ubicación pendiente'
+        : _locationMethod == 'DIRECCION'
+        ? (_validatedAddress ?? 'Dirección seleccionada')
+        : '${_locationMethod == 'GPS' ? 'Ubicación GPS' : 'Punto en el mapa'} seleccionado';
+    final detail = !hasLocation
+        ? 'Usa el GPS o marca el lugar en el mapa.'
+        : _locationMethod == 'DIRECCION'
+        ? 'Dirección registrada para este reporte.'
+        : _locationMethod == 'GPS'
+        ? 'Ubicación obtenida correctamente. Puedes continuar con el reporte.'
+        : 'Punto guardado correctamente. Puedes continuar con el reporte.';
+    return Container(
+      padding: const EdgeInsets.all(13),
+      decoration: BoxDecoration(
+        color: hasLocation ? _softGreen : const Color(0xFFF7F9F7),
+        border: Border.all(color: hasLocation
+            ? const Color(0xFFB6DFC5) : _border),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Icon(hasLocation ? Icons.check_circle_outline_rounded
+            : Icons.info_outline_rounded,
+            color: hasLocation ? _green : _muted, size: 22),
+        const SizedBox(width: 10),
+        Expanded(child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(title, style: const TextStyle(
+                fontWeight: FontWeight.w700, color: _darkText)),
+            const SizedBox(height: 3),
+            Text(detail, style: const TextStyle(
+                fontSize: 12.5, color: _muted)),
+          ],
+        )),
+      ]),
     );
   }
 
@@ -871,11 +987,11 @@ class _CreateLostReportPageState extends State<CreateLostReportPage> {
           ),
           const SizedBox(height: 8),
           ..._unavailablePets.map(
-            (pet) => Padding(
+                (pet) => Padding(
               padding: const EdgeInsets.symmetric(vertical: 3),
               child: Text(
                 '${pet['nombre']} · ${pet['especie']}'
-                '${pet['raza'] == null ? '' : ' · ${pet['raza']}'}',
+                    '${pet['raza'] == null ? '' : ' · ${pet['raza']}'}',
                 textAlign: TextAlign.center,
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
@@ -884,6 +1000,8 @@ class _CreateLostReportPageState extends State<CreateLostReportPage> {
           ),
         ],
         const SizedBox(height: 22),
+        _registerPetButton(),
+        const SizedBox(height: 12),
         FilledButton.icon(
           onPressed: () => setState(() => _showMyReports = true),
           icon: const Icon(Icons.list_alt),
@@ -893,36 +1011,60 @@ class _CreateLostReportPageState extends State<CreateLostReportPage> {
     );
   }
 
-  Widget _petSummary(Map<String, dynamic> pet) {
+  Widget _selectablePetCard(Map<String, dynamic> pet) {
+    final id = pet['id'] as int;
+    final selected = _selectedPetId == id;
+    final editing = _editingReportId != null;
     final photo = pet['fotoPrincipal'] is Map
         ? Map<String, dynamic>.from(pet['fotoPrincipal'] as Map)
         : null;
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Row(
-          children: [
-            _petPhoto(photo, 62),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    '${pet['nombre']}',
-                    style: const TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  Text(
-                    '${pet['especie']}'
-                    '${pet['raza'] == null ? '' : ' · ${pet['raza']}'}',
-                  ),
-                ],
-              ),
+
+    return Material(
+      color: selected ? _softGreen : const Color(0xFFFBFCFA),
+      borderRadius: BorderRadius.circular(16),
+      child: InkWell(
+        key: ValueKey('select-pet-$id'),
+        borderRadius: BorderRadius.circular(16),
+        onTap: editing ? null : () => setState(() => _selectedPetId = id),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: selected ? _green : _border,
+              width: selected ? 2 : 1,
             ),
-          ],
+          ),
+          child: Row(children: [
+            _petPhoto(photo, 60),
+            const SizedBox(width: 12),
+            Expanded(child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('${pet['nombre']}',
+                    maxLines: 1, overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 16,
+                        fontWeight: FontWeight.w800, color: _darkText)),
+                const SizedBox(height: 4),
+                Text('${pet['especie']}'
+                    '${pet['raza'] == null ? '' : ' · ${pet['raza']}'}',
+                    maxLines: 2, overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(color: _muted, fontSize: 13)),
+                if (selected) ...[
+                  const SizedBox(height: 5),
+                  const Text('Seleccionada',
+                      style: TextStyle(color: _green,
+                          fontSize: 12, fontWeight: FontWeight.w700)),
+                ],
+              ],
+            )),
+            const SizedBox(width: 8),
+            Icon(selected ? Icons.check_circle_rounded
+                : Icons.radio_button_unchecked_rounded,
+                color: selected ? _green : const Color(0xFF9CAC9F),
+                size: 25),
+          ]),
         ),
       ),
     );
@@ -966,7 +1108,7 @@ class _CreateLostReportPageState extends State<CreateLostReportPage> {
           context,
           MaterialPageRoute(
             builder: (_) =>
-                widget.reportDetailBuilder?.call(report['id'] as int) ??
+            widget.reportDetailBuilder?.call(report['id'] as int) ??
                 OwnReportDetailPage(reportId: report['id'] as int),
           ),
         ),
@@ -992,7 +1134,7 @@ class _CreateLostReportPageState extends State<CreateLostReportPage> {
                         ),
                         Text(
                           '${pet['especie']}'
-                          '${pet['raza'] == null ? '' : ' · ${pet['raza']}'}',
+                              '${pet['raza'] == null ? '' : ' · ${pet['raza']}'}',
                         ),
                       ],
                     ),
@@ -1015,8 +1157,9 @@ class _CreateLostReportPageState extends State<CreateLostReportPage> {
               Text(
                 isAddress && location['direccion'] != null
                     ? 'Ubicación: ${location['direccion']}'
-                    : 'Ubicación: ${location['metodo']} · '
-                          '${location['lat']}, ${location['lng']}',
+                    : location['metodo'] == 'GPS'
+                    ? 'Ubicación: registrada mediante GPS'
+                    : 'Ubicación: seleccionada en el mapa',
                 style: const TextStyle(color: Color(0xFF64756B)),
               ),
               if (reference?.isNotEmpty == true) ...[
@@ -1034,9 +1177,9 @@ class _CreateLostReportPageState extends State<CreateLostReportPage> {
                   context,
                   MaterialPageRoute(
                     builder: (_) =>
-                        widget.reportHistoryBuilder?.call(
-                          report['id'] as int,
-                        ) ??
+                    widget.reportHistoryBuilder?.call(
+                      report['id'] as int,
+                    ) ??
                         SightingsHistoryPage(reportId: report['id'] as int),
                   ),
                 ),

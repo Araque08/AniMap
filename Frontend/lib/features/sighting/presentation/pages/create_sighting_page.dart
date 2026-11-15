@@ -18,33 +18,33 @@ import '../../data/sightings_service.dart';
 
 typedef LinkableReportsLoader = Future<List<Map<String, dynamic>>> Function();
 typedef SightingCreator =
-    Future<Map<String, dynamic>> Function({
-      required String descripcion,
-      int? reportId,
-      required String metodo,
-      required double lat,
-      required double lng,
-      double? precisionM,
-      String? direccion,
-      String? placeId,
-      XFile? foto,
-    });
+Future<Map<String, dynamic>> Function({
+required String descripcion,
+int? reportId,
+required String metodo,
+required double lat,
+required double lng,
+double? precisionM,
+String? direccion,
+String? placeId,
+XFile? foto,
+});
 typedef SightingPhotoPicker =
-    Future<XFile?> Function({required ImageSource source});
+Future<XFile?> Function({required ImageSource source});
 typedef SightingMiniMapBuilder =
-    Widget Function(BuildContext context, LatLng position);
+Widget Function(BuildContext context, LatLng position);
 typedef SightingLocationPicker =
-    Future<LatLng?> Function(
-      BuildContext context,
-      LatLng initialPosition,
-      LatLng? selectedPosition,
+Future<LatLng?> Function(
+    BuildContext context,
+    LatLng initialPosition,
+    LatLng? selectedPosition,
     );
 typedef SightingGeofenceChecker =
-    Future<GeofenceCheckResult> Function(double lat, double lng);
+Future<GeofenceCheckResult> Function(double lat, double lng);
 typedef SightingAddressPicker =
-    Future<AddressLocationSelection?> Function(
-      BuildContext context,
-      String? initialAddress,
+Future<AddressLocationSelection?> Function(
+    BuildContext context,
+    String? initialAddress,
     );
 
 class CreateSightingPage extends StatefulWidget {
@@ -133,7 +133,7 @@ class _CreateSightingPageState extends State<CreateSightingPage> {
   Future<void> _loadReports() async {
     try {
       final reports =
-          await (widget.reportsLoader ?? SightingsService.getLinkableReports)();
+      await (widget.reportsLoader ?? SightingsService.getLinkableReports)();
 
       if (!mounted) return;
 
@@ -141,10 +141,10 @@ class _CreateSightingPageState extends State<CreateSightingPage> {
 
       final existeReporte =
           reporteInicial != null &&
-          reports.any(
-            (reporte) =>
+              reports.any(
+                    (reporte) =>
                 int.tryParse(reporte['id'].toString()) == reporteInicial,
-          );
+              );
 
       setState(() {
         _reports = reports;
@@ -192,8 +192,8 @@ class _CreateSightingPageState extends State<CreateSightingPage> {
     setState(() => _gettingGps = true);
     try {
       final location =
-          await (widget.locationLoader ??
-              DeviceLocationService.getCurrentLocation)();
+      await (widget.locationLoader ??
+          DeviceLocationService.getCurrentLocation)();
       if (!mounted) return;
       setState(() {
         _selectedLocation = LatLng(location.latitude, location.longitude);
@@ -219,15 +219,15 @@ class _CreateSightingPageState extends State<CreateSightingPage> {
     final initial = _selectedLocation ?? _initialPosition;
     final position = widget.locationPicker == null
         ? await Navigator.push<LatLng>(
-            context,
-            MaterialPageRoute(
-              builder: (_) => LocationPickerPage(
-                initialPosition: initial,
-                selectedPosition: _selectedLocation,
-                title: 'Ubicación del avistamiento',
-              ),
-            ),
-          )
+      context,
+      MaterialPageRoute(
+        builder: (_) => LocationPickerPage(
+          initialPosition: initial,
+          selectedPosition: _selectedLocation,
+          title: 'Ubicación del avistamiento',
+        ),
+      ),
+    )
         : await widget.locationPicker!(context, initial, _selectedLocation);
     if (!mounted || position == null) return;
     setState(() {
@@ -244,14 +244,14 @@ class _CreateSightingPageState extends State<CreateSightingPage> {
   Future<void> _chooseAddress() async {
     final selection = widget.addressPicker == null
         ? await Navigator.push<AddressLocationSelection>(
-            context,
-            MaterialPageRoute(
-              builder: (_) => AddressLocationPage(
-                initialAddress: _validatedAddress,
-                initialSelection: _currentAddressSelection,
-              ),
-            ),
-          )
+      context,
+      MaterialPageRoute(
+        builder: (_) => AddressLocationPage(
+          initialAddress: _validatedAddress,
+          initialSelection: _currentAddressSelection,
+        ),
+      ),
+    )
         : await widget.addressPicker!(context, _validatedAddress);
     if (!mounted || selection == null) return;
     setState(() {
@@ -396,30 +396,30 @@ class _CreateSightingPageState extends State<CreateSightingPage> {
     try {
       final SightingCreator create =
           widget.sightingCreator ??
-          ({
-            required descripcion,
-            reportId,
-            required metodo,
-            required lat,
-            required lng,
-            precisionM,
-            direccion,
-            placeId,
-            foto,
-          }) => SightingsService.createSighting(
-            descripcion: descripcion,
-            reportId: reportId,
-            metodo: metodo,
-            lat: lat,
-            lng: lng,
-            precisionM: precisionM,
-            direccion: direccion,
-            placeId: placeId,
-            foto: foto,
-            solicitudId: foto == null ? null : _requestId,
-            ubicacionConfirmada: _locationConfirmed,
-            compartirContacto: _shareContact,
-          );
+                  ({
+                required descripcion,
+                reportId,
+                required metodo,
+                required lat,
+                required lng,
+                precisionM,
+                direccion,
+                placeId,
+                foto,
+              }) => SightingsService.createSighting(
+                descripcion: descripcion,
+                reportId: reportId,
+                metodo: metodo,
+                lat: lat,
+                lng: lng,
+                precisionM: precisionM,
+                direccion: direccion,
+                placeId: placeId,
+                foto: foto,
+                solicitudId: foto == null ? null : _requestId,
+                ubicacionConfirmada: _locationConfirmed,
+                compartirContacto: _shareContact,
+              );
       await create(
         descripcion: _descriptionController.text,
         reportId: _linked ? _selectedReportId : null,
@@ -462,36 +462,102 @@ class _CreateSightingPageState extends State<CreateSightingPage> {
 
   bool get _hasUnsavedChanges =>
       !_submitted &&
-      (_descriptionController.text.trim().isNotEmpty ||
-          _linked ||
-          _selectedReportId != null ||
-          _selectedLocation != null ||
-          _photo != null);
+          (_descriptionController.text.trim().isNotEmpty ||
+              _linked ||
+              _selectedReportId != null ||
+              _selectedLocation != null ||
+              _photo != null);
 
   Future<bool> _confirmDiscard([int? _]) async {
     if (!_hasUnsavedChanges) return true;
     return await showDialog<bool>(
-          context: context,
-          builder: (context) => AlertDialog(
-            title: const Text('¿Salir sin guardar?'),
-            content: const Text('Los cambios realizados se perderán.'),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context, false),
-                child: const Text('Cancelar'),
-              ),
-              FilledButton(
-                onPressed: () => Navigator.pop(context, true),
-                child: const Text('Salir'),
-              ),
-            ],
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('¿Salir sin guardar?'),
+        content: const Text('Los cambios realizados se perderán.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancelar'),
           ),
-        ) ??
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Salir'),
+          ),
+        ],
+      ),
+    ) ??
         false;
   }
 
   void _goToReportSearch() {
     Navigator.pushNamedAndRemoveUntil(context, '/search-reports', (_) => false);
+  }
+
+  static const _ink = Color(0xFF344955);
+  static const _muted = Color(0xFF64786F);
+  static const _softGreen = Color(0xFFE6F4EA);
+
+  Widget _sectionCard({required Widget child}) => Container(
+    width: double.infinity,
+    padding: const EdgeInsets.all(16),
+    decoration: BoxDecoration(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(19),
+      border: Border.all(color: const Color(0xFFE1EAE3)),
+      boxShadow: const [BoxShadow(color: Color(0x0C203F2F), blurRadius: 12, offset: Offset(0, 4))],
+    ),
+    child: child,
+  );
+
+  Widget _sectionTitle(IconData icon, String title, {String? subtitle}) =>
+      Padding(
+        padding: const EdgeInsets.only(bottom: 12),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(9),
+              decoration: BoxDecoration(color: _softGreen, borderRadius: BorderRadius.circular(12)),
+              child: Icon(icon, color: _green, size: 21),
+            ),
+            const SizedBox(width: 11),
+            Expanded(child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title, style: const TextStyle(color: _ink, fontWeight: FontWeight.w800, fontSize: 17)),
+                if (subtitle != null) ...[
+                  const SizedBox(height: 3),
+                  Text(subtitle, style: const TextStyle(color: _muted, fontSize: 13, height: 1.35)),
+                ],
+              ],
+            )),
+          ],
+        ),
+      );
+
+  Widget _locationButton({required Key key, required IconData icon,
+    required String label, required String method, required VoidCallback? onPressed}) {
+    final selected = _locationMethod == method;
+    return SizedBox(
+      width: double.infinity,
+      child: OutlinedButton.icon(
+        key: key,
+        onPressed: onPressed,
+        icon: _gettingGps && method == 'GPS'
+            ? const SizedBox.square(dimension: 18, child: CircularProgressIndicator(strokeWidth: 2))
+            : Icon(selected ? Icons.check_circle : icon, size: 20),
+        label: Text(label, style: const TextStyle(fontWeight: FontWeight.w700)),
+        style: OutlinedButton.styleFrom(
+          backgroundColor: selected ? _softGreen : Colors.white,
+          foregroundColor: _green,
+          side: BorderSide(color: selected ? _green : const Color(0xFFB6D5C1), width: selected ? 1.7 : 1.1),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 13),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(13)),
+          alignment: Alignment.centerLeft,
+        ),
+      ),
+    );
   }
 
   @override
@@ -505,216 +571,224 @@ class _CreateSightingPageState extends State<CreateSightingPage> {
         }
       },
       child: Scaffold(
-        backgroundColor: const Color(0xFFF4F8F5),
+        backgroundColor: const Color(0xFFF6F8F4),
         appBar: AppBar(
-          title: const Text('Reportar avistamiento'),
+          title: const Text('Reportar avistamiento', style: TextStyle(fontWeight: FontWeight.w700, color: _ink)),
           backgroundColor: const Color(0xFFDFF3E8),
+          surfaceTintColor: Colors.transparent,
         ),
         body: SafeArea(
           child: Form(
             key: _formKey,
             child: ListView(
-              padding: const EdgeInsets.fromLTRB(16, 10, 16, 32),
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: const EdgeInsets.fromLTRB(16, 20, 16, 30),
               children: [
-                const Text(
-                  '¿Quieres vincular este avistamiento a una mascota perdida?',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
-                ),
-                _linkChoices(),
-                if (_linked) _linkedReportsSection(),
-                const SizedBox(height: 10),
-                const Text(
-                  'Ubicación',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
-                ),
-                const SizedBox(height: 10),
-                Card(
-                  margin: EdgeInsets.zero,
-                  color: Colors.white,
-                  child: Wrap(
-                    spacing: 10,
-                    runSpacing: 10,
-                    children: [
-                      FilledButton.icon(
-                        key: const ValueKey('sighting-use-gps'),
-                        onPressed: _gettingGps ? null : _useGps,
-                        icon: _gettingGps
-                            ? const SizedBox.square(
-                                dimension: 18,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: Colors.white,
-                                ),
-                              )
-                            : const Icon(Icons.my_location),
-                        label: const Text('Usar mi ubicación'),
-                      ),
-                      OutlinedButton.icon(
-                        key: const ValueKey('sighting-use-map'),
-                        onPressed: _chooseOnMap,
-                        icon: const Icon(Icons.map_outlined),
-                        label: const Text('Seleccionar en el mapa'),
-                      ),
-                      OutlinedButton.icon(
-                        key: const ValueKey('sighting-use-address'),
-                        onPressed: _chooseAddress,
-                        icon: const Icon(Icons.edit_location_alt_outlined),
-                        label: const Text('Ingresar dirección'),
-                      ),
+                const Text('¿Viste una mascota que podría estar perdida?',
+                    style: TextStyle(fontSize: 23, fontWeight: FontWeight.w800, color: _ink, height: 1.17)),
+                const SizedBox(height: 7),
+                const Text('Comparte dónde la viste para ayudar a encontrar a su familia.',
+                    style: TextStyle(color: _muted, fontSize: 14, height: 1.4)),
+                const SizedBox(height: 22),
+                _sectionCard(child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    _sectionTitle(Icons.pets_outlined, '¿Reconoces a la mascota?',
+                        subtitle: 'Puedes asociar el avistamiento a un reporte existente o publicarlo sin vincular.'),
+                    _linkChoices(),
+                    if (_linked) ...[
+                      const SizedBox(height: 14),
+                      const Divider(height: 1),
+                      const SizedBox(height: 14),
+                      const Text('Selecciona la mascota reportada',
+                          style: TextStyle(fontWeight: FontWeight.w700, color: _ink)),
+                      const SizedBox(height: 9),
+                      _linkedReportsSection(),
                     ],
-                  ),
-                ),
-                if (_selectedLocation != null) ...[
-                  const SizedBox(height: 12),
-                  SizedBox(
-                    height: 145,
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(14),
-                      child:
-                          widget.miniMapBuilder?.call(
-                            context,
-                            _selectedLocation!,
-                          ) ??
-                          GoogleMap(
-                            initialCameraPosition: CameraPosition(
-                              target: _selectedLocation!,
-                              zoom: 16,
-                            ),
-                            liteModeEnabled: true,
-                            markers: {
-                              Marker(
-                                markerId: const MarkerId('sighting-location'),
-                                position: _selectedLocation!,
-                              ),
-                            },
-                            myLocationButtonEnabled: false,
-                            mapToolbarEnabled: false,
-                          ),
+                  ],
+                )),
+                const SizedBox(height: 16),
+                _sectionCard(child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    _sectionTitle(Icons.location_on_outlined, 'Última ubicación del avistamiento',
+                        subtitle: 'Indica el lugar donde viste a la mascota.'),
+                    _locationButton(
+                      key: const ValueKey('sighting-use-gps'),
+                      icon: Icons.my_location,
+                      label: 'Usar mi ubicación actual',
+                      method: 'GPS',
+                      onPressed: _gettingGps ? null : _useGps,
                     ),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    _locationMethod == 'DIRECCION'
-                        ? _validatedAddress ?? 'Dirección validada'
-                        : '$_locationMethod · ${_selectedLocation!.latitude.toStringAsFixed(6)}, '
-                              '${_selectedLocation!.longitude.toStringAsFixed(6)}',
-                    key: const ValueKey('sighting-location-summary'),
-                    style: const TextStyle(color: Color(0xFF65756C)),
-                  ),
-                  const SizedBox(height: 9),
-                  GeofenceValidationPanel(
-                    state: _geofenceState,
-                    onChangeLocation: _changeLocation,
-                    onRetry: _validateSelectedLocation,
-                  ),
-                ],
-                const SizedBox(height: 18),
-                TextFormField(
-                  key: const ValueKey('sighting-description'),
-                  controller: _descriptionController,
-                  minLines: 3,
-                  maxLines: 5,
-                  maxLength: 2000,
-                  decoration: const InputDecoration(
-                    labelText: 'Descripción breve',
-                    hintText: 'Describe la mascota y lo que observaste.',
-                    border: OutlineInputBorder(),
-                  ),
-                  validator: (value) => value == null || value.trim().isEmpty
-                      ? 'La descripción es obligatoria'
-                      : null,
-                ),
-                const SizedBox(height: 8),
-                const Text(
-                  'Foto opcional',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
-                ),
-                const SizedBox(height: 10),
-                if (_photoBytes != null)
-                  Stack(
-                    children: [
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(16),
-                        child: Image.memory(
-                          _photoBytes!,
-                          key: const ValueKey('sighting-photo-preview'),
-                          height: 190,
-                          width: double.infinity,
-                          fit: BoxFit.cover,
+                    const SizedBox(height: 9),
+                    _locationButton(
+                      key: const ValueKey('sighting-use-map'),
+                      icon: Icons.map_outlined,
+                      label: 'Elegir ubicación en el mapa',
+                      method: 'MAPA',
+                      onPressed: _chooseOnMap,
+                    ),
+                    const SizedBox(height: 12),
+                    Container(
+                      key: const ValueKey('sighting-location-summary'),
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: _selectedLocation == null ? const Color(0xFFF4F7F5) : _softGreen,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: const Color(0xFFD4E5D9)),
+                      ),
+                      child: Row(children: [
+                        Icon(_selectedLocation == null ? Icons.location_off_outlined : Icons.check_circle_outline,
+                            size: 21, color: _green),
+                        const SizedBox(width: 9),
+                        Expanded(child: Text(
+                          _selectedLocation == null
+                              ? 'Aún no has seleccionado una ubicación.'
+                              : _locationMethod == 'GPS'
+                              ? 'Ubicación obtenida. Verifica el punto en el mapa.'
+                              : _locationMethod == 'DIRECCION'
+                              ? 'Ubicación seleccionada correctamente.'
+                              : 'Punto seleccionado en el mapa.',
+                          style: const TextStyle(color: _ink, fontSize: 13, height: 1.35),
+                        )),
+                      ]),
+                    ),
+                    if (_selectedLocation != null) ...[
+                      const SizedBox(height: 12),
+                      SizedBox(
+                        height: 165,
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(13),
+                          child: widget.miniMapBuilder?.call(context, _selectedLocation!) ??
+                              GoogleMap(
+                                initialCameraPosition: CameraPosition(target: _selectedLocation!, zoom: 16),
+                                liteModeEnabled: true,
+                                markers: {Marker(markerId: const MarkerId('sighting-location'), position: _selectedLocation!)},
+                                myLocationButtonEnabled: false,
+                                mapToolbarEnabled: false,
+                              ),
                         ),
                       ),
-                      Positioned(
-                        right: 8,
-                        top: 8,
-                        child: IconButton.filled(
+                      const SizedBox(height: 10),
+                      GeofenceValidationPanel(
+                        state: _geofenceState,
+                        onChangeLocation: _changeLocation,
+                        onRetry: _validateSelectedLocation,
+                      ),
+                    ],
+                  ],
+                )),
+                const SizedBox(height: 16),
+                _sectionCard(child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    _sectionTitle(Icons.edit_note_rounded, 'Descripción del avistamiento',
+                        subtitle: 'Cuenta cómo era la mascota y qué observaste.'),
+                    TextFormField(
+                      key: const ValueKey('sighting-description'),
+                      controller: _descriptionController,
+                      minLines: 3,
+                      maxLines: 5,
+                      maxLength: 2000,
+                      textCapitalization: TextCapitalization.sentences,
+                      decoration: InputDecoration(
+                        hintText: 'Ej.: perro mediano de color café, visto cerca del parque...',
+                        hintStyle: const TextStyle(color: _muted, fontSize: 13),
+                        filled: true,
+                        fillColor: const Color(0xFFF9FBF9),
+                        contentPadding: const EdgeInsets.all(14),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(13)),
+                        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(13), borderSide: const BorderSide(color: Color(0xFFD0DED4))),
+                        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(13), borderSide: const BorderSide(color: _green, width: 1.5)),
+                      ),
+                      validator: (value) => value == null || value.trim().isEmpty
+                          ? 'La descripción es obligatoria' : null,
+                    ),
+                  ],
+                )),
+                const SizedBox(height: 16),
+                _sectionCard(child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    _sectionTitle(Icons.add_a_photo_outlined, 'Foto del avistamiento',
+                        subtitle: 'Opcional. Si tienes una foto, puede ayudar a identificarla.'),
+                    if (_photoBytes != null) ...[
+                      Stack(children: [
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(13),
+                          child: Image.memory(_photoBytes!,
+                              key: const ValueKey('sighting-photo-preview'),
+                              height: 190, width: double.infinity, fit: BoxFit.cover),
+                        ),
+                        Positioned(right: 8, top: 8, child: IconButton.filled(
                           key: const ValueKey('remove-sighting-photo'),
                           onPressed: () => setState(() {
                             _photo = null;
                             _photoBytes = null;
+                            _locationConfirmed = false;
+                            _shareContact = false;
                           }),
                           icon: const Icon(Icons.close),
-                        ),
+                        )),
+                      ]),
+                      const SizedBox(height: 10),
+                    ],
+                    OutlinedButton.icon(
+                      key: const ValueKey('choose-sighting-photo'),
+                      onPressed: _showPhotoOptions,
+                      icon: const Icon(Icons.add_a_photo_outlined),
+                      label: Text(_photo == null ? 'Agregar foto' : 'Cambiar foto'),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: _green,
+                        side: const BorderSide(color: _green),
+                        padding: const EdgeInsets.symmetric(vertical: 13),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(13)),
+                      ),
+                    ),
+                    if (_photo != null) ...[
+                      const SizedBox(height: 12),
+                      CheckboxListTile(
+                        key: const ValueKey('sighting-confirm-location'),
+                        contentPadding: EdgeInsets.zero,
+                        activeColor: _green,
+                        value: _locationConfirmed,
+                        onChanged: _saving || _selectedLocation == null
+                            ? null : (value) => setState(() => _locationConfirmed = value ?? false),
+                        title: const Text('Confirmo dónde vi a la mascota',
+                            style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14, color: _ink)),
+                        subtitle: const Text('Comprueba que el marcador esté en el lugar correcto.'),
+                        controlAffinity: ListTileControlAffinity.leading,
+                      ),
+                      CheckboxListTile(
+                        key: const ValueKey('sighting-share-contact'),
+                        contentPadding: EdgeInsets.zero,
+                        activeColor: _green,
+                        value: _shareContact,
+                        onChanged: _saving ? null : (value) => setState(() => _shareContact = value ?? false),
+                        title: const Text('Compartir mi teléfono si hay coincidencia',
+                            style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14, color: _ink)),
+                        subtitle: const Text('Opcional. Tu correo no se comparte.'),
+                        controlAffinity: ListTileControlAffinity.leading,
                       ),
                     ],
-                  ),
-                const SizedBox(height: 8),
-                OutlinedButton.icon(
-                  key: const ValueKey('choose-sighting-photo'),
-                  onPressed: _showPhotoOptions,
-                  icon: const Icon(Icons.add_a_photo_outlined),
-                  label: Text(
-                    _photo == null ? 'Agregar foto' : 'Reemplazar foto',
-                  ),
-                ),
-                if (_photo != null) ...[
-                  CheckboxListTile(
-                    key: const ValueKey('sighting-confirm-location'),
-                    contentPadding: EdgeInsets.zero,
-                    value: _locationConfirmed,
-                    onChanged: _saving || _selectedLocation == null
-                        ? null
-                        : (value) => setState(
-                            () => _locationConfirmed = value ?? false,
-                          ),
-                    title: const Text(
-                      'Confirmo que esta es la ubicación donde vi la mascota',
-                    ),
-                    subtitle: const Text(
-                      'Revisa las coordenadas seleccionadas antes de publicar.',
-                    ),
-                  ),
-                  CheckboxListTile(
-                    key: const ValueKey('sighting-share-contact'),
-                    contentPadding: EdgeInsets.zero,
-                    value: _shareContact,
-                    onChanged: _saving
-                        ? null
-                        : (value) =>
-                              setState(() => _shareContact = value ?? false),
-                    title: const Text(
-                      'Compartir mi teléfono con el propietario si hay coincidencia',
-                    ),
-                    subtitle: const Text('Opcional. Tu correo no se comparte.'),
-                  ),
-                ],
+                  ],
+                )),
                 const SizedBox(height: 22),
-                FilledButton.icon(
-                  key: const ValueKey('publish-sighting'),
-                  onPressed: _saving ? null : _save,
-                  style: FilledButton.styleFrom(
-                    backgroundColor: _green,
-                    padding: const EdgeInsets.symmetric(vertical: 15),
+                SizedBox(
+                  height: 54,
+                  child: FilledButton.icon(
+                    key: const ValueKey('publish-sighting'),
+                    onPressed: _saving ? null : _save,
+                    style: FilledButton.styleFrom(
+                      backgroundColor: _green,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                    ),
+                    icon: _saving
+                        ? const SizedBox.square(dimension: 19, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                        : const Icon(Icons.campaign_outlined),
+                    label: Text(_saving ? 'Publicando...' : 'Publicar avistamiento',
+                        style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
                   ),
-                  icon: _saving
-                      ? const SizedBox.square(
-                          dimension: 19,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: Colors.white,
-                          ),
-                        )
-                      : const Icon(Icons.send_outlined),
-                  label: const Text('Publicar avistamiento'),
                 ),
               ],
             ),
@@ -758,83 +832,56 @@ class _CreateSightingPageState extends State<CreateSightingPage> {
     final linked = _linkChoice(
       key: const ValueKey('linked-sighting'),
       selected: _linked,
-      label: 'Seleccionar mascota reportada',
-      description:
-          'Busca entre las mascotas que actualmente están reportadas como perdidas.',
+      icon: Icons.search_rounded,
+      label: 'Vincular a un reporte',
+      description: 'La mascota aparece entre las reportadas como perdidas.',
       onTap: () => setState(() => _linked = true),
     );
     final independent = _linkChoice(
       key: const ValueKey('independent-sighting'),
       selected: !_linked,
+      icon: Icons.add_location_alt_outlined,
       label: 'Reportar sin vincular',
-      description:
-          'Usa esta opción si no identificas la mascota entre los reportes actuales.',
+      description: 'No encontré a la mascota entre los reportes.',
       onTap: () => setState(() {
         _linked = false;
         _selectedReportId = null;
       }),
     );
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        if (constraints.maxWidth < 280) {
-          return Column(children: [linked, independent]);
-        }
-        return Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(child: linked),
-            const SizedBox(width: 8),
-            Expanded(child: independent),
-          ],
-        );
-      },
-    );
+    return Column(children: [linked, const SizedBox(height: 9), independent]);
   }
 
   Widget _linkChoice({
     required Key key,
     required bool selected,
+    required IconData icon,
     required String label,
     required String description,
     required VoidCallback onTap,
   }) {
-    return Card(
-      key: key,
-      margin: const EdgeInsets.symmetric(vertical: 3),
-      color: selected ? const Color(0xFFDFF3E8) : Colors.white,
+    return Container(
+      decoration: BoxDecoration(
+        color: selected ? _softGreen : const Color(0xFFFAFCFA),
+        borderRadius: BorderRadius.circular(13),
+        border: Border.all(color: selected ? _green : const Color(0xFFDDE8DF), width: selected ? 1.6 : 1),
+      ),
       child: InkWell(
+        key: key,
         onTap: onTap,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(13),
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-          child: Row(
-            children: [
-              Icon(
-                selected ? Icons.radio_button_checked : Icons.radio_button_off,
-                color: _green,
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      label,
-                      style: const TextStyle(fontWeight: FontWeight.w700),
-                    ),
-                    const SizedBox(height: 1),
-                    Text(
-                      description,
-                      style: const TextStyle(
-                        color: Color(0xFF65756C),
-                        fontSize: 12,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 13),
+          child: Row(children: [
+            Icon(icon, color: _green, size: 24),
+            const SizedBox(width: 11),
+            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(label, style: const TextStyle(color: _ink, fontWeight: FontWeight.w700, fontSize: 14)),
+              const SizedBox(height: 3),
+              Text(description, style: const TextStyle(color: _muted, fontSize: 12, height: 1.3)),
+            ])),
+            const SizedBox(width: 8),
+            Icon(selected ? Icons.check_circle : Icons.radio_button_unchecked, color: _green),
+          ]),
         ),
       ),
     );
@@ -851,40 +898,41 @@ class _CreateSightingPageState extends State<CreateSightingPage> {
     final imageUrl = SightingsService.absoluteImageUrl(photo?['url']);
     final selected = id != null && id == _selectedReportId;
     return Card(
-      margin: const EdgeInsets.symmetric(vertical: 3),
-      color: selected ? const Color(0xFFDFF3E8) : Colors.white,
+      margin: const EdgeInsets.symmetric(vertical: 5),
+      color: selected ? _softGreen : const Color(0xFFFAFCFA),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14), side: BorderSide(color: selected ? _green : const Color(0xFFDDE8DF), width: selected ? 1.6 : 1)),
       child: InkWell(
         key: ValueKey('linkable-report-$id'),
         onTap: id == null ? null : () => setState(() => _selectedReportId = id),
         child: Padding(
-          padding: const EdgeInsets.all(5),
+          padding: const EdgeInsets.all(11),
           child: Row(
             children: [
               ClipRRect(
                 borderRadius: BorderRadius.circular(10),
                 child: imageUrl == null
                     ? const SizedBox.square(
-                        dimension: 42,
-                        child: ColoredBox(
-                          color: Color(0xFFE5F1E8),
-                          child: Icon(Icons.pets, color: _green),
-                        ),
-                      )
+                  dimension: 54,
+                  child: ColoredBox(
+                    color: Color(0xFFE5F1E8),
+                    child: Icon(Icons.pets, color: _green),
+                  ),
+                )
                     : Image.network(
-                        imageUrl,
-                        width: 42,
-                        height: 42,
-                        fit: BoxFit.cover,
-                        errorBuilder: (_, _, _) => const SizedBox.square(
-                          dimension: 42,
-                          child: ColoredBox(
-                            color: Color(0xFFE5F1E8),
-                            child: Icon(Icons.pets),
-                          ),
-                        ),
-                      ),
+                  imageUrl,
+                  width: 54,
+                  height: 54,
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, _, _) => const SizedBox.square(
+                    dimension: 54,
+                    child: ColoredBox(
+                      color: Color(0xFFE5F1E8),
+                      child: Icon(Icons.pets),
+                    ),
+                  ),
+                ),
               ),
-              const SizedBox(width: 8),
+              const SizedBox(width: 12),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -899,8 +947,8 @@ class _CreateSightingPageState extends State<CreateSightingPage> {
                       [pet['especie'], pet['raza']]
                           .where(
                             (value) =>
-                                value != null && value.toString().isNotEmpty,
-                          )
+                        value != null && value.toString().isNotEmpty,
+                      )
                           .join(' · '),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
