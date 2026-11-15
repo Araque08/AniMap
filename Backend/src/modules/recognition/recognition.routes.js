@@ -14,10 +14,37 @@ function validImage(file) {
 }
 
 function createRecognitionRouter({ service = recognitionService, authenticate = auth,
+  matches = null,
   limiter = rateLimit({ windowMs: 60000, limit: 6, standardHeaders: 'draft-8', legacyHeaders: false,
     keyGenerator: req => String(req.auth.userId),
     message: { ok: false, code: 'RECOGNITION_RATE_LIMIT', message: 'Espera un minuto antes de realizar otra búsqueda.' } }) } = {}) {
   const router = express.Router();
+  const matchService = () => matches || require('./recognition.matches.service').matchService;
+  const positiveId = value => /^[1-9]\d*$/.test(String(value))
+    && Number.isSafeInteger(Number(value)) && Number(value) <= 2147483647 ? Number(value) : null;
+  router.get('/matches', authenticate, async (req, res, next) => {
+    res.set('Cache-Control', 'private, no-store');
+    const before = req.query.before === undefined ? undefined : positiveId(req.query.before);
+    if (before === null) return res.status(400).json({ ok: false, message: 'ID de página inválido' });
+    try { return res.json({ ok: true, data: await matchService().list(req.auth.userId, before) }); }
+    catch (error) { return next(error); }
+  });
+  router.get('/matches/:id', authenticate, async (req, res, next) => {
+    res.set('Cache-Control', 'private, no-store');
+    const id = positiveId(req.params.id);
+    if (!id) return res.status(400).json({ ok: false, message: 'ID de coincidencia inválido' });
+    try { return res.json({ ok: true, data: await matchService().detail(req.auth.userId, id) }); }
+    catch (error) { return next(error); }
+  });
+  router.get('/matches/:id/image', authenticate, async (req, res, next) => {
+    res.set('Cache-Control', 'private, no-store');
+    const id = positiveId(req.params.id);
+    if (!id) return res.status(400).json({ ok: false, message: 'ID de coincidencia inválido' });
+    try {
+      const image = await matchService().image(req.auth.userId, id);
+      return res.type(image.mimeType).send(image.buffer);
+    } catch (error) { return next(error); }
+  });
   const upload = multer({ storage: multer.memoryStorage(),
     limits: { fileSize: MAX_BYTES, files: 1, fields: 0, parts: 2 } }).single('foto');
   router.post('/search', authenticate, limiter, (req, res, next) => {

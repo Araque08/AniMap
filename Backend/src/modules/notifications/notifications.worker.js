@@ -11,6 +11,7 @@ async function verifyGoogleToken(idToken, audience) {
 // The mobile API is public at Cloud Run's edge. Protect this route separately;
 // an AniMap access token is not sufficient to invoke the worker.
 function createWorkerHandler({ service = notificationsService,
+  analyzer,
   audience = env.NOTIFICATION_WORKER_AUDIENCE,
   serviceAccount = env.NOTIFICATION_WORKER_SERVICE_ACCOUNT_EMAIL,
   verify = verifyGoogleToken } = {}) {
@@ -27,8 +28,12 @@ function createWorkerHandler({ service = notificationsService,
       return res.status(403).json({ ok: false, code: 'WORKER_FORBIDDEN' });
     }
     try {
+      const photoAnalyzer = analyzer === undefined && service === notificationsService
+        ? require('../recognition/recognition.matches.service').matchService : analyzer;
+      const analysis = photoAnalyzer ? await photoAnalyzer.drain() : null;
       const result = await service.drain();
-      return res.status(result.completed ? 200 : 503).json({ ok: result.completed, ...result });
+      const completed = result.completed && analysis?.completed !== false;
+      return res.status(completed ? 200 : 503).json({ ...result, completed, ok: completed });
     } catch (_) {
       return res.status(503).json({ ok: false, code: 'WORKER_UNAVAILABLE' });
     }

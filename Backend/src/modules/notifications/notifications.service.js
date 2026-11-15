@@ -1,6 +1,6 @@
 const { createHash } = require('node:crypto');
 const env = require('../../config/env');
-const { createNotificationsRepository } = require('./notifications.repository');
+const { createNotificationsRepository, matchMessage } = require('./notifications.repository');
 const { createFirebaseSender, classifyFirebaseError } = require('./firebase.sender');
 const {
   createCommunityAlertsRepository,
@@ -105,6 +105,7 @@ function createNotificationsService(options = {}) {
   const scope = testing && configured
     ? Object.freeze({ ownerId: Number(testOwnerId), reportId: Number(testReportId) }) : null;
   const inScope = event => !scope || (event?.ownerId === scope.ownerId && event?.reportId === scope.reportId);
+  const allowsEvent = event => configured && inScope(event);
   let inFlight = null;
   let timer = null;
   let stopped = false;
@@ -122,10 +123,29 @@ function createNotificationsService(options = {}) {
     return repo.insertIntent(client, event, skipReason(event));
   }
 
+  async function recordMatchIntent(client, event, { similarity }) {
+    // Photo evidence remains consultable without FCM. Test isolation still
+    // fails closed and may not leave unrestricted future pending deliveries.
+    if (!allowsEvent(event)) return null;
+    if (!event?.reportId || !event.ownerId || event.authorId === event.ownerId) return null;
+    if (!Number.isFinite(similarity) || similarity < 0 || similarity > 1) return null;
+    return repo.insertMatchIntent(client, event, skipReason(event), { similarity });
+  }
+
+  function loadNotification(notification) {
+    return repo.loadNotification
+      ? repo.loadNotification(repo.pool, notification)
+      : repo.loadEvent(repo.pool, notification.sightingId);
+  }
+
+  function changedRecipient(event, notification) {
+    return event.ownerId !== notification.ownerId || event.reportId !== notification.reportId;
+  }
+
   async function deliver(notification, delivery) {
-    const event = await repo.loadEvent(repo.pool, notification.sightingId);
+    const event = await loadNotification(notification);
     const reason = !inScope(event) ? 'FUERA_PRUEBA_FCM' : skipReason(event);
-    if (reason || event.ownerId !== notification.ownerId) {
+    if (reason || changedRecipient(event, notification)) {
       await repo.finishDelivery(delivery, { state: 'OMITIDA', error: reason || 'DESTINATARIO_CAMBIO' });
       return;
     }
@@ -136,10 +156,14 @@ function createNotificationsService(options = {}) {
     }
     let result;
     try {
+      const isMatch = notification.type === 'COINCIDENCIA_FOTOGRAFICA';
+      const message = isMatch ? matchMessage(event.similarity) : {
+        title: 'Nuevo avistamiento de tu mascota',
+        body: 'Registraron un avistamiento vinculado a tu reporte de pérdida.' };
       const messageId = await sender.send({ fid: target.registrationId,
-        notification: { title: 'Nuevo avistamiento de tu mascota',
-          body: 'Registraron un avistamiento vinculado a tu reporte de pérdida.' },
-        data: { type: 'AVISTAMIENTO_VINCULADO', notificationId: String(notification.id),
+        notification: message,
+        data: { type: isMatch ? 'COINCIDENCIA_FOTOGRAFICA' : 'AVISTAMIENTO_VINCULADO',
+          ...(isMatch ? { matchId: String(event.matchId) } : {}), notificationId: String(notification.id),
           sightingId: String(event.sightingId), reportId: String(event.reportId),
           ownerId: String(event.ownerId) },
         tag: `animap-notification-${notification.id}` });
@@ -421,9 +445,9 @@ async function processCommunityAlerts(deadline) {
       if (stopped || now() >= deadline) break;
       if (!inScope(notification)) continue;
       try {
-        const event = await repo.loadEvent(repo.pool, notification.sightingId);
+        const event = await loadNotification(notification);
         const reason = !inScope(event) ? 'FUERA_PRUEBA_FCM' : skipReason(event);
-        if (reason || event.ownerId !== notification.ownerId) {
+        if (reason || changedRecipient(event, notification)) {
           await repo.skipNotification(notification.id, `OMITIDA_${reason || 'DESTINATARIO_CAMBIO'}`);
           continue;
         }
@@ -485,8 +509,8 @@ async function processCommunityAlerts(deadline) {
   }
 
   function stop() { stopped = true; clearInterval(timer); timer = null; }
-  return { recordIntent, drain, wake, start, stop };
+  return { recordIntent, recordMatchIntent, allowsEvent, drain, wake, start, stop };
 }
 
-module.exports = { createNotificationsService,
+module.exports = { createNotificationsService, skipReason,
   notificationsService: createNotificationsService() };

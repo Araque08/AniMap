@@ -10,7 +10,7 @@ const router = express.Router();
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: MAX_PHOTO_BYTES, files: 1, fields: 8, fieldSize: 10 * 1024 },
+  limits: { fileSize: MAX_PHOTO_BYTES, files: 1, fields: 11, fieldSize: 10 * 1024 },
 });
 
 function validImage(file) {

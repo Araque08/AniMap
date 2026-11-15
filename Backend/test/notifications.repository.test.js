@@ -8,6 +8,34 @@ function setup(rows = []) {
   return { repo: createNotificationsRepository(pool), calls, pool };
 }
 
+test('intencion de coincidencia retorna ID existente sin modificar entrega aceptada', async () => {
+  const h = setup([{ id: 91 }]);
+  assert.equal(await h.repo.insertMatchIntent(h.pool,
+    { ownerId: 28, reportId: 8, sightingId: 41 }, null, { similarity: 0.856 }), 91);
+  const { sql, params } = h.calls[0];
+  assert.match(sql, /COINCIDENCIA_FOTOGRAFICA/);
+  assert.match(sql, /ON CONFLICT \(fk_avistamiento, fk_usuario\)/);
+  assert.match(sql, /DO NOTHING/);
+  assert.equal(params[4], 'Se publicó una fotografía que podría coincidir con tu mascota. Similitud visual: 86 %.');
+  const duplicate = setup([{ id: 91 }]);
+  let count = 0;
+  duplicate.pool.query = async (sql, params) => {
+    duplicate.calls.push({ sql, params });
+    return { rows: ++count === 1 ? [] : [{ id: 91 }] };
+  };
+  assert.equal(await duplicate.repo.insertMatchIntent(duplicate.pool,
+    { ownerId: 28, reportId: 8, sightingId: 41 }, null, { similarity: 0.856 }), 91);
+  assert.match(duplicate.calls[1].sql, /SELECT id FROM notificacion/);
+  assert.doesNotMatch(duplicate.calls[1].sql, /UPDATE/);
+});
+
+test('cola y recuperacion incluyen coincidencias con el alcance propietario y reporte', async () => {
+  const h = setup();
+  await h.repo.pendingNotifications(); await h.repo.recoverAbandoned();
+  for (const { sql } of h.calls) assert.match(sql, /'AVISTAMIENTO_VINCULADO', 'COINCIDENCIA_FOTOGRAFICA'/);
+  assert.match(h.calls[0].sql, /n.tipo AS type/);
+});
+
 test('modo QA: consultas de cola y ambas ramas de recuperacion exigen usuario y reporte', async () => {
   const h = setup(); const scope = { ownerId: 28, reportId: 8, sightingId: 41 };
   await h.repo.recoverAbandoned(scope); await h.repo.pendingNotifications(25, scope);
