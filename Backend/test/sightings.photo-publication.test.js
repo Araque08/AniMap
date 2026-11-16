@@ -8,7 +8,7 @@ const data = { descripcion: 'Foto QA aislada', reportId: null, metodo: 'MAPA', l
 const file = { buffer: Buffer.from([255,216,255,1]), mimetype: 'image/jpeg', originalname: 'qa.jpg' };
 
 function setup({ existing, crash = false } = {}) {
-  const log = [], jobs = [];
+  const log = [], jobs = [], storedPhotos = [];
   const client = {
     async query(sql) {
       log.push(sql.trim().replace(/\s+/g, ' '));
@@ -23,12 +23,15 @@ function setup({ existing, crash = false } = {}) {
     async enqueue(_, job) { log.push('enqueue'); jobs.push(job); },
     async wake() { log.push('analyze'); if (crash) throw new Error('model offline'); },
   };
-  const images = { async saveSightingImage() { log.push('mongo-save'); return { storageRef: 'photo' }; },
+  const images = { async saveSightingImage({ file: incoming }) {
+    storedPhotos.push(Buffer.from(incoming.buffer));
+    log.push('mongo-save'); return { storageRef: 'photo' };
+  },
     async deleteSightingImage() { log.push('mongo-delete'); } };
   const notifications = { async recordIntent() { log.push('legacy'); }, async wake() { log.push('push'); } };
   const service = createSightingsService({ connect: async () => client }, images,
     { validateAllowedArea() {} }, notifications, matches);
-  return { log, jobs, service };
+  return { log, jobs, service, storedPhotos };
 }
 
 test('schema acepta clave UUID y consentimiento explícito, rechaza similitud del cliente', () => {
@@ -55,6 +58,7 @@ test('publicación persiste trabajo en transacción y analiza únicamente despu�
   assert.ok(h.log.indexOf('enqueue') < h.log.indexOf('COMMIT'));
   assert.ok(h.log.indexOf('COMMIT') < h.log.indexOf('analyze'));
   assert.equal(h.log.filter(v => v === 'mongo-save').length, 1);
+  assert.deepEqual(h.storedPhotos, [file.buffer]);
   assert.ok(!h.log.includes('legacy'));
 });
 
@@ -65,6 +69,7 @@ test('reintento HTTP reutiliza avistamiento sin guardar segunda foto; otros dato
   original = { sightingId: 41, fingerprint: h.jobs[0].fingerprint };
   await h.service.createSighting(7, data, file);
   assert.equal(h.log.filter(v => v === 'mongo-save').length, 1);
+  assert.deepEqual(h.storedPhotos, [file.buffer]);
   await assert.rejects(h.service.createSighting(7, { ...data, descripcion: 'otra observación' }, file), e => e.statusCode === 409);
 });
 

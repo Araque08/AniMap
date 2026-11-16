@@ -25,6 +25,26 @@ function fixture(options = {}) {
   return { service: createRecognitionService({ repo, worker, ...options }), repo, worker, photos, actions };
 }
 
+test('verificación posterior limita ambas lecturas al reporte elegido sin cambiar el umbral', async () => {
+  const h = fixture();
+  h.repo.activePhotos = async options => {
+    assert.equal(options?.reportId, 2);
+    return h.photos.filter(p => p.reportId === 2);
+  };
+  const result = await h.service.search(Buffer.from('query'), { reportId: 2 });
+  assert.equal(result.threshold, .8);
+  assert.equal(result.searchedImages, 1);
+  assert.deepEqual(result.matches.map(m => m.reportId), [2]);
+});
+
+test('repositorio filtra el reporte seleccionado con parámetros SQL', async () => {
+  let query;
+  const repo = createRecognitionRepository({ pool: { query: async q => { query = q; return { rows: [] }; } } });
+  await repo.activePhotos({ reportId: 23 });
+  assert.match(query.text, /AND r.id = \$1/);
+  assert.deepEqual(query.values, [23]);
+});
+
 test('all photos, best per report, descending order and no owner/bytes in result', async () => {
   const h = fixture(); const result = await h.service.search(Buffer.from('query'));
   assert.equal(result.searchedImages, 3);
@@ -37,12 +57,12 @@ test('threshold configurable, empty results and no silently relaxed threshold', 
   await assert.rejects(fixture({ threshold: NaN }).service.search(Buffer.from('x')), { code: 'RECOGNITION_UNAVAILABLE' });
 });
 
-test('published analysis retains eligible owners beyond exploratory top five', async () => {
+test('internal unlimited search preserves the default exploratory limit', async () => {
   const photos = Array.from({ length: 8 }, (_, index) => ({ reportId: index + 1,
     petId: index + 1, photoId: `photo-${index + 1}`, ownerId: index < 5 ? 7 : 100 + index }));
   const repo = { activePhotos: async () => photos, photoBytes: async photo => Buffer.from(photo.photoId) };
   const worker = { async request(action, payload) {
-    if (action === 'query') return { queryId: 'query-published' };
+    if (action === 'query') return { queryId: 'query-unlimited' };
     if (action === 'release') return {};
     const reportId = Number(Buffer.from(payload.image, 'base64').toString().split('-')[1]);
     return { similarity: 0.99 - reportId / 100 };
@@ -50,11 +70,9 @@ test('published analysis retains eligible owners beyond exploratory top five', a
   const service = createRecognitionService({ repo, worker });
   const exploratory = await service.search(Buffer.from('query'));
   assert.deepEqual(exploratory.matches.map(match => match.reportId), [1, 2, 3, 4, 5]);
-  const published = await service.search(Buffer.from('query'), { allMatches: true });
-  assert.deepEqual(published.matches.map(match => match.reportId), [1, 2, 3, 4, 5, 6, 7, 8]);
-  const eligible = published.matches.filter(match => photos.find(photo => photo.reportId === match.reportId).ownerId !== 7);
-  assert.deepEqual(eligible.map(match => match.reportId), [6, 7, 8]);
-  assert.doesNotMatch(JSON.stringify(published), /ownerId|query-published|base64/);
+  const unlimited = await service.search(Buffer.from('query'), { allMatches: true });
+  assert.deepEqual(unlimited.matches.map(match => match.reportId), [1, 2, 3, 4, 5, 6, 7, 8]);
+  assert.doesNotMatch(JSON.stringify(unlimited), /ownerId|query-unlimited|base64/);
 });
 test('closed report/removed photo after inference cannot remain in response', async () => {
   const h = fixture({ current: [] });

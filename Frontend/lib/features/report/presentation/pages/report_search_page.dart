@@ -5,6 +5,7 @@ import 'package:animap/features/report/data/mascotas_perdidas_service.dart';
 import '../../data/image_recognition_service.dart';
 import '../widgets/image_search_sheet.dart';
 import 'photo_matches_page.dart';
+import '../../../sighting/presentation/pages/create_sighting_page.dart';
 
 class ReportarBuscarPage extends StatefulWidget {
   const ReportarBuscarPage({
@@ -508,7 +509,7 @@ class _ReportarBuscarPageState extends State<ReportarBuscarPage> {
 
       widget.onImagenSeleccionada?.call(imagen);
 
-      final reportId = await showModalBottomSheet<int>(
+      final selection = await showModalBottomSheet<ImageSearchSelection>(
         context: context,
         isScrollControlled: true,
         useSafeArea: true,
@@ -522,24 +523,17 @@ class _ReportarBuscarPageState extends State<ReportarBuscarPage> {
           ),
         ),
       );
-      if (!mounted || reportId == null) return;
-      if (widget.onImageMatch != null) {
-        widget.onImageMatch!(reportId);
-        return;
-      }
-      final reports =
-          await (widget.reportsLoader ?? _servicio.obtenerReportes)();
-      if (!mounted) return;
-      final matching = reports.where(
-        (report) => report.id == 'lost_$reportId' && report.estaPerdida,
+      if (!mounted || selection == null) return;
+      widget.onImageMatch?.call(selection.reportId);
+      await Navigator.push(
+        context,
+        MaterialPageRoute<void>(
+          builder: (_) => CreateSightingPage(
+            reporteInicialId: selection.reportId,
+            initialPhoto: selection.photo,
+          ),
+        ),
       );
-      if (matching.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('El reporte ya no está disponible.')),
-        );
-      } else {
-        _abrirDetalle(matching.first);
-      }
     } catch (e) {
       if (!mounted) return;
 
@@ -1203,7 +1197,7 @@ class _ReportarBuscarPageState extends State<ReportarBuscarPage> {
                                 Navigator.pushNamedAndRemoveUntil(
                                   context,
                                   '/home',
-                                      (route) => false,
+                                  (route) => false,
                                 );
                               },
                             ),

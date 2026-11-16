@@ -51,8 +51,27 @@ async function obtenerHistorialNotificaciones(usuarioId, pagina = 1) {
     [userId, PAGE_SIZE + 1, offset]
   );
 
+  const notificaciones = resultado.rows.slice(0, PAGE_SIZE);
+  const photoNotifications = notificaciones.filter(n => n.tipo === 'COINCIDENCIA_FOTOGRAFICA');
+  if (photoNotifications.length) {
+    let matches = [];
+    try {
+      const result = await db.pool.query(`SELECT c.id AS "matchId", c.fk_notificacion AS "notificationId"
+        FROM coincidencia_reconocimiento c
+        WHERE c.fk_usuario = $1 AND c.fk_notificacion = ANY($2::integer[])
+        ORDER BY c.id DESC`, [userId, photoNotifications.map(n => n.id)]);
+      matches = result.rows;
+    } catch (error) {
+      // Keep the existing history usable on installations without optional HU-034.
+      if (error.code !== '42P01') throw error;
+    }
+    for (const notification of photoNotifications) {
+      notification.matchId = matches.find(m => m.notificationId === notification.id)?.matchId ?? null;
+    }
+  }
+
   return {
-    notificaciones: resultado.rows.slice(0, PAGE_SIZE),
+    notificaciones,
     pagina: page,
     hayMas: resultado.rows.length > PAGE_SIZE
   };

@@ -105,6 +105,16 @@ function createMatchRepository({ pool = postgres.pool,
     return (await readPhoto(await photoRow(pool, job.sightingId, job.userId)))?.buffer || null;
   }
 
+  async function selectedReport(job) {
+    qa.assertAuthor(job.userId);
+    const filter = qa.sightingFilter('a', 3);
+    const result = await pool.query(`SELECT a.fk_reporte_perdida AS "reportId"
+      FROM avistamiento a WHERE a.id=$1 AND a.fk_usuario=$2
+        AND a.estado IS DISTINCT FROM 'ELIMINADO' ${filter.text}`,
+    [job.sightingId, job.userId, ...filter.values]);
+    return result.rows[0]?.reportId ?? null;
+  }
+
   async function candidate(client, sightingId, reportId, photoId) {
     qa.assertReady();
     if (qa.enabled && Number(reportId) !== qa.reportId) return null;
@@ -135,7 +145,7 @@ function createMatchRepository({ pool = postgres.pool,
       JOIN especie e ON e.id=m.fk_especie JOIN usuario u ON u.id=r.fk_usuario
       LEFT JOIN perfil p ON p.fk_usuario=u.id LEFT JOIN preferencia_notificacion pn ON pn.fk_usuario=u.id
       LEFT JOIN ubicacion ur ON ur.fk_reporte=r.id LEFT JOIN ubicacion ua ON ua.fk_avistamiento=a.id
-      WHERE a.id=$1 AND a.estado IS DISTINCT FROM 'ELIMINADO' ${filter.text}
+      WHERE a.id=$1 AND a.fk_reporte_perdida=r.id AND a.estado IS DISTINCT FROM 'ELIMINADO' ${filter.text}
       ORDER BY fa.id,fm.id LIMIT 1 FOR SHARE OF a,r,m,fm,fa,u`, [sightingId, reportId, photoId, ...filter.values]);
     return result.rows[0] || null;
   }
@@ -195,13 +205,14 @@ function createMatchRepository({ pool = postgres.pool,
       JOIN especie e ON e.id=m.fk_especie JOIN usuario u ON u.id=r.fk_usuario
       LEFT JOIN perfil p ON p.fk_usuario=u.id LEFT JOIN preferencia_notificacion pn ON pn.fk_usuario=u.id
       LEFT JOIN ubicacion ur ON ur.fk_reporte=r.id LEFT JOIN ubicacion ua ON ua.fk_avistamiento=a.id
-      WHERE a.id=$1 AND a.estado IS DISTINCT FROM 'ELIMINADO'`, [row.sightingId, row.reportId, row.ownerId]);
+      WHERE a.id=$1 AND a.fk_reporte_perdida=r.id
+        AND a.estado IS DISTINCT FROM 'ELIMINADO'`, [row.sightingId, row.reportId, row.ownerId]);
     return result.rows[0] ? { ...result.rows[0], matchId: row.matchId, similarity: Number(row.similarity) / 100 } : null;
   }
 
   async function history(ownerId, id, before) {
     const result = await pool.query(`SELECT c.id,c.fk_reporte AS "reportId", a.id AS "sightingId",
-      c.similitud,c.umbral_usado,c.modelo,
+      c.similitud,c.umbral_usado,c.modelo,a.descripcion AS description,
       to_char(c.creado_en, 'YYYY-MM-DD"T"HH24:MI:SS.MS') || 'Z' AS "createdAt",
       to_char(a.fecha_hora, 'YYYY-MM-DD"T"HH24:MI:SS.MS') || 'Z' AS "observedAt", n.estado_envio,
       ua.lat,ua.lng,ua.metodo,ua.direccion,
@@ -225,7 +236,7 @@ function createMatchRepository({ pool = postgres.pool,
   function present(row) {
     const reporter = { label: row.reporter_label || 'Reportante' };
     if (row.reporter_phone) reporter.phone = row.reporter_phone;
-    return { id: row.id, reportId: row.reportId, sightingId: row.sightingId,
+    return { id: row.id, reportId: row.reportId, sightingId: row.sightingId, description: row.description || '',
       similarity: Number(row.similitud) / 100, threshold: Number(row.umbral_usado) / 100,
       model: row.modelo, createdAt: row.createdAt, observedAt: row.observedAt,
       notificationState: row.estado_envio || 'REGISTRADA',
@@ -239,7 +250,7 @@ function createMatchRepository({ pool = postgres.pool,
     const row = (await history(ownerId, id))[0];
     return row ? readPhoto(row) : null;
   }
-  return { pool, enqueue, findRequest, claim, isCurrent, photo, candidate, saveMatch,
+  return { pool, enqueue, findRequest, claim, isCurrent, photo, selectedReport, candidate, saveMatch,
     complete, fail, retry, transaction, list, detail, image, loadNotification };
 }
 

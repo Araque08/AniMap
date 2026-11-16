@@ -111,6 +111,7 @@ class _CreateSightingPageState extends State<CreateSightingPage> {
     super.initState();
     _requestId = _newRequestId();
     _formGeneration = SessionManager.instance.authenticatedSessionGeneration;
+    _linked = widget.reporteInicialId != null;
     _loadReports();
     if (widget.initialPhoto case final photo?) _setPhoto(photo);
   }
@@ -149,9 +150,9 @@ class _CreateSightingPageState extends State<CreateSightingPage> {
       setState(() {
         _reports = reports;
 
-        if (existeReporte) {
+        if (reporteInicial != null) {
           _linked = true;
-          _selectedReportId = reporteInicial;
+          _selectedReportId = existeReporte ? reporteInicial : null;
         }
       });
     } catch (error) {
@@ -440,9 +441,9 @@ class _CreateSightingPageState extends State<CreateSightingPage> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            _photo == null
+            _photo == null || !_linked
                 ? 'Avistamiento registrado correctamente.'
-                : 'Avistamiento registrado. El análisis fotográfico se realizará en segundo plano cuando está disponible.',
+                : 'Avistamiento vinculado registrado correctamente.',
           ),
         ),
       );
@@ -507,7 +508,7 @@ class _CreateSightingPageState extends State<CreateSightingPage> {
       border: Border.all(color: const Color(0xFFE1EAE3)),
       boxShadow: const [BoxShadow(color: Color(0x0C203F2F), blurRadius: 12, offset: Offset(0, 4))],
     ),
-    child: child,
+    child: Material(type: MaterialType.transparency, child: child),
   );
 
   Widget _sectionTitle(IconData icon, String title, {String? subtitle}) =>
@@ -822,9 +823,27 @@ class _CreateSightingPageState extends State<CreateSightingPage> {
         ),
       );
     }
+    final selected = _reports
+        .where((r) => int.tryParse(r['id'].toString()) == _selectedReportId)
+        .firstOrNull;
+    final petName =
+        (selected?['mascota'] as Map?)?['nombre']?.toString() ??
+        'Mascota perdida';
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
-      children: [..._reports.map(_reportOption)],
+      children: [
+        if (selected != null)
+          Text(
+            'Reporte vinculado: $petName',
+            key: const ValueKey('sighting-linked-report-summary'),
+            style: const TextStyle(fontWeight: FontWeight.bold),
+          ),
+        if (selected == null && widget.reporteInicialId != null)
+          const Text(
+            'El reporte seleccionado ya no está disponible. Elige otro reporte o vuelve a la búsqueda.',
+          ),
+        ..._reports.map(_reportOption),
+      ],
     );
   }
 

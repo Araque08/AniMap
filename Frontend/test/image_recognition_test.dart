@@ -201,7 +201,7 @@ void main() {
       expect(find.byType(CircularProgressIndicator), findsOneWidget);
       pending.complete(results);
       await tester.pumpAndSettle();
-      await tester.scrollUntilVisible(find.text('Ver reporte'), 180);
+      await tester.scrollUntilVisible(find.text('Usar esta coincidencia'), 180);
       expect(find.text('Similitud visual: 96.0 %'), findsOneWidget);
       expect(find.textContaining('no confirma'), findsOneWidget);
       expect(tester.takeException(), isNull);
@@ -235,7 +235,7 @@ void main() {
 
   for (final source in [ImageSource.camera, ImageSource.gallery]) {
     testWidgets(
-      'Reportar y Buscar: $source -> preview -> result opens corresponding report',
+      'Reportar y Buscar: $source -> preview -> match opens linked sighting form',
       (tester) async {
         final sources = <ImageSource>[];
         int? opened;
@@ -267,7 +267,7 @@ void main() {
         await tester.tap(find.text('Buscar coincidencias'));
         await tester.pumpAndSettle();
         await tester.scrollUntilVisible(
-          find.text('Ver reporte').hitTestable(),
+          find.text('Usar esta coincidencia').hitTestable(),
           200,
           scrollable: find
               .descendant(
@@ -276,10 +276,15 @@ void main() {
               )
               .first,
         );
-        await tester.tap(find.text('Ver reporte').hitTestable());
+        await tester.tap(find.text('Usar esta coincidencia').hitTestable());
         await tester.pumpAndSettle();
         expect(opened, 23);
-        expect(find.byType(ReportarBuscarPage), findsOneWidget);
+        expect(find.byType(CreateSightingPage), findsOneWidget);
+        final form = tester.widget<CreateSightingPage>(
+          find.byType(CreateSightingPage),
+        );
+        expect(form.reporteInicialId, 23);
+        expect(await form.initialPhoto!.readAsBytes(), bytes);
       },
     );
   }
@@ -316,7 +321,7 @@ void main() {
       await tester.tap(find.text('Buscar coincidencias'));
       await tester.pumpAndSettle();
       await tester.scrollUntilVisible(
-        find.text('Ver reporte').hitTestable(),
+        find.text('Usar esta coincidencia').hitTestable(),
         200,
       );
       expect(tester.takeException(), isNull);
@@ -324,9 +329,11 @@ void main() {
   );
 
   testWidgets(
-    'default result navigation rechecks public report and opens existing detail',
+    'selecting a match opens the sighting form with the actual searched photo and report',
     (tester) async {
-      var status = 'lost';
+      var picks = 0;
+      Uint8List? searched;
+      final replacement = Uint8List.fromList([...bytes, 0]);
       await tester.pumpWidget(
         MaterialApp(
           home: ReportarBuscarPage(
@@ -334,14 +341,23 @@ void main() {
               MascotaReporte.fromJson({
                 'id': 'lost_23',
                 'petName': 'QA detalle',
-                'type': status,
+                'type': 'lost',
                 'details': 'Perro · QA · Café',
                 'description': 'Reporte de prueba',
                 'imageUrls': [],
               }),
             ],
-            imagePicker: (_) async => image(),
-            imageSearch: (_) async => results,
+            imagePicker: (_) async => ++picks == 1
+                ? image()
+                : XFile.fromData(
+                    replacement,
+                    name: 'replacement.png',
+                    path: 'replacement.png',
+                  ),
+            imageSearch: (photo) async {
+              searched = await photo.readAsBytes();
+              return results;
+            },
           ),
         ),
       );
@@ -351,10 +367,12 @@ void main() {
         await tester.pumpAndSettle();
         await tester.tap(find.text('Seleccionar de galería'));
         await tester.pumpAndSettle();
+        await tester.tap(find.text('Elegir otra imagen'));
+        await tester.pumpAndSettle();
         await tester.tap(find.text('Buscar coincidencias'));
         await tester.pumpAndSettle();
         await tester.scrollUntilVisible(
-          find.text('Ver reporte').hitTestable(),
+          find.text('Usar esta coincidencia').hitTestable(),
           150,
           scrollable: find
               .descendant(
@@ -363,18 +381,17 @@ void main() {
               )
               .first,
         );
-        await tester.tap(find.text('Ver reporte').hitTestable());
+        await tester.tap(find.text('Usar esta coincidencia').hitTestable());
         await tester.pumpAndSettle();
       }
 
       await openMatch();
-      expect(find.text('Información del reporte'), findsOneWidget);
-      Navigator.of(tester.element(find.text('Información del reporte'))).pop();
-      await tester.pumpAndSettle();
-      status = 'found';
-      await openMatch();
-      expect(find.text('El reporte ya no está disponible.'), findsOneWidget);
-      expect(find.text('Información del reporte'), findsNothing);
+      final form = tester.widget<CreateSightingPage>(
+        find.byType(CreateSightingPage),
+      );
+      expect(form.reporteInicialId, 23);
+      expect(await form.initialPhoto!.readAsBytes(), replacement);
+      expect(await form.initialPhoto!.readAsBytes(), searched);
     },
   );
 

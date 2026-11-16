@@ -24,6 +24,8 @@ class NotificationTargetException implements Exception {
 class NotificationTargetService {
   // Identifica el contenido asociado a la notificación.
   static String? obtenerIdentificador(AnimapNotification notification) {
+    // A photographic match has an authenticated private destination, never a map fallback.
+    if (notification.tipo == 'COINCIDENCIA_FOTOGRAFICA') return null;
     // Si está relacionada con un avistamiento,
     // tiene prioridad el avistamiento.
     if (notification.avistamientoId != null &&
@@ -55,6 +57,17 @@ class NotificationTargetService {
       return null;
     }
 
+    return _buscarIdentificador(identificador);
+  }
+
+  static Future<Map<String, dynamic>?> buscarAvistamiento(int sightingId) {
+    if (sightingId <= 0) return Future.value(null);
+    return _buscarIdentificador('sighting_$sightingId');
+  }
+
+  static Future<Map<String, dynamic>?> _buscarIdentificador(
+    String identificador,
+  ) async {
     try {
       final uri = Uri.parse('${ApiConfig.current.baseUrl}/map/reports');
 

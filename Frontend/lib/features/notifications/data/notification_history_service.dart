@@ -22,6 +22,7 @@ class AnimapNotification {
   final DateTime fecha;
   final int? reporteId;
   final int? avistamientoId;
+  final int? matchId;
 
   const AnimapNotification({
     required this.id,
@@ -32,6 +33,7 @@ class AnimapNotification {
     required this.fecha,
     this.reporteId,
     this.avistamientoId,
+    this.matchId,
   });
 
   factory AnimapNotification.fromJson(Map<String, dynamic> json) {
@@ -44,6 +46,13 @@ class AnimapNotification {
       fecha: DateTime.parse(json['fecha'].toString()).toLocal(),
       reporteId: (json['reporteId'] as num?)?.toInt(),
       avistamientoId: (json['avistamientoId'] as num?)?.toInt(),
+      matchId:
+          json['tipo'] == 'COINCIDENCIA_FOTOGRAFICA' &&
+              json['matchId'] is int &&
+              (json['matchId'] as int) > 0 &&
+              (json['matchId'] as int) <= 2147483647
+          ? json['matchId'] as int
+          : null,
     );
   }
 }

@@ -4,8 +4,13 @@ const { createRecognitionQaScope } = require('./recognition.qa');
 function createRecognitionRepository({ pool = postgres.pool,
   mongo = () => require('../../config/mongo_db').getMongoDb(), qaScope } = {}) {
   const qa = createRecognitionQaScope(qaScope);
-  async function activePhotos() {
+  async function activePhotos({ reportId } = {}) {
     qa.assertReady();
+    if (reportId !== undefined && (!Number.isSafeInteger(reportId) || reportId <= 0)) {
+      throw new TypeError('Invalid recognition report scope');
+    }
+    const values = qa.enabled ? [qa.reportId, qa.ownerId] : [];
+    const selectedReport = reportId === undefined ? '' : `AND r.id = $${values.push(reportId)}`;
     const result = await pool.query({ text: `SELECT r.id AS "reportId", m.id AS "petId",
       r.fk_usuario AS "ownerId", f.storage_ref AS "photoId", m.nombre, m.color,
       e.nombre AS especie, z.nombre AS raza
@@ -13,8 +18,8 @@ function createRecognitionRepository({ pool = postgres.pool,
       JOIN foto_mascota f ON f.fk_mascota = m.id
       JOIN especie e ON e.id = m.fk_especie LEFT JOIN raza z ON z.id = m.fk_raza
       WHERE r.estado = 'ACTIVO' AND m.estado = 'PERDIDA'
-        ${qa.enabled ? 'AND r.id=$1 AND r.fk_usuario=$2' : ''} ORDER BY r.id, f.id`,
-      values: qa.enabled ? [qa.reportId, qa.ownerId] : [], query_timeout: 5000 });
+        ${qa.enabled ? 'AND r.id=$1 AND r.fk_usuario=$2' : ''} ${selectedReport} ORDER BY r.id, f.id`,
+      values, query_timeout: 5000 });
     return result.rows;
   }
   async function photoBytes(photo) {

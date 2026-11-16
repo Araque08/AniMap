@@ -1,5 +1,6 @@
 import io
 import unittest
+from unittest.mock import patch
 from PIL import Image
 import torch
 
@@ -10,6 +11,18 @@ from evaluar_umbral import evaluate
 def photo(color='red'):
     result = io.BytesIO()
     Image.new('RGB', (64, 48), color).save(result, format='PNG')
+    return result.getvalue()
+
+
+def mpo_photo(orientation=None):
+    result = io.BytesIO()
+    first = Image.new('RGB', (64, 48), 'red')
+    exif = Image.Exif()
+    if orientation is not None:
+        exif[274] = orientation
+    options = {'exif': exif} if orientation is not None else {}
+    first.save(result, format='MPO', save_all=True,
+        append_images=[Image.new('RGB', (64, 48), 'blue')], **options)
     return result.getvalue()
 
 
@@ -40,6 +53,53 @@ class RecognitionTests(unittest.TestCase):
         a, b = self.matcher.encode(photo('red')), self.matcher.encode(photo('blue'))
         self.assertAlmostEqual(self.matcher.similarity(a, a), 1.0, places=6)
         self.assertAlmostEqual(self.matcher.similarity(a, b), 0.0, places=6)
+
+    def test_mpo_processes_only_the_primary_frame(self):
+        content = mpo_photo()
+        with Image.open(io.BytesIO(content)) as image:
+            self.assertEqual(image.format, 'MPO')
+            self.assertEqual(image.n_frames, 2)
+        embedding = self.matcher.encode(content)
+        self.assertGreater(float(embedding[0]), 0.99)
+        self.assertLess(float(embedding[2]), 0.01)
+        self.assertTrue(torch.equal(embedding, self.matcher.encode(content)))
+        self.assertEqual(self.model.calls, 1)
+
+    def test_mpo_primary_frame_respects_exif_orientation(self):
+        observed = []
+
+        def transform(image):
+            observed.append((image.size, image.mode, image.getexif().get(274)))
+            return torch.ones(3, 1, 1)
+
+        matcher = ResNetMatcher(model=self.model, transform=transform)
+        matcher.encode(mpo_photo(orientation=6))
+        self.assertEqual(observed, [((48, 64), 'RGB', None)])
+
+    def test_mpo_with_damaged_primary_frame_is_rejected_before_model(self):
+        content = mpo_photo()
+        truncated = content[:content.index(b'\xff\xda') + 12]
+        with self.assertRaisesRegex(RecognitionError, '^INVALID_IMAGE$'):
+            self.matcher.encode(truncated)
+        self.assertEqual(self.model.calls, 0)
+
+    def test_mpo_retains_byte_and_pixel_limits(self):
+        content = mpo_photo()
+        with self.assertRaisesRegex(RecognitionError, '^INVALID_IMAGE$'):
+            self.matcher.encode(content + b'\0' * (5 * 1024 * 1024))
+        with patch('reconocimiento.Image.MAX_IMAGE_PIXELS', 2000):
+            with self.assertRaisesRegex(RecognitionError, '^INVALID_IMAGE$'):
+                self.matcher.encode(content)
+        self.assertEqual(self.model.calls, 0)
+
+    def test_jpeg_png_webp_remain_supported_and_damaged_files_rejected(self):
+        for image_format in ['JPEG', 'PNG', 'WEBP']:
+            with self.subTest(image_format=image_format):
+                data = io.BytesIO()
+                Image.new('RGB', (64, 48), 'red').save(data, format=image_format)
+                self.assertTrue(torch.isfinite(self.matcher.encode(data.getvalue())).all())
+                with self.assertRaisesRegex(RecognitionError, '^INVALID_IMAGE$'):
+                    self.matcher.encode(data.getvalue()[:10])
 
     def test_damaged_unsupported_and_oversized_images(self):
         for content in [b'not-an-image', b'x' * (5 * 1024 * 1024 + 1)]:
