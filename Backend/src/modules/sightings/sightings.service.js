@@ -3,6 +3,7 @@ const defaultImages = require('./sightings.images.repository');
 const geofence = require('../geofence/geofence.service');
 const { notificationsService } = require('../notifications/notifications.service');
 const { matchService } = require('../recognition/recognition.matches.service');
+const { generarMiniatura } = require('../pets/pet-image-optimizer');
 const { createHash } = require('node:crypto');
 
 function createHttpError(message, statusCode) {
@@ -274,24 +275,16 @@ function createSightingsService(
   }
 
 
-async function getPublicImage(imageId) {
-
-  // ========================================================
-  // COMPROBAR QUE LA IMAGEN PERTENECE A UN AVISTAMIENTO VISIBLE
-  // ========================================================
-
+async function getPublicImage(imageId, { thumbnail = false } = {}) {
+  // Verificar que el avistamiento siga siendo visible.
   const reference = await pool.query(
     `
-      SELECT
-        fa.id
+      SELECT fa.id
       FROM foto_avistamiento fa
-
       INNER JOIN avistamiento a
         ON a.id = fa.fk_avistamiento
-
       WHERE fa.storage_ref = $1
         AND a.estado IS DISTINCT FROM 'ELIMINADO'
-
       LIMIT 1
     `,
     [imageId]
@@ -304,32 +297,65 @@ async function getPublicImage(imageId) {
     );
   }
 
-  // ========================================================
-  // RECUPERAR IMAGEN DE MONGODB
-  // ========================================================
-
   const image = await images.findPublicSightingImage(imageId);
 
-  const content = image?.imagen || image?.buffer;
+  function obtenerBuffer(value) {
+    if (Buffer.isBuffer(value)) return value;
 
-  const buffer = Buffer.isBuffer(content)
-    ? content
-    : content?.buffer
-      ? Buffer.from(content.buffer)
-      : null;
+    if (value?._bsontype === 'Binary') {
+      return Buffer.from(value.value());
+    }
 
-  if (!buffer) {
+    if (Buffer.isBuffer(value?.buffer)) {
+      return value.buffer;
+    }
+
+    return null;
+  }
+
+  const original = obtenerBuffer(image?.imagen || image?.buffer);
+
+  if (!original?.length) {
     throw createHttpError(
       'Foto de avistamiento no encontrada',
       404
     );
   }
 
+  // Si solicitan la original, conservar el comportamiento.
+  if (!thumbnail) {
+    return {
+      buffer: original,
+      mimeType: image.mimeType || 'application/octet-stream',
+    };
+  }
+
+  let miniatura = obtenerBuffer(image.miniatura);
+
+  // Para fotografías antiguas sin miniatura.
+  if (!miniatura?.length) {
+    try {
+      miniatura = await generarMiniatura(original);
+    } catch (error) {
+      console.warn(
+        'No fue posible generar miniatura de avistamiento:',
+        error.message
+      );
+
+      // Mantener disponible la fotografía original.
+      return {
+        buffer: original,
+        mimeType: image.mimeType || 'application/octet-stream',
+      };
+    }
+  }
+
   return {
-    buffer,
-    mimeType: image.mimeType || 'application/octet-stream',
+    buffer: miniatura,
+    mimeType: 'image/webp',
   };
 }
+
 
 
   async function createSighting(userId, data, file) {

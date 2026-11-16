@@ -55,6 +55,13 @@ function uploadOptionalPhoto(req, res, next) {
 
 router.get('/linkable-reports', optionalAuth, controller.listLinkableReports);
 router.get('/images/:imageId', controller.getPublicImage);
+router.get(
+  '/images/:imageId/thumbnail',
+  (req, res, next) => {
+    req.thumbnail = true;
+    return controller.getPublicImage(req, res, next);
+  }
+);
 router.get('/:id', controller.getPublicSighting);
 router.post(
   '/',

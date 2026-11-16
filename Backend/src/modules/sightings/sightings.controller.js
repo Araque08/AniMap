@@ -45,16 +45,23 @@ async function listLinkableReports(req, res, next) {
   }
 }
 
+
 async function getPublicImage(req, res, next) {
   try {
-    const image = await sightingsService.getPublicImage(req.params.imageId);
+    const image = await sightingsService.getPublicImage(
+      req.params.imageId,
+      { thumbnail: req.thumbnail === true }
+    );
+
     res.set('Content-Type', image.mimeType);
     res.set('Cache-Control', 'public, max-age=3600');
+
     return res.send(image.buffer);
   } catch (error) {
     return next(error);
   }
 }
+
 
 async function getReportHistory(req, res, next) {
   const reportId = positiveId(req.params.reportId);

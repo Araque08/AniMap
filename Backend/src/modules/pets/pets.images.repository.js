@@ -1,6 +1,7 @@
 const { ObjectId, BSON } = require('mongodb');
 const { randomUUID, createHash } = require('node:crypto');
 const { getMongoDb } = require('../../config/mongo_db');
+const { generarMiniatura } = require('./pet-image-optimizer');
 
 const COLLECTION_NAME = 'ImagenMascota';
 const RECOVERY_COLLECTION = 'PetPhotoDeletionRecovery';
@@ -186,27 +187,55 @@ async function guardarImagenesMascota({
   files,
   fotoPrincipalIndex = null,
 }) {
+
   const collection = await getCollection();
   const ids = files.map(() => new ObjectId());
   const now = new Date();
-  const documentos = files.map((file, index) => ({
-    _id: ids[index],
-    mascotaIdPg: Number(mascotaIdPg),
-    usuarioIdPg: Number(usuarioIdPg),
-    nombreArchivo: file.originalname,
-    mimeType: file.mimetype,
-    extension: file.originalname.split('.').pop()?.toLowerCase() || null,
-    tamanoBytes: file.size,
-    storageRef: ids[index].toHexString(),
-    imagen: file.buffer,
-    esPrincipal: fotoPrincipalIndex === index,
-    estado: 'ACTIVA',
-    checksum: null,
-    etiquetas: [],
-    metadata: {},
-    createdAt: now,
-    updatedAt: now,
-  }));
+  const documentos = await Promise.all(
+  files.map(async (file, index) => {
+    let miniatura = null;
+
+    try {
+      miniatura = await generarMiniatura(file.buffer);
+    } catch (error) {
+      console.warn(
+        'No se pudo generar la miniatura:',
+        error.message
+      );
+    }
+
+    return {
+      _id: ids[index],
+      mascotaIdPg: Number(mascotaIdPg),
+      usuarioIdPg: Number(usuarioIdPg),
+      nombreArchivo: file.originalname,
+      mimeType: file.mimetype,
+      extension:
+        file.originalname.split('.').pop()?.toLowerCase() || null,
+      tamanoBytes: file.size,
+      storageRef: ids[index].toHexString(),
+
+      // Fotografía original para reconocimiento y galería.
+      imagen: file.buffer,
+
+      // Versión optimizada para las interfaces.
+      miniatura: miniatura,
+      miniaturaMimeType: miniatura ? 'image/webp' : null,
+      miniaturaTamanoBytes: miniatura
+        ? miniatura.length
+        : null,
+
+      esPrincipal: fotoPrincipalIndex === index,
+      estado: 'ACTIVA',
+      checksum: null,
+      etiquetas: [],
+      metadata: {},
+      createdAt: now,
+      updatedAt: now,
+    };
+  })
+);
+
 
   try {
     await collection.insertMany(documentos);

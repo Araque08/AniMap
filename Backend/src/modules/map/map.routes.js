@@ -4,61 +4,155 @@ const pool = require('../../config/postgres_db');
 const { getMongoDb } = require('../../config/mongo_db');
 const optionalAuthMiddleware = require('../../middleware/optional-auth.middleware');
 const { mapFiltersSchema, mapFilterSql } = require('./map.filters');
+const { generarMiniatura } = require('../pets/pet-image-optimizer');
 
 const router = express.Router();
 
-router.get('/images/:imageId', async (req, res) => {
-  const imageId = req.params.imageId;
-  if (!ObjectId.isValid(imageId)) {
-    return res.status(400).json({ ok: false, message: 'ID de imagen inválido' });
-  }
 
-  try {
-    const reference = await pool.query(
-      `SELECT f.fk_mascota
-       FROM foto_mascota f
-       INNER JOIN reporte r ON r.fk_mascota = f.fk_mascota
-       INNER JOIN mascota m ON m.id = f.fk_mascota
-       WHERE f.storage_ref = $1
-         AND (
-          (r.estado = 'ACTIVO' AND m.estado = 'PERDIDA')
-          OR
-          (r.estado = 'FINALIZADO' AND m.estado <> 'INACTIVA'
-            AND r.cerrado_en >=
-              (CURRENT_TIMESTAMP AT TIME ZONE 'UTC') - INTERVAL '30 days')
-        )
-        LIMIT 1`,
-      [imageId]
-    );
-    if (reference.rowCount === 0) {
-      return res.status(404).json({ ok: false, message: 'Imagen no encontrada' });
+router.get(
+  ['/images/:imageId', '/images/:imageId/thumbnail'],
+  async (req, res) => {
+    const imageId = req.params.imageId;
+    const isThumbnail = req.path.endsWith('/thumbnail');
+
+    if (!ObjectId.isValid(imageId)) {
+      return res.status(400).json({
+        ok: false,
+        message: 'ID de imagen inválido',
+      });
     }
 
-    const db = await getMongoDb();
-    const image = await db.collection('ImagenMascota').findOne({
-      _id: new ObjectId(imageId),
-      mascotaIdPg: reference.rows[0].fk_mascota,
-      estado: 'ACTIVA',
-    });
-    const content = image?.imagen || image?.buffer;
-    const payload = Buffer.isBuffer(content)
-      ? content
-      : content?.buffer
-        ? Buffer.from(content.buffer)
-        : null;
-    if (!payload) {
-      return res.status(404).json({ ok: false, message: 'Imagen no encontrada' });
-    }
+    try {
+      // Conservar la validación original de visibilidad.
+      const reference = await pool.query(
+        `SELECT f.fk_mascota
+         FROM foto_mascota f
+         INNER JOIN reporte r ON r.fk_mascota = f.fk_mascota
+         INNER JOIN mascota m ON m.id = f.fk_mascota
+         WHERE f.storage_ref = $1
+           AND (
+             (r.estado = 'ACTIVO' AND m.estado = 'PERDIDA')
+             OR
+             (r.estado = 'FINALIZADO' AND m.estado <> 'INACTIVA'
+               AND r.cerrado_en >=
+                 (CURRENT_TIMESTAMP AT TIME ZONE 'UTC') - INTERVAL '30 days')
+           )
+         LIMIT 1`,
+        [imageId]
+      );
 
-    res.set('Content-Type', image.mimeType || 'application/octet-stream');
-    // Revalidate visibility on each request, including after the 30-day boundary.
-    res.set('Cache-Control', 'no-store');
-    return res.send(payload);
-  } catch (error) {
-    console.error('Error consultando imagen pública del reporte:', error);
-    return res.status(500).json({ ok: false, message: 'Error consultando la imagen' });
+      if (reference.rowCount === 0) {
+        return res.status(404).json({
+          ok: false,
+          message: 'Imagen no encontrada',
+        });
+      }
+
+      const db = await getMongoDb();
+      const collection = db.collection('ImagenMascota');
+
+      const image = await collection.findOne({
+        _id: new ObjectId(imageId),
+        mascotaIdPg: reference.rows[0].fk_mascota,
+        estado: 'ACTIVA',
+      });
+
+      if (!image) {
+        return res.status(404).json({
+          ok: false,
+          message: 'Imagen no encontrada',
+        });
+      }
+
+      // Convertir correctamente los binarios de MongoDB.
+      function obtenerBuffer(value) {
+        if (Buffer.isBuffer(value)) return value;
+
+        if (value?._bsontype === 'Binary') {
+          return Buffer.from(value.value());
+        }
+
+        if (Buffer.isBuffer(value?.buffer)) {
+          return value.buffer;
+        }
+
+        return null;
+      }
+
+      const original = obtenerBuffer(image.imagen || image.buffer);
+
+      if (!original?.length) {
+        return res.status(404).json({
+          ok: false,
+          message: 'Imagen no disponible',
+        });
+      }
+
+      let miniatura = null;
+
+      if (isThumbnail) {
+        miniatura = obtenerBuffer(image.miniatura);
+
+        if (!miniatura?.length) {
+          try {
+            const generated = await generarMiniatura(original);
+
+            // Guardar únicamente si la miniatura no existe.
+            await collection.updateOne(
+              {
+                _id: image._id,
+                mascotaIdPg: reference.rows[0].fk_mascota,
+                estado: 'ACTIVA',
+                miniatura: null,
+              },
+              {
+                $set: {
+                  miniatura: generated,
+                  miniaturaMimeType: 'image/webp',
+                  miniaturaTamanoBytes: generated.length,
+                },
+              }
+            );
+
+            miniatura = generated;
+          } catch (error) {
+            console.warn(
+              'No fue posible generar miniatura del mapa:',
+              error.message
+            );
+          }
+        }
+      }
+
+      const usarMiniatura = isThumbnail && miniatura?.length > 0;
+      const payload = usarMiniatura ? miniatura : original;
+
+      res.set(
+        'Content-Type',
+        usarMiniatura
+          ? 'image/webp'
+          : image.mimeType || 'application/octet-stream'
+      );
+
+      // Mantener la política de seguridad del mapa.
+      res.set('Cache-Control', 'no-store');
+
+      return res.send(payload);
+
+    } catch (error) {
+      console.error(
+        'Error consultando imagen pública del reporte:',
+        error
+      );
+
+      return res.status(500).json({
+        ok: false,
+        message: 'Error consultando la imagen',
+      });
+    }
   }
-});
+);
+
 
 /*
   GET /api/map/reports

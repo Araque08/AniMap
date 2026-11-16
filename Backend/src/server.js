@@ -80,10 +80,12 @@ async function startServer({
 if (require.main === module) {
   startServer()
     .then(() => console.log(`AniMap API escuchando en puerto ${env.PORT}`))
-    .catch(() => {
-      console.error('No se pudo iniciar AniMap; revisa dependencias y configuración.');
+    .catch((error) => {
+      console.error('ERROR REAL AL INICIAR ANIMAP:');
+      console.error(error);
       process.exit(1);
     });
+
 }
 
 module.exports = { startServer };

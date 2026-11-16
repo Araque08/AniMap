@@ -1210,26 +1210,72 @@ class _CreateLostReportPageState extends State<CreateLostReportPage> {
     );
   }
 
+
   Widget _petPhoto(Map<String, dynamic>? photo, double size) {
-    final url = ReportsService.imageUrl(photo);
-    if (url == null) {
-      return CircleAvatar(radius: size / 2, child: const Icon(Icons.pets));
+    final originalUrl = ReportsService.imageUrl(photo);
+
+    if (originalUrl == null || originalUrl.isEmpty) {
+      return CircleAvatar(
+        radius: size / 2,
+        child: const Icon(Icons.pets),
+      );
     }
+
+    final uri = Uri.tryParse(originalUrl);
+
+    // Solo optimizamos las imágenes privadas de mascotas
+    // que ya cuentan con el endpoint de miniaturas.
+    final useThumbnail =
+        uri != null &&
+            RegExp(r'^/api/pets/images/[^/]+$').hasMatch(uri.path);
+
+    final imageUrl = useThumbnail
+        ? uri.replace(path: '${uri.path}/thumbnail').toString()
+        : originalUrl;
+
+    final pixelRatio = MediaQuery.devicePixelRatioOf(context);
+    final decodeSize = (size * pixelRatio).ceil();
+
     return ClipOval(
       child: Image.network(
-        url,
+        imageUrl,
         headers: ReportsService.imageHeaders,
         width: size,
         height: size,
+        cacheWidth: decodeSize,
         fit: BoxFit.cover,
-        errorBuilder: (context, error, stackTrace) => SizedBox.square(
-          dimension: size,
-          child: const ColoredBox(
-            color: Color(0xFFDFF3E8),
-            child: Icon(Icons.pets, color: _green),
-          ),
-        ),
+        frameBuilder: (context, child, frame, wasSynchronouslyLoaded) {
+          if (wasSynchronouslyLoaded || frame != null) {
+            return child;
+          }
+
+          return SizedBox.square(
+            dimension: size,
+            child: const ColoredBox(
+              color: Color(0xFFDFF3E8),
+              child: Center(
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: Color(0xFF3F9568),
+                ),
+              ),
+            ),
+          );
+        },
+        errorBuilder: (context, error, stackTrace) {
+          return SizedBox.square(
+            dimension: size,
+            child: const ColoredBox(
+              color: Color(0xFFDFF3E8),
+              child: Icon(
+                Icons.pets,
+                color: Color(0xFF3F9568),
+              ),
+            ),
+          );
+        },
       ),
     );
   }
+
 }

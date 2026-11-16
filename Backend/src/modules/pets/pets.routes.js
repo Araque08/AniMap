@@ -7,6 +7,7 @@ const { getMongoDb } = require('../../config/mongo_db');
 const authMiddleware = require('../../middleware/auth.middleware');
 const { validarColoresMascota } = require('./pet_colors_validator');
 const { petDeletionRecovery } = require('./pets.deletion-recovery.service');
+const { generarMiniatura } = require('./pet-image-optimizer');
 const {
   eliminarImagenMascotaMongo,
   eliminarImagenesMascotaMongoPorIds,
@@ -247,6 +248,126 @@ router.get('/images/:imageId', async (req, res) => {
     return res.status(500).json({ ok: false, message: 'Error consultando la imagen' });
   }
 });
+
+
+/**
+ * GET /api/pets/images/:imageId/thumbnail
+ *
+ * Entrega la miniatura comprimida de una mascota.
+ * Si la fotografía es antigua y no tiene miniatura,
+ * devuelve la imagen original.
+ *
+ * Solo permite consultar imágenes del usuario autenticado.
+ */
+router.get('/images/:imageId/thumbnail', async (req, res) => {
+  const { imageId } = req.params;
+
+  if (!ObjectId.isValid(imageId)) {
+    return res.status(400).json({
+      ok: false,
+      message: 'ID de imagen inválido',
+    });
+  }
+
+  try {
+    const db = await getMongoDb();
+
+    const imagen = await db.collection('ImagenMascota').findOne({
+      _id: new ObjectId(imageId),
+      usuarioIdPg: req.auth.userId,
+      estado: 'ACTIVA',
+    });
+
+    if (!imagen) {
+      return res.status(404).json({
+        ok: false,
+        message: 'Imagen no encontrada',
+      });
+    }
+
+    // Admite Buffer y Binary de MongoDB.
+    function obtenerBuffer(valor) {
+      if (Buffer.isBuffer(valor)) return valor;
+
+      if (valor?._bsontype === 'Binary') {
+        return Buffer.from(valor.value());
+      }
+
+      if (Buffer.isBuffer(valor?.buffer)) {
+        return valor.buffer;
+      }
+
+      return null;
+    }
+let miniatura = obtenerBuffer(imagen.miniatura);
+
+// Si la fotografía es antigua, generar la miniatura.
+if (!miniatura?.length) {
+  const original = imagePayload(imagen);
+
+  if (original?.length) {
+    try {
+      miniatura = await generarMiniatura(original);
+
+      // Guardar la miniatura sin alterar el original.
+      await db.collection('ImagenMascota').updateOne(
+        {
+          _id: imagen._id,
+          usuarioIdPg: req.auth.userId,
+          estado: 'ACTIVA',
+          miniatura: { $in: [null] },
+        },
+        {
+          $set: {
+            miniatura,
+            miniaturaMimeType: 'image/webp',
+            miniaturaTamanoBytes: miniatura.length,
+          },
+        }
+      );
+    } catch (error) {
+      console.warn(
+        'No fue posible generar la miniatura:',
+        error.message
+      );
+
+      miniatura = null;
+    }
+  }
+}
+
+const payload = miniatura?.length
+  ? miniatura
+  : imagePayload(imagen);
+
+
+    if (!payload?.length) {
+      return res.status(404).json({
+        ok: false,
+        message: 'Imagen no disponible',
+      });
+    }
+
+    res.set(
+      'Content-Type',
+      miniatura?.length
+        ? 'image/webp'
+        : imagen.mimeType || 'application/octet-stream'
+    );
+
+    res.set('Cache-Control', 'private, max-age=86400');
+
+    return res.send(payload);
+  } catch (error) {
+    console.error('Error consultando miniatura:', error);
+
+    return res.status(500).json({
+      ok: false,
+      message: 'Error consultando la miniatura',
+    });
+  }
+});
+
 
 // =====================================================
 // GET /api/pets/:id/images

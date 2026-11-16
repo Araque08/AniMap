@@ -215,7 +215,16 @@ class _PetProfilePageState extends State<PetProfilePage> {
 
             final pet = snapshot.data!;
 
-            final mainImage = _buildImageUrl(pet.mainPhotoUrl);
+
+            final originalMainImage = _buildImageUrl(pet.mainPhotoUrl);
+
+            final mainImage = originalMainImage.isNotEmpty &&
+                Uri.parse(originalMainImage).path.startsWith('/api/pets/images/')
+                ? (originalMainImage.endsWith('/thumbnail')
+                ? originalMainImage
+                : '$originalMainImage/thumbnail')
+                : originalMainImage;
+
 
             final orderedPhotos = [
               ...pet.photos.where((photo) => photo.esPrincipal),
@@ -290,13 +299,32 @@ class _PetProfilePageState extends State<PetProfilePage> {
                                   size: 70,
                                   color: Color(0xFF4D9B6A),
                                 )
-                                    : Image.network(
+                                    :
+                                Image.network(
                                   mainImage,
                                   headers: MascotasService.authHeaders,
                                   width: 132,
                                   height: 132,
+                                  cacheWidth: 396,
+                                  cacheHeight: 396,
                                   fit: BoxFit.cover,
-                                  errorBuilder: (_, _, _) {
+                                  frameBuilder: (context, child, frame, wasSynchronouslyLoaded) {
+                                    if (wasSynchronouslyLoaded || frame != null) {
+                                      return child;
+                                    }
+
+                                    return const SizedBox(
+                                      width: 132,
+                                      height: 132,
+                                      child: Center(
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                          color: Color(0xFF3F9568),
+                                        ),
+                                      ),
+                                    );
+                                  },
+                                  errorBuilder: (context, error, stackTrace) {
                                     return const Icon(
                                       Icons.pets,
                                       size: 70,
@@ -304,6 +332,7 @@ class _PetProfilePageState extends State<PetProfilePage> {
                                     );
                                   },
                                 ),
+
                               ),
                             ),
 

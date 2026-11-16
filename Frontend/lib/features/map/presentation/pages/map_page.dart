@@ -1194,20 +1194,61 @@ class _MapPetPhoto extends StatelessWidget {
     required this.color,
   });
 
+
+
   @override
   Widget build(BuildContext context) {
     final url = imageUrl;
-    if (url == null) return _fallback();
+
+    if (url == null || url.isEmpty) {
+      return _fallback();
+    }
+
+    final uri = Uri.tryParse(url);
+
+    // Miniaturas de mascotas perdidas y avistamientos.
+
+    final useThumbnail = uri != null &&
+        (RegExp(r'^/api/map/images/[^/]+$').hasMatch(uri.path) ||
+            RegExp(r'^/api/sightings/images/[^/]+$').hasMatch(uri.path));
+
+
+    final optimizedUrl = useThumbnail
+        ? uri.replace(
+      path: '${uri.path}/thumbnail',
+    ).toString()
+        : url;
+
+    final pixelRatio = MediaQuery.devicePixelRatioOf(context);
+    final decodeSize = (size * pixelRatio).ceil();
+
     return ClipOval(
       child: Image.network(
-        url,
+        optimizedUrl,
         width: size,
         height: size,
+        cacheWidth: decodeSize,
         fit: BoxFit.cover,
+        loadingBuilder: (context, child, progress) {
+          if (progress == null) return child;
+
+          return SizedBox(
+            width: size,
+            height: size,
+            child: const Center(
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: Color(0xFF3F9568),
+              ),
+            ),
+          );
+        },
         errorBuilder: (_, _, _) => _fallback(),
       ),
     );
   }
+
+
 
   Widget _fallback() {
     return Container(

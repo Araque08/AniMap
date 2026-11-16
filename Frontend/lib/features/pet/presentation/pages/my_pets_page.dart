@@ -49,7 +49,19 @@ class _MyPetsPageState extends State<MyPetsPage> {
       return '';
     }
 
-    return MascotasService.absoluteImageUrl(imagePath.toString());
+
+    final url = MascotasService.absoluteImageUrl(
+      imagePath.toString(),
+    );
+
+    // Solicitar una miniatura en lugar de la foto original.
+        if (Uri.parse(url).path.startsWith('/api/pets/images/')) {
+          return url.endsWith('/thumbnail') ? url : '$url/thumbnail';
+        }
+
+    // Conservar otras URLs si existen.
+        return url;
+
   }
 
   @override
@@ -292,15 +304,17 @@ class _PetCard extends StatelessWidget {
                 child: imageUrl.isEmpty
                     ? _GenericPetImage()
                     : Image.network(
-                        imageUrl,
-                        headers: PetsService.authHeaders,
-                        width: 82,
-                        height: 82,
-                        fit: BoxFit.cover,
-                        errorBuilder: (context, error, stackTrace) {
-                          return const _GenericPetImage();
-                        },
-                      ),
+                      imageUrl,
+                      headers: PetsService.authHeaders,
+                      width: 82,
+                      height: 82,
+                      cacheWidth: 246,
+                      cacheHeight: 246,
+                      fit: BoxFit.cover,
+                      errorBuilder: (context, error, stackTrace) {
+                        return const _GenericPetImage();
+                      },
+                    ),
               ),
               const SizedBox(width: 14),
               Expanded(

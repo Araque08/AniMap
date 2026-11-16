@@ -543,11 +543,24 @@ class _SightingsHistoryPageState extends State<SightingsHistoryPage> {
   }
 
   Widget _sightingCard(Map<String, dynamic> sighting) {
+
     final location = Map<String, dynamic>.from(sighting['ubicacion'] as Map);
     final photo = sighting['foto'] is Map
         ? Map<String, dynamic>.from(sighting['foto'] as Map)
         : null;
     final photoUrl = SightingsService.absoluteImageUrl(photo?['url']);
+
+    final uri = photoUrl == null ? null : Uri.tryParse(photoUrl);
+
+    final useThumbnail = uri != null &&
+        RegExp(r'^/api/sightings/images/[^/]+$').hasMatch(uri.path);
+
+    final thumbnailUrl = useThumbnail
+        ? uri.replace(
+      path: '${uri.path}/thumbnail',
+    ).toString()
+        : photoUrl;
+
     return Card(
       key: ValueKey('history-sighting-${sighting['id']}'),
       clipBehavior: Clip.antiAlias,
@@ -569,11 +582,12 @@ class _SightingsHistoryPageState extends State<SightingsHistoryPage> {
                         ),
                       )
                     : Image.network(
-                        photoUrl,
-                        key: ValueKey('history-photo-${sighting['id']}'),
-                        width: 78,
-                        height: 78,
-                        fit: BoxFit.cover,
+                      thumbnailUrl!,
+                      key: ValueKey('history-photo-${sighting['id']}'),
+                      width: 78,
+                      height: 78,
+                      cacheWidth: (78 * MediaQuery.devicePixelRatioOf(context)).ceil(),
+                      fit: BoxFit.cover,
                         errorBuilder: (_, _, _) => const SizedBox.square(
                           dimension: 78,
                           child: ColoredBox(
@@ -618,6 +632,8 @@ class _SightingsHistoryPageState extends State<SightingsHistoryPage> {
       ),
     );
   }
+
+
 
   Widget _mapView(Map<String, dynamic> report) {
     final loss = Map<String, dynamic>.from(report['ubicacionPerdida'] as Map);
