@@ -1,6 +1,8 @@
 ﻿# HU-034 / ANIMAP-80 — Coincidencias por fotografía
 
-Cuando una persona publica un avistamiento con fotografía y ubicación confirmada, AniMap utiliza el ResNet50 de HU-033 para buscar posibles coincidencias con mascotas perdidas. Guarda el resultado y una intención de notificación para cada propietario elegible. Buscar por imagen, sin publicar, no genera alertas.
+El flujo aprobado comienza con una búsqueda manual de HU-033. Al elegir una coincidencia, AniMap abre el formulario de avistamiento con la misma fotografía y el reporte seleccionado. Solo después de publicar con ubicación confirmada, el backend utiliza ResNet50 para verificar ese reporte y guardar la coincidencia y su intención de notificación para el propietario elegible. Buscar por imagen, sin publicar, no crea avistamientos ni genera alertas.
+
+La búsqueda puede mostrar reportes de varios propietarios, pero la publicación verifica únicamente el reporte elegido y persistido en PostgreSQL. No se notifica a otros propietarios por esa búsqueda. Los avistamientos independientes siguen disponibles; no producen coincidencias fotográficas automáticas en este flujo.
 
 La similitud visual no confirma la identidad de una mascota. El umbral experimental sigue siendo configurable, con valor inicial `0.80`; no se cambia automáticamente el estado de mascotas ni reportes.
 
@@ -29,10 +31,10 @@ Se reutilizan Python, los pesos y las dependencias de HU-033; HU-034 no instala 
 
 1. `POST /api/sightings` conserva sus validaciones de autenticación, imagen, ubicación y reporte. Vincular un reporte propio sigue devolviendo 403.
 2. Con HU-034 habilitada y una foto, exige UUID de publicación y confirmación explícita de la ubicación. La foto se guarda una sola vez en MongoDB; el avistamiento y su trabajo de análisis se confirman juntos en PostgreSQL.
-3. ResNet50 se ejecuta después del COMMIT. Un fallo posterior no elimina la foto ni revierte el avistamiento confirmado.
+3. ResNet50 se ejecuta después del COMMIT, leyendo el reporte vinculado desde PostgreSQL y limitando las fotografías candidatas a ese reporte. Un fallo posterior no elimina la foto ni revierte el avistamiento confirmado. Sin reporte vinculado se finaliza el trabajo sin analizar ni generar alertas fotográficas.
 4. Se revalidan reporte ACTIVO, mascota PERDIDA, propietario, preferencias, especie, tipo de evento y radio. «Solo mi zona» usa el punto original de pérdida como centro; si faltan coordenadas, no se ignora el filtro.
-5. Se selecciona el mejor resultado por propietario, hasta tres propietarios, en orden de similitud e ID de reporte. No se avisa al autor sobre sus propias mascotas.
-6. Se reutilizan `notificacion`, `notificacion_entrega` y los dispositivos push elegibles de ANIMAP-35. La alerta vinculada y la coincidencia del mismo evento/destinatario comparten una intención; puede conservarse además una alerta vinculada para otro propietario.
+5. Solo se acepta una coincidencia que supere el umbral para el reporte seleccionado. El máximo anterior de tres propietarios no se aplica a este flujo: hay un único destinatario potencial, determinado por las relaciones reales del reporte. No se avisa al autor sobre sus propias mascotas.
+6. Se reutilizan `notificacion`, `notificacion_entrega` y los dispositivos push elegibles de ANIMAP-35. La alerta vinculada y la coincidencia del mismo evento/destinatario comparten una intención. Si no se alcanza el umbral o falla el análisis, puede conservarse la alerta de avistamiento vinculado de ANIMAP-35 para ese mismo propietario; no se presenta como coincidencia fotográfica.
 
 La clave UUID se conserva al reintentar: los mismos datos reutilizan la publicación; cambiar datos con la misma clave devuelve 409. Distintas observaciones legítimas usan otra clave. El porcentaje lo calcula el backend con ResNet50, nunca Flutter.
 
@@ -48,7 +50,7 @@ Estas consultas requieren `Authorization: Bearer <accessToken>`. El destinatario
 
 Las respuestas JSON también usan `private, no-store`. Errores: 400 para IDs o cursor inválidos; 401/403 de autenticación; 404 para un recurso inexistente, ajeno o no disponible; 503 si HU-034 está deshabilitada.
 
-Una coincidencia contiene `id`, `reportId`, `sightingId`, `similarity`, `threshold`, `model`, `observedAt`, `createdAt`, `notificationState`, `photoUrl`, `location={lat,lng,method,address}`, `reporter={label,phone?}` y `pet={name}`. La API expresa similitud y umbral entre 0 y 1; PostgreSQL guarda porcentajes. Las fechas del avistamiento y del análisis se devuelven separadas en ISO UTC.
+Una coincidencia contiene `id`, `reportId`, `sightingId`, `description`, `similarity`, `threshold`, `model`, `observedAt`, `createdAt`, `notificationState`, `photoUrl`, `location={lat,lng,method,address}`, `reporter={label,phone?}` y `pet={name}`. La API expresa similitud y umbral entre 0 y 1; PostgreSQL guarda porcentajes. Las fechas del avistamiento y del análisis se devuelven separadas en ISO UTC.
 
 `POST /api/sightings` reutiliza multipart y añade `solicitudId` UUID, `ubicacionConfirmada` y `compartirContacto`. Para una foto analizada se requieren UUID y `ubicacionConfirmada=true`; el contacto es opcional y desactivado por defecto. Se conservan formatos JPG/JPEG/PNG/WEBP, firma válida y máximo 5 MiB. Sin foto se conserva el flujo anterior. Flutter normaliza extensión y MIME a la firma real cuando Android redimensiona una imagen.
 
@@ -56,11 +58,11 @@ Una coincidencia contiene `id`, `reportId`, `sightingId`, `similarity`, `thresho
 
 El aviso FCM muestra «Posible coincidencia con tu mascota perdida» y la similitud redondeada. El payload de datos incluye tipo e IDs de coincidencia, notificación, avistamiento, reporte y destinatario. **No incluye fotografía, miniatura pública, coordenadas exactas ni contacto.**
 
-Al tocarlo, AniMap comprueba la cuenta y consulta el detalle autenticado, donde aparecen la fotografía, ubicación, fechas y similitud. Si falta una sesión válida, conserva el destino hasta autenticar al usuario correcto. Los datos privados se limpian al cambiar de cuenta y se descartan respuestas tardías de otra sesión.
+Al tocarlo, AniMap comprueba la cuenta y consulta el detalle autenticado, donde aparecen la fotografía original del avistamiento (no la foto de referencia), descripción, ubicación, fechas y similitud, con enlaces al avistamiento y al reporte de pérdida. Si falta una sesión válida, conserva el destino hasta autenticar al usuario correcto. Los datos privados se limpian al cambiar de cuenta y se descartan respuestas tardías de otra sesión.
 
 El nombre y teléfono del reportante solo se muestran con consentimiento afirmativo. Sin consentimiento aparece «Reportante», sin teléfono. El correo no se comparte. La fotografía de la coincidencia exige propiedad del evento; las fotografías públicas legítimas de reportes y avistamientos conservan sus reglas anteriores.
 
-El historial privado permite abrir el detalle y «Ver mi reporte». El historial general registra la notificación, pero su navegación existente abre contenido del mapa/avistamiento; no abre directamente el detalle privado de coincidencia. No se modificó el módulo del compañero para unificar esos destinos. Abrir desde el push no marca automáticamente la notificación como leída.
+El historial privado y las coincidencias identificadas en el historial general abren el detalle autenticado, con «Ver avistamiento» y «Ver mi reporte». Una coincidencia sin identificador privado válido no se sustituye por una imagen pública. Las demás notificaciones conservan sus destinos existentes. Abrir desde el push no marca automáticamente la notificación como leída.
 
 ## Recuperación y fallos
 
@@ -81,6 +83,8 @@ El filtro se aplica antes de consultar fotos, al leerlas y al reclamar/finalizar
 Con `FCM_PUSH_ENABLED=false` pueden generarse coincidencias e intenciones pendientes. Revisar y autorizar su procesamiento antes de habilitar envíos, incluso cuando se desactive posteriormente el modo QA. Los emisores administrativos y comunitarios tienen interruptores independientes y deben coordinarse con el equipo.
 
 ## Aceptación y pruebas
+
+**Actualización del flujo por el Product Owner:** el push muestra la similitud y abre fotografía, ubicación e información completa en el detalle autenticado; no se requiere fotografía en la pantalla bloqueada. La selección del reporte y la conservación de la foto están cubiertas por pruebas de Flutter y backend. La nueva secuencia integral Android (buscar, seleccionar, publicar vinculado, recibir push y abrir detalle) debe ejecutarse con las cuentas QA autorizadas antes de declararla validada visualmente. Los resultados históricos siguientes no sustituyen esa prueba.
 
 Revisión final del 15/11/2026, con datos sintéticos autorizados en Cloud SQL y Atlas, ResNet50 real y Android independiente. Los manifiestos, capturas, cuentas e IDs QA permanecen fuera del repositorio.
 

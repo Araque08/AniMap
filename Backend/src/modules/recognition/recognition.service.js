@@ -9,7 +9,7 @@ function createRecognitionService({ repo = createRecognitionRepository(), worker
     : (process.env.RECOGNITION_SIMILARITY_THRESHOLD.trim() ? Number(process.env.RECOGNITION_SIMILARITY_THRESHOLD) : NaN),
   topK = 5, timeoutMs = 120000 } = {}) {
   let busy = false;
-  async function search(content, { signal, allMatches = false } = {}) {
+  async function search(content, { signal, allMatches = false, reportId } = {}) {
     repo.assertReady?.();
     if (busy) throw failure('RECOGNITION_BUSY');
     if (!Number.isFinite(threshold) || threshold < 0 || threshold > 1) throw failure('RECOGNITION_UNAVAILABLE');
@@ -28,7 +28,7 @@ function createRecognitionService({ repo = createRecognitionRepository(), worker
       const result = await Promise.race([deadline, (async () => {
         queryId = (await request('query', { image: content.toString('base64') })).queryId;
         if (typeof queryId !== 'string' || !queryId) throw failure('RECOGNITION_UNAVAILABLE');
-        const photos = await repo.activePhotos(), scored = [];
+        const photos = await repo.activePhotos({ reportId }), scored = [];
         let skippedImages = 0, searchedImages = 0;
         for (const photo of photos) {
           check(); const bytes = await repo.photoBytes(photo); check();
@@ -43,7 +43,7 @@ function createRecognitionService({ repo = createRecognitionRepository(), worker
           searchedImages++;
           if (result.similarity >= threshold) scored.push({ ...photo, similarity: result.similarity, hash: hash(bytes) });
         }
-        const current = new Map((await repo.activePhotos()).map(photo => [key(photo), photo]));
+        const current = new Map((await repo.activePhotos({ reportId })).map(photo => [key(photo), photo]));
         const matches = [], included = new Set();
         scored.sort((a, b) => b.similarity - a.similarity || a.reportId - b.reportId || a.photoId.localeCompare(b.photoId));
         for (const photo of scored) {
@@ -55,9 +55,8 @@ function createRecognitionService({ repo = createRecognitionRepository(), worker
           matches.push({ reportId: fresh.reportId,
             pet: { id: fresh.petId, nombre: fresh.nombre, especie: fresh.especie, raza: fresh.raza, color: fresh.color },
             photo: { id: fresh.photoId, url: `/api/map/images/${fresh.photoId}` }, similarity: photo.similarity });
-          // Published analysis applies recipient preferences and groups owners
-          // after recognition, so it must retain qualifying reports beyond the
-          // smaller exploratory response limit.
+          // Exploratory responses are bounded. Internal callers may request
+          // all results; automatic publication analysis is scoped by reportId.
           if (allMatches !== true && matches.length >= topK) break;
         }
         return { model: 'resnet50-imagenet1k-v2', threshold, searchedImages, skippedImages, matches };

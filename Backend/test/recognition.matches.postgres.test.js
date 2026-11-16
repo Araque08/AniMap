@@ -54,7 +54,7 @@ test('HU034 durable matches and bounded leased analysis in isolated PostgreSQL',
       INSERT INTO mascota(id,fk_usuario,fk_especie,nombre,color,estado) VALUES(1,1,1,'Luna','cafe','PERDIDA');
       INSERT INTO reporte(id,fk_usuario,fk_mascota) VALUES(1,1,1);
       INSERT INTO foto_mascota(id,fk_mascota,storage_ref) VALUES(1,1,'507f1f77bcf86cd799439011');
-      INSERT INTO avistamiento(id,fk_usuario,estado) VALUES(1,2,'ACTIVO'),(2,2,'ACTIVO'),(3,2,'ACTIVO');
+      INSERT INTO avistamiento(id,fk_usuario,fk_reporte_perdida,estado) VALUES(1,2,1,'ACTIVO'),(2,2,NULL,'ACTIVO'),(3,2,NULL,'ACTIVO');
       INSERT INTO foto_avistamiento(id,fk_avistamiento,storage_ref) VALUES(1,1,'507f1f77bcf86cd799439012');
       INSERT INTO ubicacion(fk_avistamiento,metodo,lat,lng,direccion) VALUES(1,'MAPA',4.6,-74.1,'QA');
       INSERT INTO ubicacion(fk_reporte,metodo,lat,lng) VALUES(1,'GPS',4.6,-74.1);

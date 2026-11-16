@@ -61,8 +61,11 @@ class ResNetMatcher:
             with warnings.catch_warnings():
                 warnings.simplefilter('error', Image.DecompressionBombWarning)
                 with Image.open(io.BytesIO(content)) as original:
-                    if original.format not in {'JPEG', 'PNG', 'WEBP'}:
+                    if original.format not in {'JPEG', 'PNG', 'WEBP', 'MPO'}:
                         raise RecognitionError('INVALID_IMAGE')
+                    if original.format == 'MPO':
+                        # Compare only the primary JPEG frame; keep the source intact.
+                        original.seek(0)
                     if original.width * original.height > Image.MAX_IMAGE_PIXELS:
                         raise RecognitionError('INVALID_IMAGE')
                     original.load()

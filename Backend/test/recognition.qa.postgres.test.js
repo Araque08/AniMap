@@ -69,7 +69,7 @@ test('QA isolation with owned temporary PostgreSQL and MongoDB', {
       INSERT INTO foto_mascota(id,fk_mascota,storage_ref) VALUES
         (401,301,'507f1f77bcf86cd799439011'),(402,302,'507f1f77bcf86cd799439012'),(403,303,'507f1f77bcf86cd799439013');
       INSERT INTO avistamiento(id,fk_usuario,fk_reporte_perdida,estado) VALUES
-        (501,104,NULL,'ACTIVO'),(502,102,NULL,'ACTIVO'),(503,102,202,'ACTIVO'),(504,104,NULL,'ACTIVO');
+        (501,104,NULL,'ACTIVO'),(502,102,201,'ACTIVO'),(503,102,202,'ACTIVO'),(504,104,NULL,'ACTIVO');
       INSERT INTO foto_avistamiento(id,fk_avistamiento,storage_ref) VALUES(601,502,'507f1f77bcf86cd799439021');
       INSERT INTO ubicacion(fk_avistamiento,metodo,lat,lng) VALUES(502,'MAPA',4.6455,-74.1105);
       INSERT INTO ubicacion(fk_reporte,metodo,lat,lng) VALUES(201,'MAPA',4.6455,-74.1105);

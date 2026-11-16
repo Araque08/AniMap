@@ -5,6 +5,12 @@ import '../../../pet/data/pet_image_selection.dart';
 import '../../data/image_recognition_service.dart';
 import '../../../sighting/presentation/pages/create_sighting_page.dart';
 
+class ImageSearchSelection {
+  const ImageSearchSelection({required this.reportId, required this.photo});
+  final int reportId;
+  final XFile photo;
+}
+
 class ImageSearchSheet extends StatefulWidget {
   const ImageSearchSheet({
     super.key,
@@ -242,7 +248,15 @@ class _ImageSearchSheetState extends State<ImageSearchSheet> {
           Card(
             clipBehavior: Clip.antiAlias,
             child: InkWell(
-              onTap: () => Navigator.pop(context, match.reportId),
+              onTap: _busy || _photo == null
+                  ? null
+                  : () => Navigator.pop(
+                      context,
+                      ImageSearchSelection(
+                        reportId: match.reportId,
+                        photo: _photo!,
+                      ),
+                    ),
               child: Padding(
                 padding: const EdgeInsets.all(12),
                 child: Row(
@@ -271,7 +285,7 @@ class _ImageSearchSheetState extends State<ImageSearchSheet> {
                             'Similitud visual: ${(match.similarity * 100).toStringAsFixed(1)} %',
                           ),
                           const Text(
-                            'Ver reporte',
+                            'Usar esta coincidencia',
                             style: TextStyle(color: green),
                           ),
                         ],

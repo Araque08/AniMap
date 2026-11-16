@@ -1,7 +1,11 @@
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 import '../../../auth/data/session_manager.dart';
+import '../../../map/presentation/pages/map_page.dart';
+import '../../../notifications/data/notification_target_service.dart';
 import '../../data/photo_matches_service.dart';
+import '../../data/report_datetime.dart';
 import '../../data/reports_service.dart';
 import 'own_report_detail_page.dart';
 
@@ -163,12 +167,14 @@ class PhotoMatchDetailPage extends StatefulWidget {
     this.loader,
     this.imageLoader,
     this.reportLoader,
+    this.mapBuilder,
   });
   final int matchId;
   final SessionManager? sessionManager;
   final Future<PhotoMatch> Function(int)? loader;
   final Future<Uint8List> Function(int)? imageLoader;
   final Future<OwnReportDetails> Function(int)? reportLoader;
+  final ReportMapBuilder? mapBuilder;
   @override
   State<PhotoMatchDetailPage> createState() => _PhotoMatchDetailPageState();
 }
@@ -182,6 +188,7 @@ class _PhotoMatchDetailPageState
   PhotoMatch? _item;
   Uint8List? _image;
   bool _loading = false;
+  bool _openingSighting = false;
   String? _error;
   @override
   void initState() {
@@ -194,6 +201,7 @@ class _PhotoMatchDetailPageState
     _item = null;
     _image = null;
     _loading = false;
+    _openingSighting = false;
     _error = 'La sesión cambió. Consulta nuevamente con tu cuenta.';
   }
 
@@ -231,6 +239,116 @@ class _PhotoMatchDetailPageState
     }
   }
 
+  Future<void> _openSighting() async {
+    if (_openingSighting || !session.isAuthenticated) return;
+    final generation = session.authenticatedSessionGeneration;
+    setState(() => _openingSighting = true);
+    try {
+      // Reauthorize the private match before following its existing public sighting.
+      final item = await (widget.loader ?? _service.detail)(widget.matchId);
+      if (!current(generation)) return;
+      final sightingId = int.tryParse(item.data['sightingId'].toString());
+      final data = sightingId == null || sightingId <= 0
+          ? null
+          : await NotificationTargetService.buscarAvistamiento(sightingId);
+      if (!mounted || !current(generation)) return;
+      if (data == null) {
+        throw const PhotoMatchesException(
+          'El avistamiento ya no está disponible.',
+        );
+      }
+      final report = MapReport.fromJson(data);
+      await Navigator.push(
+        context,
+        MaterialPageRoute<void>(
+          builder: (_) => ListenableBuilder(
+            listenable: session,
+            builder: (_, _) => current(generation)
+                ? SightingDetailPage(report: report)
+                : const Scaffold(
+                    body: Center(
+                      child: Text(
+                        'La sesión cambió. Abre el avistamiento con tu cuenta.',
+                      ),
+                    ),
+                  ),
+          ),
+        ),
+      );
+    } catch (error) {
+      if (!mounted || !current(generation)) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            error is PhotoMatchesException
+                ? error.message
+                : 'No se pudo abrir el avistamiento. Intenta nuevamente.',
+          ),
+        ),
+      );
+    } finally {
+      if (current(generation)) setState(() => _openingSighting = false);
+    }
+  }
+
+  String _date(dynamic value) => reportDateTimeInBogota(value) == null
+      ? 'Fecha no disponible'
+      : formatReportDateTimeInBogota(value);
+
+  Widget _locationMap(Map? location) {
+    final lat = double.tryParse(location?['lat']?.toString() ?? '');
+    final lng = double.tryParse(location?['lng']?.toString() ?? '');
+    if (lat == null ||
+        lng == null ||
+        !lat.isFinite ||
+        !lng.isFinite ||
+        lat < -90 ||
+        lat > 90 ||
+        lng < -180 ||
+        lng > 180) {
+      return const Text('Ubicación no disponible.');
+    }
+    final position = LatLng(lat, lng);
+    return Semantics(
+      key: const ValueKey('match-location-map'),
+      label: 'Mapa de la ubicación del avistamiento',
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(14),
+        child: SizedBox(
+          height: 220,
+          child:
+              widget.mapBuilder?.call(context, position, false) ??
+              GoogleMap(
+                key: ValueKey('match-${widget.matchId}-$lat-$lng'),
+                initialCameraPosition: CameraPosition(
+                  target: position,
+                  zoom: 16,
+                ),
+                markers: {
+                  Marker(
+                    markerId: const MarkerId('match-sighting-location'),
+                    position: position,
+                    icon: BitmapDescriptor.defaultMarkerWithHue(
+                      BitmapDescriptor.hueOrange,
+                    ),
+                  ),
+                },
+                liteModeEnabled: true,
+                mapToolbarEnabled: false,
+                myLocationButtonEnabled: false,
+                compassEnabled: false,
+                zoomControlsEnabled: false,
+                scrollGesturesEnabled: false,
+                zoomGesturesEnabled: false,
+                rotateGesturesEnabled: false,
+                tiltGesturesEnabled: false,
+                onTap: (_) {},
+              ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final item = _item;
@@ -259,6 +377,9 @@ class _PhotoMatchDetailPageState
                     style: Theme.of(context).textTheme.headlineSmall,
                   ),
                   Text('Similitud visual: ${item.percentage}'),
+                  Text(
+                    'Descripción del avistamiento: ${item.data['description'] ?? 'No disponible'}',
+                  ),
                   const Text(
                     'La similitud visual no confirma que sea la misma mascota.',
                   ),
@@ -275,15 +396,21 @@ class _PhotoMatchDetailPageState
                     const Text('Fotografía no disponible.'),
                   const SizedBox(height: 16),
                   Text(
-                    'Fecha del avistamiento: ${item.data['observedAt'] ?? 'No disponible'}',
+                    'Fecha del avistamiento: ${_date(item.data['observedAt'])}',
                   ),
+                  Text('Fecha del evento: ${_date(item.data['createdAt'])}'),
                   Text(
-                    'Fecha del evento: ${item.data['createdAt'] ?? 'No disponible'}',
+                    'Hora de Colombia',
+                    style: Theme.of(context).textTheme.bodySmall,
                   ),
-                  Text('Ubicación: ${location?['address'] ?? ''}'),
-                  Text(
-                    '${location?['lat'] ?? ''}, ${location?['lng'] ?? ''} · ${location?['method'] ?? ''}',
-                  ),
+                  const SizedBox(height: 12),
+                  const Text('Ubicación del avistamiento'),
+                  if (location?['address'] case final String address
+                      when address.trim().isNotEmpty)
+                    Text(address),
+                  const SizedBox(height: 8),
+                  _locationMap(location),
+                  const SizedBox(height: 12),
                   Text(
                     'Reportante: ${reporter?['label'] ?? 'Persona de la comunidad'}',
                   ),
@@ -292,6 +419,18 @@ class _PhotoMatchDetailPageState
                     Text('Teléfono compartido: $phone')
                   else
                     const Text('El reportante no compartió su teléfono.'),
+                  if (int.tryParse(item.data['sightingId'].toString())
+                      case final int sightingId when sightingId > 0)
+                    OutlinedButton.icon(
+                      key: const ValueKey('match-open-sighting'),
+                      icon: const Icon(Icons.visibility_outlined),
+                      label: Text(
+                        _openingSighting
+                            ? 'Consultando...'
+                            : 'Ver avistamiento',
+                      ),
+                      onPressed: _openingSighting ? null : _openSighting,
+                    ),
                   if (int.tryParse(item.data['reportId'].toString())
                       case final int reportId when reportId > 0)
                     OutlinedButton.icon(

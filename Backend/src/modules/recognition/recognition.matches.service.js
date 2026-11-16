@@ -3,7 +3,6 @@ const { createMatchRepository } = require('./recognition.matches.repository');
 const { recognitionService } = require('./recognition.service');
 const { notificationsService, skipReason } = require('../notifications/notifications.service');
 
-const MAX_OWNERS = 3;
 const httpError = (message, statusCode) => Object.assign(new Error(message), { statusCode });
 
 function createMatchService({ repo = createMatchRepository(), recognizer = recognitionService,
@@ -13,22 +12,20 @@ function createMatchService({ repo = createMatchRepository(), recognizer = recog
   let inFlight = null, timer = null, stopped = false;
   const warn = code => logger.warn('AniMap reconocimiento publicado', { code });
 
-  async function finish(job, result) {
+  async function finish(job, result, selectedReportId) {
     await repo.transaction(async client => {
       if (!await repo.isCurrent(client, job)) return;
-      const owners = new Set();
       const ranked = result.matches.filter(m => Number.isFinite(m.similarity)
-        && m.similarity >= result.threshold && m.similarity <= 1)
+        && m.reportId === selectedReportId && m.similarity >= result.threshold && m.similarity <= 1)
         .sort((a, b) => b.similarity - a.similarity || a.reportId - b.reportId);
       for (const match of ranked) {
-        if (owners.size >= MAX_OWNERS) break;
         const event = await repo.candidate(client, job.sightingId, match.reportId, match.photo.id);
-        if (!event || skipReason(event) || !notifications.allowsEvent(event) || owners.has(event.ownerId)) continue;
+        if (!event || event.reportId !== selectedReportId || skipReason(event) || !notifications.allowsEvent(event)) continue;
         const notificationId = await notifications.recordMatchIntent(client, event, { similarity: match.similarity });
         if (notificationId === null) continue;
         await repo.saveMatch(client, event, { similarity: match.similarity,
           threshold: result.threshold, model: result.model, notificationId });
-        owners.add(event.ownerId);
+        break;
       }
       // The existing unique (sighting, recipient) index coalesces a linked
       // sighting alert with its photographic match for the same owner.
@@ -57,13 +54,19 @@ function createMatchService({ repo = createMatchRepository(), recognizer = recog
         await notifications.wake(job.sightingId).catch(() => warn('MATCH_DELIVERY_DEFERRED'));
         continue;
       }
+      // The recipient comes from the persisted sighting, never a client score or search result.
+      const selectedReportId = await repo.selectedReport(job);
+      if (selectedReportId === null) {
+        await finish(job, { matches: [] }, null);
+        continue;
+      }
       let result;
       try {
         const photo = await repo.photo(job);
         if (!photo?.length) throw Object.assign(new Error(), { code: 'MATCH_PHOTO_UNAVAILABLE' });
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), Math.max(1, deadline - now()));
-        try { result = await recognizer.search(photo, { signal: controller.signal, allMatches: true }); }
+        try { result = await recognizer.search(photo, { signal: controller.signal, reportId: selectedReportId }); }
         finally { clearTimeout(timeout); }
         if (result.model !== 'resnet50-imagenet1k-v2' || !Number.isFinite(result.threshold)
           || result.threshold < 0 || result.threshold > 1 || !Array.isArray(result.matches)) {
@@ -78,7 +81,7 @@ function createMatchService({ repo = createMatchRepository(), recognizer = recog
         continue;
       }
       // Persistence failures leave the claim recoverable; they are not model failures.
-      await finish(job, result);
+      await finish(job, result, selectedReportId);
       await notifications.wake(job.sightingId).catch(() => warn('MATCH_DELIVERY_DEFERRED'));
     }
     return { enabled: true, completed };

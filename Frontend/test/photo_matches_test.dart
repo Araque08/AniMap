@@ -11,6 +11,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'image_recognition_test.dart' show bytes;
 import 'package:animap/features/auth/data/session_storage.dart';
 
@@ -137,6 +138,7 @@ void main() {
               'similarity': .91,
               'pet': {'name': 'Luna'},
               'observedAt': '2026-11-07T19:10:00.000Z',
+              'description': 'Avistamiento QA junto al parque',
               'createdAt': '2026-11-08T09:30:00.000Z',
             }),
             imageLoader: (_) async => throw Exception('Photo unavailable'),
@@ -145,15 +147,113 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(
-        find.text('Fecha del avistamiento: 2026-11-07T19:10:00.000Z'),
+        find.text('Fecha del avistamiento: 07/11/2026, 14:10'),
         findsOneWidget,
       );
       expect(
-        find.text('Fecha del evento: 2026-11-08T09:30:00.000Z'),
+        find.text(
+          'Descripción del avistamiento: Avistamiento QA junto al parque',
+        ),
         findsOneWidget,
       );
+      expect(find.text('Fecha del evento: 08/11/2026, 04:30'), findsOneWidget);
+      expect(find.textContaining('2026-11-07T'), findsNothing);
     },
   );
+  testWidgets('detail shows a location map instead of raw coordinates', (
+    tester,
+  ) async {
+    final session = SessionManager(storage: MemoryStorage());
+    await session.establishSession(
+      accessToken: 'fixture',
+      refreshToken: 'fixture',
+      role: 'USUARIO',
+    );
+    LatLng? mappedPosition;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: PhotoMatchDetailPage(
+          matchId: 12,
+          sessionManager: session,
+          loader: (_) async => PhotoMatch.fromJson({
+            'id': 12,
+            'similarity': .91,
+            'pet': {'name': 'Luna'},
+            'location': {'lat': 4.6455, 'lng': -74.1105, 'method': 'GPS'},
+          }),
+          imageLoader: (_) async => bytes,
+          mapBuilder: (_, position, interactive) {
+            mappedPosition = position;
+            expect(interactive, isFalse);
+            return const ColoredBox(color: Colors.green);
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(
+      find.byKey(const ValueKey('match-location-map')),
+      150,
+    );
+    expect(find.byKey(const ValueKey('match-location-map')), findsOneWidget);
+    expect(mappedPosition, const LatLng(4.6455, -74.1105));
+    expect(find.textContaining('4.6455'), findsNothing);
+    expect(find.textContaining('-74.1105'), findsNothing);
+    await session.establishSession(
+      accessToken: 'other-account',
+      refreshToken: 'fixture',
+      role: 'USUARIO',
+    );
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('match-location-map')), findsNothing);
+  });
+  for (final location in <Map<String, dynamic>?>[
+    null,
+    {'lat': 91, 'lng': -74.1105},
+    {'lat': 'NaN', 'lng': -74.1105},
+    {'lat': 4.6455},
+  ]) {
+    testWidgets('unavailable location $location does not invent a map point', (
+      tester,
+    ) async {
+      final session = SessionManager(storage: MemoryStorage());
+      await session.establishSession(
+        accessToken: 'fixture',
+        refreshToken: 'fixture',
+        role: 'USUARIO',
+      );
+      await tester.pumpWidget(
+        MaterialApp(
+          home: PhotoMatchDetailPage(
+            matchId: 12,
+            sessionManager: session,
+            loader: (_) async => PhotoMatch.fromJson({
+              'id': 12,
+              'similarity': .91,
+              'pet': {'name': 'Luna'},
+              'location': location,
+              'createdAt': 'invalid-date',
+            }),
+            imageLoader: (_) async => throw Exception('unavailable'),
+            mapBuilder: (_, _, _) => throw StateError('No valid location'),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Ubicación no disponible.'), findsOneWidget);
+      expect(find.byKey(const ValueKey('match-location-map')), findsNothing);
+      expect(
+        find.text('Fecha del avistamiento: Fecha no disponible'),
+        findsOneWidget,
+      );
+      expect(
+        find.text('Fecha del evento: Fecha no disponible'),
+        findsOneWidget,
+      );
+      expect(find.textContaining('invalid-date'), findsNothing);
+      expect(tester.takeException(), isNull);
+    });
+  }
   testWidgets(
     'changing account clears private detail and ignores a late image response',
     (tester) async {
@@ -276,6 +376,10 @@ void main() {
         find.byKey(const ValueKey('match-open-report')),
         180,
       );
+      await tester.ensureVisible(
+        find.byKey(const ValueKey('match-open-report')),
+      );
+      await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey('match-open-report')));
       await tester.pumpAndSettle();
       expect(opened, 27);
@@ -320,6 +424,7 @@ void main() {
               'location': {'lat': 4.65, 'lng': -74.10, 'method': 'MAPA'},
             }),
             imageLoader: (_) async => bytes,
+            mapBuilder: (_, _, _) => const ColoredBox(color: Colors.green),
           ),
         ),
       );

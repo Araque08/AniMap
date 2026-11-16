@@ -5,6 +5,9 @@ import 'package:flutter/material.dart';
 import '../../data/notification_history_service.dart';
 import '../../../map/presentation/pages/map_page.dart';
 import '../../data/notification_target_service.dart';
+import '../../../auth/data/session_manager.dart';
+import '../../../report/data/photo_matches_service.dart';
+import '../../../report/presentation/pages/photo_matches_page.dart';
 
 
 class NotificationsPage extends StatefulWidget {
@@ -195,6 +198,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
             fecha: actual.fecha,
             reporteId: actual.reporteId,
             avistamientoId: actual.avistamientoId,
+            matchId: actual.matchId,
           );
         });
       }
@@ -232,6 +236,31 @@ class _NotificationsPageState extends State<NotificationsPage> {
       BuildContext sheetContext,
       ) async {
     try {
+      if (notification.tipo == 'COINCIDENCIA_FOTOGRAFICA') {
+        final session = SessionManager.instance;
+        final generation = session.authenticatedSessionGeneration;
+        final matchId = notification.matchId;
+        if (!session.isAuthenticated || matchId == null) {
+          throw const PhotoMatchesException(
+            'El detalle privado de esta coincidencia no está disponible.',
+          );
+        }
+        await PhotoMatchesService().detail(matchId);
+        if (!mounted ||
+            !sheetContext.mounted ||
+            !session.isAuthenticated ||
+            session.authenticatedSessionGeneration != generation) {
+          return;
+        }
+        final navigator = Navigator.of(context);
+        Navigator.of(sheetContext).pop();
+        await navigator.push(
+          MaterialPageRoute<void>(
+            builder: (_) => PhotoMatchDetailPage(matchId: matchId),
+          ),
+        );
+        return;
+      }
       // Consultar el reporte o avistamiento en el backend.
       final contenido = await NotificationTargetService.buscarContenido(
         notification,
@@ -320,6 +349,11 @@ class _NotificationsPageState extends State<NotificationsPage> {
           },
         ),
       );
+    } on PhotoMatchesException catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(error.message)),
+      );
     } on NotificationTargetException catch (error) {
       if (!mounted) return;
 
@@ -342,8 +376,9 @@ class _NotificationsPageState extends State<NotificationsPage> {
   // =====================================================
 
   void _openNotification(AnimapNotification notification) {
+    final esCoincidencia = notification.tipo == 'COINCIDENCIA_FOTOGRAFICA';
     final tieneContenido =
-        NotificationTargetService.obtenerIdentificador(notification) != null;
+        esCoincidencia || NotificationTargetService.obtenerIdentificador(notification) != null;
 
     final esAvistamiento =
         notification.avistamientoId != null && notification.avistamientoId! > 0;
@@ -527,6 +562,8 @@ class _NotificationsPageState extends State<NotificationsPage> {
                                     label: Text(
                                       abriendoContenido
                                           ? 'Consultando...'
+                                          : esCoincidencia
+                                          ? 'Ver coincidencia'
                                           : esAvistamiento
                                           ? 'Ver avistamiento'
                                           : 'Ver reporte',

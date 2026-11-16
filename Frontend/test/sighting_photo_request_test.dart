@@ -75,6 +75,7 @@ void main() {
       );
       final result = await SightingsService.createSighting(
         descripcion: ' Mascota vista ',
+        reportId: 23,
         metodo: 'MAPA',
         lat: 4.65,
         lng: -74.1,
@@ -87,6 +88,8 @@ void main() {
       expect(result['id'], 41);
       expect(tokens, ['Bearer old', 'Bearer fresh']);
       for (final body in bodies) {
+        expect(body, contains('name="reportId"\r\n\r\n23'));
+        expect(body, isNot(contains('name="similarity"')));
         expect(
           body,
           contains(
